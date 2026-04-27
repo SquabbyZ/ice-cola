@@ -28,19 +28,19 @@ services:
       start_period: 60s
 
   # NestJS Server - API Gateway with Quota/Auth
-  openclaw-server:
+  ice-cola-server:
     build:
       context: .
       dockerfile: packages/server/Dockerfile
-    container_name: openclaw-server
+    container_name: ice-cola-server
     ports:
       - "3000:3000"  # NestJS HTTP API
       - "3001:3001"  # WebSocket Gateway
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/openclaw?schema=public
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/icecola?schema=public
       - HERMES_ENDPOINT=http://hermes-agent:9119
-      - JWT_SECRET=openclaw-prod-secret-change-this
+      - JWT_SECRET=icecola-prod-secret-change-this
       - JWT_EXPIRES_IN=7d
       - WS_PORT=3001
     depends_on:
@@ -53,19 +53,19 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:16-alpine
-    container_name: openclaw-postgres
+    container_name: ice-cola-postgres
     ports:
       - "5432:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=openclaw
+      - POSTGRES_DB=icecola
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d openclaw"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d icecola"]
       interval: 10s
       timeout: 5s
       retries: 5

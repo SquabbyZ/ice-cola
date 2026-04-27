@@ -1,4 +1,4 @@
--- Initialize OpenClaw Database
+-- Initialize Ice Cola Database
 -- This script runs automatically when PostgreSQL container starts
 
 -- Create extensions if needed

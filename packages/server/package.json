@@ -1,7 +1,7 @@
 {
-  "name": "@openclaw/server",
+  "name": "@ice-cola/server",
   "version": "0.1.0",
-  "description": "OpenClaw Server - NestJS backend with PostgreSQL",
+  "description": "Ice Cola Server - NestJS backend with PostgreSQL",
   "scripts": {
     "build": "nest build",
     "start": "nest start",
