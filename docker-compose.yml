@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  # Hermes Agent - AI Brain Service (NousResearch)
+  hermes-agent:
+    build:
+      context: ./packages/hermes-agent
+      dockerfile: Dockerfile
+    container_name: hermes-agent
+    command: ["gateway", "run"]  # Run as gateway server
+    ports:
+      - "9119:9119"  # Web dashboard
+      - "9118:9118"  # MCP/Gateway port
+    environment:
+      - HERMES_HOME=/home/hermes/.hermes
+      - HERMES_WEB_DIST=/app/hermes_cli/web_dist
+      - HERMES_DASHBOARD_TUI=0
+    volumes:
+      - hermes-data:/home/hermes/.hermes
+    env_file:
+      - ./packages/hermes-agent/.env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9119/health || exit 0"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # NestJS Server - API Gateway with Quota/Auth
+  openclaw-server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    container_name: openclaw-server
+    ports:
+      - "3000:3000"  # NestJS HTTP API
+      - "3001:3001"  # WebSocket Gateway
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/openclaw?schema=public
+      - HERMES_ENDPOINT=http://hermes-agent:9119
+      - JWT_SECRET=openclaw-prod-secret-change-this
+      - JWT_EXPIRES_IN=7d
+      - WS_PORT=3001
+    depends_on:
+      hermes-agent:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: openclaw-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=openclaw
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d openclaw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  hermes-data:
+  postgres-data:

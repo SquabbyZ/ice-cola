@@ -1,0 +1,37 @@
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
+import { DatabaseModule } from './database/database.module';
+import { AuthModule } from './auth/auth.module';
+import { QuotaModule } from './quota/quota.module';
+import { ConversationModule } from './conversation/conversation.module';
+import { HermesModule } from './hermes/hermes.module';
+import { GatewayModule } from './gateway/gateway.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
+
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: {
+          expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
+        },
+      }),
+      inject: [ConfigService],
+    }),
+
+    DatabaseModule,
+    AuthModule,
+    QuotaModule,
+    ConversationModule,
+    HermesModule,
+    GatewayModule,
+  ],
+})
+export class AppModule {}
