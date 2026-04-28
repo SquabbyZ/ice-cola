@@ -43,10 +43,12 @@ export const WorkorderTable: React.FC = () => {
 
   const workorders = useWorkordersStore(state => state.workorders);
   const filterStatus = useWorkordersStore(state => state.filterStatus);
+  const filterType = useWorkordersStore(state => state.filterType);
 
   const filteredWorkorders = workorders.filter(w => {
-    if (filterStatus === 'all') return true;
-    return w.status === filterStatus;
+    if (filterStatus !== 'all' && w.status !== filterStatus) return false;
+    if (filterType !== 'all' && w.type !== filterType) return false;
+    return true;
   });
 
   const pendingWorkorders = workorders.filter(w => w.status === 'pending');
