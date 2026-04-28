@@ -63,6 +63,10 @@ ENV/
 pip-log.txt
 pip-delete-this-directory.txt
 
+# Worktrees
+.worktrees/
+worktrees/
+
 # Hermes Agent
 packages/hermes-agent/.env
 packages/hermes-agent/__pycache__/
