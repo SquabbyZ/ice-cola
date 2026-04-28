@@ -245,3 +245,57 @@ CREATE INDEX IF NOT EXISTS idx_skills_status ON skills(status);
 CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
 CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON skill_versions(skill_id);
 CREATE INDEX IF NOT EXISTS idx_skill_reviews_skill ON skill_reviews(skill_id);
+-- Create workorders table for approval workflow
+CREATE TABLE IF NOT EXISTS workorders (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    type VARCHAR(50) NOT NULL DEFAULT 'skill',
+    target_id VARCHAR(36) NOT NULL,
+    target_name VARCHAR(255) NOT NULL,
+    target_icon VARCHAR(100),
+    applicant_id VARCHAR(36) NOT NULL,
+    applicant_name VARCHAR(255),
+    team_id VARCHAR(36) NOT NULL,
+    status VARCHAR(50) DEFAULT 'pending',
+    note TEXT,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_workorder_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
+);
+
+-- Create workorder_history table for approval records
+CREATE TABLE IF NOT EXISTS workorder_history (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    "workorderId" VARCHAR(36) NOT NULL,
+    "teamId" VARCHAR(36) NOT NULL,
+    type VARCHAR(50) NOT NULL,
+    target_name VARCHAR(255) NOT NULL,
+    approver_id VARCHAR(36) NOT NULL,
+    approver_name VARCHAR(255),
+    result VARCHAR(50) NOT NULL,
+    comment TEXT,
+    "processedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_history_workorder FOREIGN KEY ("workorderId") REFERENCES workorders(id) ON DELETE CASCADE
+);
+
+-- Create indexes for workorders
+CREATE INDEX IF NOT EXISTS idx_workorders_team ON workorders(team_id);
+CREATE INDEX IF NOT EXISTS idx_workorders_status ON workorders(status);
+CREATE INDEX IF NOT EXISTS idx_workorders_type ON workorders(type);
+CREATE INDEX IF NOT EXISTS idx_workorder_history_team ON workorder_history("teamId");
+CREATE INDEX IF NOT EXISTS idx_workorder_history_workorder ON workorder_history("workorderId");
+
+-- Create client_verification_codes table for email verification during registration
+CREATE TABLE IF NOT EXISTS client_verification_codes (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    email VARCHAR(255) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(20) NOT NULL DEFAULT 'register',
+    expires_at TIMESTAMP NOT NULL,
+    verified BOOLEAN DEFAULT false,
+    attempts INTEGER DEFAULT 0,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for client_verification_codes
+CREATE INDEX IF NOT EXISTS idx_client_verification_codes_email ON client_verification_codes(email);
+CREATE INDEX IF NOT EXISTS idx_client_verification_codes_expires ON client_verification_codes(expires_at);

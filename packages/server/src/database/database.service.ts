@@ -501,6 +501,62 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  // Verification code methods
+  async createVerificationCode(data: {
+    email: string;
+    code: string;
+    type?: string;
+    expiresAt: Date;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO client_verification_codes (id, email, code, type, expires_at, "createdAt")
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING *`,
+      [id, data.email, data.code, data.type || 'register', data.expiresAt]
+    );
+  }
+
+  async findValidVerificationCode(email: string, code: string, type: string = 'register') {
+    return this.queryOne(
+      `SELECT * FROM client_verification_codes
+       WHERE email = $1 AND code = $2 AND type = $3 AND verified = false AND expires_at > NOW()
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [email, code, type]
+    );
+  }
+
+  async markVerificationCodeAsVerified(id: string) {
+    return this.queryOne(
+      `UPDATE client_verification_codes SET verified = true WHERE id = $1 RETURNING *`,
+      [id]
+    );
+  }
+
+  async incrementVerificationAttempts(id: string) {
+    return this.queryOne(
+      `UPDATE client_verification_codes SET attempts = attempts + 1 WHERE id = $1 RETURNING *`,
+      [id]
+    );
+  }
+
+  async getVerificationCodeAttempts(email: string, type: string = 'register') {
+    const result = await this.queryOne<{ attempts: string }>(
+      `SELECT attempts FROM client_verification_codes
+       WHERE email = $1 AND type = $2 AND expires_at > NOW()
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [email, type]
+    );
+    return parseInt(result?.attempts || '0', 10);
+  }
+
+  async deleteExpiredVerificationCodes(email: string) {
+    return this.query(
+      `DELETE FROM client_verification_codes WHERE email = $1 AND expires_at < NOW()`,
+      [email]
+    );
+  }
+
   private generateUUID(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
