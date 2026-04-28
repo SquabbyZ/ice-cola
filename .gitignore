@@ -85,3 +85,5 @@ packages/client/build/
 tmp/
 temp/
 *.tmp
+
+.playwright-mcp
