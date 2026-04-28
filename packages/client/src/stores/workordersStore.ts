@@ -1,31 +1,5 @@
 import { create } from 'zustand';
-
-export interface Workorder {
-  id: string;
-  type: 'skill' | 'mcp' | 'extension';
-  targetId: string;
-  targetName: string;
-  targetIcon: string;
-  applicantId: string;
-  applicantName: string;
-  approvers: { id: string; name: string }[];
-  teamId: string;
-  submittedAt: string;
-  status: 'pending' | 'approved' | 'rejected';
-  note?: string;
-}
-
-export interface WorkorderHistory {
-  id: string;
-  workorderId: string;
-  type: 'skill' | 'mcp' | 'extension';
-  targetName: string;
-  approverId: string;
-  approverName: string;
-  result: 'approved' | 'rejected';
-  comment?: string;
-  processedAt: string;
-}
+import { workorderService, type Workorder, type WorkorderHistory } from '@/services/workorder-service';
 
 interface WorkordersState {
   workorders: Workorder[];
@@ -40,7 +14,7 @@ interface WorkordersState {
   loadHistory: () => Promise<void>;
   approve: (id: string, comment?: string) => Promise<void>;
   reject: (id: string, comment: string) => Promise<void>;
-  batchApprove: (ids: string[]) => Promise<void>;
+  batchApprove: (ids: string[], comment?: string) => Promise<void>;
   batchReject: (ids: string[], comment: string) => Promise<void>;
   setFilterType: (type: 'all' | 'skill' | 'mcp' | 'extension') => void;
   setFilterStatus: (status: 'pending' | 'approved' | 'rejected' | 'all') => void;
@@ -50,51 +24,7 @@ interface WorkordersState {
   getFilteredWorkorders: () => Workorder[];
 }
 
-const MOCK_WORKORDERS: Workorder[] = [
-  {
-    id: 'wo-001',
-    type: 'skill',
-    targetId: 'skill-001',
-    targetName: '代码审查助手',
-    targetIcon: '🔍',
-    applicantId: 'user-001',
-    applicantName: '张三',
-    approvers: [
-      { id: 'user-010', name: '王五' },
-      { id: 'user-011', name: '赵六' },
-    ],
-    teamId: 'team-001',
-    submittedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
-    status: 'pending',
-    note: '希望发布到团队让更多人使用',
-  },
-  {
-    id: 'wo-002',
-    type: 'skill',
-    targetId: 'skill-002',
-    targetName: '翻译助手',
-    targetIcon: '🌐',
-    applicantId: 'user-002',
-    applicantName: '李四',
-    approvers: [{ id: 'user-012', name: '孙七' }],
-    teamId: 'team-001',
-    submittedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-    status: 'pending',
-  },
-];
-
-const MOCK_HISTORY: WorkorderHistory[] = [
-  {
-    id: 'hist-001',
-    workorderId: 'wo-000',
-    type: 'skill',
-    targetName: '代码审查助手',
-    approverId: 'admin-001',
-    approverName: '周八',
-    result: 'approved',
-    processedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-  },
-];
+const TEAM_ID = 'team-001'; // TODO: 从用户上下文获取
 
 export const useWorkordersStore = create<WorkordersState>((set, get) => ({
   workorders: [],
@@ -108,84 +38,80 @@ export const useWorkordersStore = create<WorkordersState>((set, get) => ({
   loadWorkorders: async () => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ workorders: MOCK_WORKORDERS, isLoading: false });
+      const data = await workorderService.getList(TEAM_ID);
+      set({ workorders: data, isLoading: false });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load', isLoading: false });
+      set({ error: err instanceof Error ? err.message : 'Failed to load workorders', isLoading: false });
     }
   },
 
   loadHistory: async () => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ history: MOCK_HISTORY, isLoading: false });
+      const data = await workorderService.getHistory(TEAM_ID);
+      set({ history: data, isLoading: false });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load', isLoading: false });
+      set({ error: err instanceof Error ? err.message : 'Failed to load history', isLoading: false });
     }
   },
 
   approve: async (id, comment) => {
-    const { workorders } = get();
-    const workorder = workorders.find(w => w.id === id);
-    if (!workorder) return;
-
-    const newHistory: WorkorderHistory = {
-      id: `hist-${Date.now()}`,
-      workorderId: id,
-      type: workorder.type,
-      targetName: workorder.targetName,
-      approverId: 'current-user',
-      approverName: '当前用户',
-      result: 'approved',
-      comment,
-      processedAt: new Date().toISOString(),
-    };
-
-    set(state => ({
-      workorders: state.workorders.map(w =>
-        w.id === id ? { ...w, status: 'approved' as const } : w
-      ),
-      history: [newHistory, ...state.history],
-      selectedIds: state.selectedIds.filter(sid => sid !== id),
-    }));
+    try {
+      await workorderService.approve(id, comment);
+      set(state => ({
+        workorders: state.workorders.map(w =>
+          w.id === id ? { ...w, status: 'approved' as const } : w
+        ),
+        selectedIds: state.selectedIds.filter(sid => sid !== id),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to approve' });
+      throw err;
+    }
   },
 
   reject: async (id, comment) => {
-    const { workorders } = get();
-    const workorder = workorders.find(w => w.id === id);
-    if (!workorder) return;
-
-    const newHistory: WorkorderHistory = {
-      id: `hist-${Date.now()}`,
-      workorderId: id,
-      type: workorder.type,
-      targetName: workorder.targetName,
-      approverId: 'current-user',
-      approverName: '当前用户',
-      result: 'rejected',
-      comment,
-      processedAt: new Date().toISOString(),
-    };
-
-    set(state => ({
-      workorders: state.workorders.map(w =>
-        w.id === id ? { ...w, status: 'rejected' as const } : w
-      ),
-      history: [newHistory, ...state.history],
-      selectedIds: state.selectedIds.filter(sid => sid !== id),
-    }));
+    try {
+      await workorderService.reject(id, comment);
+      set(state => ({
+        workorders: state.workorders.map(w =>
+          w.id === id ? { ...w, status: 'rejected' as const } : w
+        ),
+        selectedIds: state.selectedIds.filter(sid => sid !== id),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to reject' });
+      throw err;
+    }
   },
 
   batchApprove: async (ids, comment) => {
-    for (const id of ids) {
-      await get().approve(id, comment);
+    try {
+      await workorderService.batchApprove(ids, comment);
+      set(state => ({
+        workorders: state.workorders.map(w =>
+          ids.includes(w.id) ? { ...w, status: 'approved' as const } : w
+        ),
+        selectedIds: [],
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to batch approve' });
+      throw err;
     }
   },
 
   batchReject: async (ids, comment) => {
-    for (const id of ids) {
-      await get().reject(id, comment);
+    try {
+      await workorderService.batchReject(ids, comment);
+      set(state => ({
+        workorders: state.workorders.map(w =>
+          ids.includes(w.id) ? { ...w, status: 'rejected' as const } : w
+        ),
+        selectedIds: [],
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to batch reject' });
+      throw err;
     }
   },
 
