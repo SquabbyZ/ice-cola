@@ -29,7 +29,7 @@ const Login: React.FC = () => {
 
   const onSubmit = async (data: LoginForm) => {
     try {
-      const response = await api.post('/auth/login', data);
+      const response = await api.post('/admin/auth/login', data);
       const { user, token } = response.data.data;
       setAuth(user, token);
       window.location.href = '/';
