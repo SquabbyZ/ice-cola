@@ -8,6 +8,7 @@ import Experts from './pages/Experts';
 import Tasks from './pages/Tasks';
 import Skills from './pages/Skills';
 import MCP from './pages/MCP';
+import Workorders from './pages/Workorders';
 import Settings from './pages/Settings';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -23,6 +24,7 @@ const App: React.FC = () => {
           <Route path="tasks" element={<Tasks />} />
           <Route path="skills" element={<Skills />} />
           <Route path="mcp" element={<MCP />} />
+          <Route path="workorders" element={<Workorders />} />
           <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>

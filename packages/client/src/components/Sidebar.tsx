@@ -11,6 +11,7 @@ import {
   Cog,
   Menu,
   X,
+  Inbox,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import SettingsModal from './SettingsModal';
@@ -23,6 +24,7 @@ const menuItems = [
   { path: '/tasks', icon: Clock, label: '定时任务' },
   { path: '/skills', icon: Bot, label: 'Skill 市场' },
   { path: '/mcp', icon: Bot, label: 'MCP 市场' },
+  { path: '/workorders', icon: Inbox, label: '工单中心' },
 ];
 
 const Sidebar: React.FC = () => {
