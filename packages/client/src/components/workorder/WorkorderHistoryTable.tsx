@@ -11,6 +11,12 @@ const TYPE_LABELS = {
   extension: '插件',
 };
 
+const TYPE_COLORS = {
+  skill: 'bg-blue-100 text-blue-700',
+  mcp: 'bg-purple-100 text-purple-700',
+  extension: 'bg-green-100 text-green-700',
+};
+
 const RESULT_COLORS = {
   approved: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-700',
@@ -51,7 +57,7 @@ export const WorkorderHistoryTable: React.FC = () => {
           {filteredHistory.map(record => (
             <tr key={record.id} className="hover:bg-gray-50">
               <td className="px-4 py-3">
-                <Badge className={TYPE_LABELS[record.type] === 'Skill' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}>
+                <Badge className={TYPE_COLORS[record.type]}>
                   {TYPE_LABELS[record.type]}
                 </Badge>
               </td>
