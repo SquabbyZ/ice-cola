@@ -4,6 +4,9 @@ import { HttpService } from '@nestjs/axios';
 import { ChatRequestDto, ChatResponseDto, HermesStatusDto } from './dto/hermes.dto';
 import { QuotaService } from '../quota/quota.service';
 import { ConversationService } from '../conversation/conversation.service';
+import { PlannerServiceImpl } from '../hermes-core/services/planner.service';
+import { OrchestratorServiceImpl } from '../hermes-core/services/orchestrator.service';
+import { MemoryServiceImpl } from '../hermes-core/services/memory.service';
 
 @Injectable()
 export class HermesService {
@@ -15,6 +18,9 @@ export class HermesService {
     private readonly httpService: HttpService,
     private readonly quotaService: QuotaService,
     private readonly conversationService: ConversationService,
+    private readonly plannerService: PlannerServiceImpl,
+    private readonly orchestratorService: OrchestratorServiceImpl,
+    private readonly memoryService: MemoryServiceImpl,
   ) {
     this.hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://hermes-agent:9119');
   }
@@ -49,48 +55,75 @@ export class HermesService {
     });
 
     try {
-      // 5. Call hermes-agent
-      const response = await this.callHermesAgent({
-        message: dto.message,
-        sessionId: dto.sessionId || conversation.id,
-        context: dto.context,
-        model: dto.model,
-      });
+      // 5. Generate task plan using Hermes Core
+      const plan = await this.plannerService.plan(dto.message, conversation.id);
 
-      // 6. Add assistant response
+      // 6. Execute plan using Hermes Core
+      const executedPlan = await this.orchestratorService.executePlan(plan);
+
+      // 7. Extract final response from the last completed step
+      const lastStep = executedPlan.steps.filter(s => s.status === 'completed').pop();
+      const response = lastStep?.output?.response || '任务执行完成，但没有返回内容';
+
+      // 8. Add assistant response to conversation
       await this.conversationService.addMessage(teamId, conversation.id, {
         role: 'assistant',
-        content: response.response,
-        model: response.model,
-        usage: response.usage,
+        content: response,
+        model: lastStep?.output?.model || 'hermes-core',
       });
 
-      return response;
-    } catch (error) {
-      this.logger.error(`Hermes agent call failed: ${error.message}`);
+      return {
+        success: true,
+        response,
+        sessionId: conversation.id,
+        model: lastStep?.output?.model || 'hermes-core',
+      };
+    } catch (error: any) {
+      this.logger.error(`Hermes Core execution failed: ${error.message}`);
 
-      // If hermes-agent is not available, return a demo response
-      if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-        const demoResponse = this.getDemoResponse(dto.message);
+      // Fallback: use original hermes-agent call
+      try {
+        const response = await this.callHermesAgent({
+          message: dto.message,
+          sessionId: conversation.id,
+          context: dto.context,
+          model: dto.model,
+        });
+
         await this.conversationService.addMessage(teamId, conversation.id, {
           role: 'assistant',
-          content: demoResponse,
+          content: response.response,
+          model: response.model,
+          usage: response.usage,
         });
-        return {
-          success: true,
-          response: demoResponse,
-          sessionId: conversation.id,
-          model: 'demo',
-        };
-      }
 
-      throw new HttpException(
-        {
-          success: false,
-          error: `Hermes 服务调用失败: ${error.message}`,
-        },
-        HttpStatus.BAD_GATEWAY,
-      );
+        return response;
+      } catch (fallbackError) {
+        this.logger.error(`Fallback also failed: ${fallbackError.message}`);
+
+        // If hermes-agent is not available, return a demo response
+        if (fallbackError.code === 'ECONNREFUSED' || fallbackError.code === 'ETIMEDOUT') {
+          const demoResponse = this.getDemoResponse(dto.message);
+          await this.conversationService.addMessage(teamId, conversation.id, {
+            role: 'assistant',
+            content: demoResponse,
+          });
+          return {
+            success: true,
+            response: demoResponse,
+            sessionId: conversation.id,
+            model: 'demo',
+          };
+        }
+
+        throw new HttpException(
+          {
+            success: false,
+            error: `Hermes 服务调用失败: ${fallbackError.message}`,
+          },
+          HttpStatus.BAD_GATEWAY,
+        );
+      }
     }
   }
 
@@ -106,7 +139,7 @@ export class HermesService {
         model: response.data?.model || 'unknown',
         provider: response.data?.provider || 'unknown',
       };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.warn(`Hermes status check failed: ${error.message}`);
       return {
         status: 'offline',

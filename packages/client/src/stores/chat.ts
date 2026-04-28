@@ -6,7 +6,14 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   runId?: string;
-  status?: 'sending' | 'streaming' | 'complete' | 'error';
+  status?: 'sending' | 'streaming' | 'complete' | 'error' | 'pending';
+}
+
+export interface PendingMessage {
+  id: string;
+  content: string;
+  retryCount: number;
+  timestamp: number;
 }
 
 export interface ChatState {
@@ -16,7 +23,9 @@ export interface ChatState {
   sessionKey: string;
   connected: boolean;
   error: string | null;
-  
+  pendingMessages: PendingMessage[];
+  editingMessageId: string | null;
+
   // Actions
   setConnected: (connected: boolean) => void;
   setSessionKey: (key: string) => void;
@@ -27,16 +36,24 @@ export interface ChatState {
   setSending: (sending: boolean) => void;
   setError: (error: string | null) => void;
   clearMessages: () => void;
+  deleteMessage: (id: string) => void;
+  setEditingMessageId: (id: string | null) => void;
+  addToPendingQueue: (msg: PendingMessage) => void;
+  removeFromPendingQueue: (id: string) => void;
+  getPendingMessages: () => PendingMessage[];
+  clearPendingQueue: () => void;
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   isSending: false,
   sessionKey: 'default',
   connected: false,
   error: null,
-  
+  pendingMessages: [],
+  editingMessageId: null,
+
   setConnected: (connected) => set({ connected }),
   setSessionKey: (key) => set({ sessionKey: key }),
   addMessage: (message) =>
@@ -52,4 +69,17 @@ export const useChatStore = create<ChatState>((set) => ({
   setSending: (sending) => set({ isSending: sending }),
   setError: (error) => set({ error }),
   clearMessages: () => set({ messages: [] }),
+  deleteMessage: (id) =>
+    set((state) => ({
+      messages: state.messages.filter((msg) => msg.id !== id),
+    })),
+  setEditingMessageId: (id) => set({ editingMessageId: id }),
+  addToPendingQueue: (msg) =>
+    set((state) => ({ pendingMessages: [...state.pendingMessages, msg] })),
+  removeFromPendingQueue: (id) =>
+    set((state) => ({
+      pendingMessages: state.pendingMessages.filter((m) => m.id !== id),
+    })),
+  getPendingMessages: () => get().pendingMessages,
+  clearPendingQueue: () => set({ pendingMessages: [] }),
 }));

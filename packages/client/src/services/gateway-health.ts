@@ -1,209 +1,87 @@
 /**
- * Gateway 健康检查
+ * GatewayHealthChecker - Gateway 连接健康检查器
  * 
- * 负责:
- * 1. 定期检查 Gateway 连接状态
- * 2. 发送 ping/pong 心跳
- * 3. 报告健康状态
+ * 定期发送 ping 消息检测连接活性，防止半开连接（WebSocket 显示 OPEN 但实际已断开）。
  */
 
 import { GatewayClient } from './gateway-client';
 
-/**
- * Gateway 健康状态
- */
-export interface GatewayHealthStatus {
-  isConnected: boolean;
-  lastPing?: Date;
-  latency?: number;     // 延迟 (ms)
-  status: 'healthy' | 'degraded' | 'unhealthy';
-}
-
-/**
- * 健康检查配置
- */
-export interface HealthCheckConfig {
-  interval: number;      // 检查间隔 (ms)
-  timeout: number;       // 超时时间 (ms)
-  maxFailures: number;   // 最大失败次数
-}
-
-/**
- * Gateway 健康检查器
- */
 export class GatewayHealthChecker {
+  private interval: ReturnType<typeof setInterval> | null = null;
   private client: GatewayClient;
-  private config: HealthCheckConfig;
-  private healthStatus: GatewayHealthStatus;
-  private checkInterval?: number;
-  private consecutiveFailures: number = 0;
+  private lastPongTime: number = Date.now();
+  
+  // 配置常量
+  private readonly PING_INTERVAL = 10000; // 每 10 秒发送一次 ping
+  private readonly PONG_TIMEOUT = 5000;   // 超过 5 秒未收到 pong 则认为连接异常
 
-  /**
-   * 构造函数
-   * @param client Gateway 客户端
-   * @param config 健康检查配置
-   */
-  constructor(
-    client: GatewayClient,
-    config?: Partial<HealthCheckConfig>
-  ) {
+  constructor(client: GatewayClient) {
     this.client = client;
-    this.config = {
-      interval: 30000,    // 默认 30 秒
-      timeout: 5000,      // 默认 5 秒超时
-      maxFailures: 3,     // 默认 3 次失败
-      ...config,
-    };
-
-    this.healthStatus = {
-      isConnected: false,
-      status: 'unhealthy',
-    };
   }
 
   /**
-   * 开始健康检查
+   * 启动健康检查
    */
   start(): void {
-    if (this.checkInterval) {
-      console.warn('⚠️ Health check already started');
+    if (this.interval) {
+      console.warn('⚠️ Health checker already running');
       return;
     }
 
-    console.log('🏥 Starting Gateway health check...');
+    console.log('🏥 Starting Gateway health checker (ping every 10s)');
+    this.interval = setInterval(() => this.check(), this.PING_INTERVAL);
     
     // 立即执行一次检查
-    this.performHealthCheck();
-
-    // 设置定期检查
-    this.checkInterval = window.setInterval(() => {
-      this.performHealthCheck();
-    }, this.config.interval);
+    this.check().catch(() => {
+      // 忽略首次检查错误
+    });
   }
 
   /**
    * 停止健康检查
    */
   stop(): void {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = undefined;
-      console.log('🏥 Stopped Gateway health check');
+    if (this.interval) {
+      console.log('🛑 Stopping Gateway health checker');
+      clearInterval(this.interval);
+      this.interval = null;
     }
-  }
-
-  /**
-   * 获取当前健康状态
-   */
-  getHealthStatus(): GatewayHealthStatus {
-    return { ...this.healthStatus };
   }
 
   /**
    * 执行健康检查
    */
-  private async performHealthCheck(): Promise<void> {
-    const startTime = Date.now();
-
-    try {
-      // 检查连接状态
-      if (!this.client.isConnected()) {
-        this.handleFailure('Not connected');
-        return;
-      }
-
-      // 发送 ping 请求测试延迟
-      await this.sendPing();
-
-      // 成功
-      const latency = Date.now() - startTime;
-      this.handleSuccess(latency);
-    } catch (error) {
-      this.handleFailure(error instanceof Error ? error.message : 'Unknown error');
+  private async check(): Promise<void> {
+    // 如果客户端未连接，跳过检查
+    if (!this.client.isConnected()) {
+      return;
     }
-  }
 
-  /**
-   * 发送 ping 请求
-   */
-  private async sendPing(): Promise<void> {
-    try {
-      // 使用 system.ping 方法 (如果 Gateway 支持)
-      // 或者简单地检查连接状态
-      await Promise.race([
-        this.client.send('system.ping'),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Ping timeout')), this.config.timeout)
-        ),
-      ]);
-    } catch (error) {
-      // 如果 system.ping 不支持,忽略错误
-      console.debug('Ping method not supported or failed:', error);
-    }
-  }
-
-  /**
-   * 处理成功
-   * @param latency 延迟 (ms)
-   */
-  private handleSuccess(latency: number): void {
-    this.consecutiveFailures = 0;
-    this.healthStatus = {
-      isConnected: true,
-      lastPing: new Date(),
-      latency,
-      status: this.determineStatus(latency),
-    };
-
-    console.debug(`✅ Health check passed (latency: ${latency}ms)`);
-  }
-
-  /**
-   * 处理失败
-   * @param reason 失败原因
-   */
-  private handleFailure(reason: string): void {
-    this.consecutiveFailures++;
+    const now = Date.now();
     
-    this.healthStatus = {
-      isConnected: this.client.isConnected(),
-      lastPing: this.healthStatus.lastPing,
-      latency: this.healthStatus.latency,
-      status: 'unhealthy',
-    };
+    // 检查是否超过 pong 超时时间
+    if (now - this.lastPongTime > this.PONG_TIMEOUT) {
+      console.warn('⚠️ Gateway health check failed: no pong received in time, forcing reconnect');
+      this.client.disconnect();
+      return;
+    }
 
-    console.warn(`❌ Health check failed (${this.consecutiveFailures}/${this.config.maxFailures}): ${reason}`);
-
-    // 如果连续失败次数达到阈值,触发重连
-    if (this.consecutiveFailures >= this.config.maxFailures) {
-      console.error('🔄 Max failures reached, attempting reconnection...');
-      this.triggerReconnection();
+    // 发送 ping 消息
+    try {
+      await this.client.send('ping', {});
+      this.lastPongTime = Date.now();
+      console.log('💓 Gateway health check passed');
+    } catch (error) {
+      console.error('❌ Health check ping failed:', error);
+      // ping 失败，断开连接触发重连
+      this.client.disconnect();
     }
   }
 
   /**
-   * 根据延迟确定状态
-   * @param latency 延迟 (ms)
+   * 记录 pong 响应（由 GatewayClient 调用）
    */
-  private determineStatus(latency: number): 'healthy' | 'degraded' | 'unhealthy' {
-    if (latency < 100) {
-      return 'healthy';
-    } else if (latency < 500) {
-      return 'degraded';
-    } else {
-      return 'unhealthy';
-    }
-  }
-
-  /**
-   * 触发重连
-   */
-  private triggerReconnection(): void {
-    // 重置计数器
-    this.consecutiveFailures = 0;
-    
-    // GatewayClient 会自动处理重连
-    // 这里只是记录日志
-    console.log('🔄 Reconnection will be handled by GatewayClient');
+  recordPong(): void {
+    this.lastPongTime = Date.now();
   }
 }

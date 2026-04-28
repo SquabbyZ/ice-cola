@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Hermes Agent - AI Brain Service (NousResearch)
   hermes-agent:
@@ -8,9 +6,7 @@ services:
       dockerfile: Dockerfile
     container_name: hermes-agent
     command: ["gateway", "run"]  # Run as gateway server
-    ports:
-      - "9119:9119"  # Web dashboard
-      - "9118:9118"  # MCP/Gateway port
+    network_mode: host
     environment:
       - HERMES_HOME=/home/hermes/.hermes
       - HERMES_WEB_DIST=/app/hermes_cli/web_dist
@@ -20,12 +16,24 @@ services:
     env_file:
       - ./packages/hermes-agent/.env
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9119/health || exit 0"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+
+  # Hermes Dashboard - Web UI on port 9119
+  hermes-dashboard:
+    build:
+      context: ./packages/hermes-agent
+      dockerfile: Dockerfile
+    container_name: hermes-dashboard
+    command: ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"]
+    ports:
+      - "9119:9119"
+    environment:
+      - HERMES_HOME=/home/hermes/.hermes
+      - HERMES_WEB_DIST=/app/hermes_cli/web_dist
+    volumes:
+      - hermes-data:/home/hermes/.hermes
+    env_file:
+      - ./packages/hermes-agent/.env
+    restart: unless-stopped
 
   # NestJS Server - API Gateway with Quota/Auth
   ice-cola-server:
@@ -39,13 +47,11 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/icecola?schema=public
-      - HERMES_ENDPOINT=http://hermes-agent:9119
+      - HERMES_ENDPOINT=http://localhost:9119
       - JWT_SECRET=icecola-prod-secret-change-this
       - JWT_EXPIRES_IN=7d
       - WS_PORT=3001
     depends_on:
-      hermes-agent:
-        condition: service_started
       postgres:
         condition: service_healthy
     restart: unless-stopped

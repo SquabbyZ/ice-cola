@@ -78,6 +78,9 @@ packages/client/node_modules/
 packages/client/dist/
 packages/client/build/
 
+# OpenClaw Official (upstream sync - should be managed separately)
+packages/client/openclaw-official/
+
 # Lock files (optional - keep if you want deterministic builds)
 # pnpm-lock.yaml
 
@@ -85,5 +88,8 @@ packages/client/build/
 tmp/
 temp/
 *.tmp
+*.backup.*
+*.bak
+*.old
 
 .playwright-mcp

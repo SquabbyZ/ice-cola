@@ -2,9 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
+import { HttpService } from '@nestjs/axios';
 import { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
+import { firstValueFrom } from 'rxjs';
 
 interface ConnectParams {
   minProtocol?: number;
@@ -41,17 +43,25 @@ interface ConnectResult {
 
 @Injectable()
 export class GatewayService {
+  private gatewayInstance: any = null;
   private readonly logger = new Logger(GatewayService.name);
 
   constructor(
     private db: DatabaseService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private httpService: HttpService,
   ) {
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
     this.logger.log(`ConfigService available: ${!!this.configService}`);
+    this.logger.log(`HttpService available: ${!!this.httpService}`);
+  }
+
+  setGatewayInstance(gatewayInstance: any): void {
+    this.gatewayInstance = gatewayInstance;
+    this.logger.log('Gateway instance reference set');
   }
 
   async connect(params: ConnectParams, socket: WebSocket): Promise<ConnectResult> {
@@ -379,11 +389,136 @@ export class GatewayService {
   }
 
   async sendHermesMessage(params: { sessionId: string; message: string }) {
-    // Placeholder - actual hermes integration would go here
-    return {
-      ok: true,
-      messageId: this.generateUUID(),
+    this.logger.log(`Sending message to Hermes: ${params.message.substring(0, 50)}...`);
+    
+    const messageId = this.generateUUID();
+    const hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://localhost:9119');
+    
+    try {
+      // Call Hermes Agent API
+      const response = await firstValueFrom(
+        this.httpService.post(`${hermesEndpoint}/v1/responses`, {
+          model: 'hermes-agent',
+          input: params.message,
+          stream: true,
+        }, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          responseType: 'stream',
+        })
+      );
+
+      this.logger.log('Hermes API connected, starting stream...');
+
+      // Process streaming response
+      const stream = response.data;
+      let fullResponse = '';
+      let deltaCount = 0;
+
+      return new Promise((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => {
+          const lines = chunk.toString().split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.substring(6));
+                
+                // Handle different event types
+                if (data.type === 'response.output_text.delta') {
+                  const delta = data.delta || '';
+                  fullResponse += delta;
+                  deltaCount++;
+                  
+                  // Send delta event to client
+                  this.sendStreamEvent('hermes.delta', {
+                    messageId,
+                    delta,
+                    sequenceNumber: deltaCount,
+                  });
+                  
+                } else if (data.type === 'response.completed') {
+                  // Send final event
+                  this.sendStreamEvent('hermes.final', {
+                    messageId,
+                    content: fullResponse,
+                    totalTokens: data.response?.usage?.total_tokens || 0,
+                  });
+                  
+                  resolve({
+                    ok: true,
+                    messageId,
+                  });
+                }
+              } catch (e) {
+                this.logger.warn(`Failed to parse SSE line: ${line}`);
+              }
+            }
+          }
+        });
+
+        stream.on('end', () => {
+          this.logger.log('Hermes stream ended');
+          if (!fullResponse) {
+            // If no response received, send error
+            this.sendStreamEvent('hermes.error', {
+              messageId,
+              error: 'No response from Hermes Agent',
+            });
+            resolve({
+              ok: false,
+              messageId,
+              error: 'No response',
+            });
+          }
+        });
+
+        stream.on('error', (error: Error) => {
+          this.logger.error('Hermes stream error:', error);
+          this.sendStreamEvent('hermes.error', {
+            messageId,
+            error: error.message,
+          });
+          reject(error);
+        });
+      });
+
+    } catch (error) {
+      this.logger.error('Failed to call Hermes API:', error);
+      
+      // Send error event
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: error.message,
+      });
+      
+      return {
+        ok: false,
+        messageId,
+        error: error.message,
+      };
+    }
+  }
+
+  private sendStreamEvent(eventType: string, data: any): void {
+    if (!this.gatewayInstance) {
+      this.logger.warn('Gateway instance not set, cannot send stream event');
+      return;
+    }
+
+    // Send event to all connected clients
+    const eventMessage = {
+      type: 'evt',
+      event: eventType,
+      data: data,
     };
+
+    this.gatewayInstance.clients?.forEach((clientInfo: any, ws: WebSocket) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(eventMessage));
+      }
+    });
   }
 
   async getUsageStatus(params: { period?: 'day' | 'week' | 'month' } = {}) {
@@ -497,5 +632,51 @@ export class GatewayService {
       const v = c === 'x' ? r : (r & 0x3) | 0x8;
       return v.toString(16);
     });
+  }
+
+  // ===== Additional methods for compatibility =====
+  
+  async createExpert(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async updateExpert(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async deleteExpert(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async setActiveExpert(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async getAllExtensions(): Promise<any> {
+    return [];
+  }
+
+  async getInstalledExtensions(params: any): Promise<any> {
+    return [];
+  }
+
+  async installExtension(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async uninstallExtension(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async enableExtension(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async disableExtension(params: any): Promise<any> {
+    throw new Error('Not implemented');
+  }
+
+  async updateExtensionConfig(params: any): Promise<any> {
+    throw new Error('Not implemented');
   }
 }

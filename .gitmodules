@@ -1,0 +1,4 @@
+[submodule "packages/client/openclaw-official"]
+	path = packages/client/openclaw-official
+	url = https://github.com/openclaw/openclaw.git
+	branch = main

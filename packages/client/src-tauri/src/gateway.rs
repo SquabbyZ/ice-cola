@@ -32,33 +32,30 @@ pub fn start_gateway(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
     
-    // 使用Node.js运行peaksclaw的Gateway
-    // 当前目录是 openclaw-desktop/tauri-app/src-tauri
-    // Tauri dev命令在src-tauri目录下运行
+    // ✅ 使用 openclaw-official submodule 路径（相对于 src-tauri）
     let current_dir = std::env::current_dir()
         .map_err(|e| format!("Failed to get current dir: {}", e))?;
     
-    // 计算peaksclaw目录路径: src-tauri -> tauri-app -> openclaw-desktop -> peaksclaw
-    let tauri_app_dir = current_dir.parent()
-        .ok_or_else(|| "Failed to get tauri-app directory".to_string())?;
+    // 新路径: src-tauri -> client -> openclaw-official (submodule)
+    let openclaw_dir = current_dir.parent()
+        .ok_or_else(|| "Failed to get src-tauri directory".to_string())?
+        .parent()
+        .ok_or_else(|| "Failed to get client directory".to_string())?
+        .join("openclaw-official")
+        .canonicalize()
+        .map_err(|e| format!(
+            "Failed to resolve openclaw-official path: {}.\n\nPlease ensure:\n  1. OpenClaw is copied to packages/client/openclaw-official/\n  2. The directory contains scripts/run-node.mjs",
+            e
+        ))?;
     
-    let openclaw_desktop_dir = tauri_app_dir.parent()
-        .ok_or_else(|| "Failed to get openclaw-desktop directory".to_string())?;
-    
-    let peaksclaw_dir = openclaw_desktop_dir.parent()
-        .ok_or_else(|| "Failed to get workspace directory".to_string())?;
-    
-    let peaksclaw_canonical = peaksclaw_dir.join("peaksclaw").canonicalize()
-        .map_err(|e| format!("Failed to resolve peaksclaw path: {}", e))?;
-    
-    let config_path = peaksclaw_canonical.join("openclaw.json");
+    let config_path = openclaw_dir.join("openclaw.json");
     info!("Config path: {:?}", config_path);
     info!("Config file exists: {}", config_path.exists());
     
-    let run_script = peaksclaw_canonical.join("scripts/run-node.mjs");
+    let run_script = openclaw_dir.join("scripts/run-node.mjs");
     
-    info!("Starting Gateway from: {:?}", run_script);
-    info!("peaksclaw directory: {:?}", peaksclaw_canonical);
+    info!("Starting Gateway from openclaw-official submodule: {:?}", run_script);
+    info!("OpenClaw directory: {:?}", openclaw_dir);
     
     // 检查文件是否存在
     if !run_script.exists() {
@@ -69,7 +66,7 @@ pub fn start_gateway(app: &AppHandle) -> Result<(), String> {
     // 启动 Gateway 作为子进程
     // 命令: node scripts/run-node.mjs gateway --bind loopback --port 18789 --allow-unconfigured
     let child = Command::new("node")
-        .current_dir(&peaksclaw_canonical)
+        .current_dir(&openclaw_dir)
         .args(&[
             "scripts/run-node.mjs",
             "gateway",

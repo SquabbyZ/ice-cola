@@ -1,13 +1,15 @@
 import React from 'react';
-import { Bot, User, Copy, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Bot, User, Copy, ThumbsUp, ThumbsDown, Pencil, Trash2 } from 'lucide-react';
 import type { ChatMessage } from '@/stores/chat';
 import MarkdownContent from './MarkdownContent';
 
 interface ChatMessageItemProps {
   message: ChatMessage;
+  onEdit?: (id: string, content: string) => void;
+  onDelete?: (id: string) => void;
 }
 
-const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message }) => {
+const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onEdit, onDelete }) => {
   const isUser = message.role === 'user';
   const isStreaming = message.status === 'streaming';
   const isError = message.status === 'error';
@@ -17,8 +19,8 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message }) => {
       {/* Avatar */}
       <div
         className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm ${
-          isUser 
-            ? 'bg-gradient-to-br from-primary to-primary/80 text-white' 
+          isUser
+            ? 'bg-gradient-to-br from-primary to-primary/80 text-white'
             : 'bg-gradient-to-br from-gray-100 to-gray-200'
         }`}
       >
@@ -54,24 +56,44 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message }) => {
           )}
         </div>
 
-        {/* Message Actions (only for assistant) */}
-        {!isUser && message.status === 'complete' && (
-          <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-            <button 
+        {/* Message Actions */}
+        <div className={`flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${isUser ? 'justify-end' : ''}`}>
+          {isUser && onEdit && (
+            <button
               className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
-              onClick={() => navigator.clipboard.writeText(message.content)}
-              title="复制消息"
+              onClick={() => onEdit(message.id, message.content)}
+              title="编辑消息"
             >
-              <Copy className="w-3.5 h-3.5 text-gray-500" />
+              <Pencil className="w-3.5 h-3.5 text-gray-500" />
             </button>
-            <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="有用">
-              <ThumbsUp className="w-3.5 h-3.5 text-gray-500" />
+          )}
+          {isUser && onDelete && (
+            <button
+              className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+              onClick={() => onDelete(message.id)}
+              title="删除消息"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-gray-500" />
             </button>
-            <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="无用">
-              <ThumbsDown className="w-3.5 h-3.5 text-gray-500" />
-            </button>
-          </div>
-        )}
+          )}
+          {!isUser && message.status === 'complete' && (
+            <>
+              <button
+                className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
+                onClick={() => navigator.clipboard.writeText(message.content)}
+                title="复制消息"
+              >
+                <Copy className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="有用">
+                <ThumbsUp className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="无用">
+                <ThumbsDown className="w-3.5 h-3.5 text-gray-500" />
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

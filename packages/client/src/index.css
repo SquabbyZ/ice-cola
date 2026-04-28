@@ -95,6 +95,57 @@
       opacity: 0.5;
     }
   }
+
+  /* New animations for redesigned chat page */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp 0.5s ease-out backwards;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  /* Smooth scale transitions */
+  .hover\:scale-102:hover {
+    transform: scale(1.02);
+  }
+
+  .active\:scale-98:active {
+    transform: scale(0.98);
+  }
 }
 
 /* Markdown Content Styles */

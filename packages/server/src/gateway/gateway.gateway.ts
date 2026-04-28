@@ -33,6 +33,8 @@ export class GatewayGateway implements OnModuleInit {
 
   async initialize(port: number, gatewayService: GatewayService): Promise<void> {
     this.gatewayService = gatewayService;
+    // Set gateway instance reference for streaming events
+    this.gatewayService.setGatewayInstance(this);
     this.logger.log(`GatewayGateway initialize, gatewayService: ${!!this.gatewayService}`);
     return new Promise((resolve, reject) => {
       this.wss = new WebSocketServer({ port });
@@ -163,6 +165,39 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'experts.list':
           result = await this.gatewayService.listExperts(params);
+          break;
+        case 'experts.create':
+          result = await this.gatewayService.createExpert(params);
+          break;
+        case 'experts.update':
+          result = await this.gatewayService.updateExpert(params);
+          break;
+        case 'experts.delete':
+          result = await this.gatewayService.deleteExpert(params);
+          break;
+        case 'experts.setActive':
+          result = await this.gatewayService.setActiveExpert(params);
+          break;
+        case 'extensions.list':
+          result = await this.gatewayService.getAllExtensions();
+          break;
+        case 'extensions.installed':
+          result = await this.gatewayService.getInstalledExtensions(params);
+          break;
+        case 'extensions.install':
+          result = await this.gatewayService.installExtension(params);
+          break;
+        case 'extensions.uninstall':
+          result = await this.gatewayService.uninstallExtension(params);
+          break;
+        case 'extensions.enable':
+          result = await this.gatewayService.enableExtension(params);
+          break;
+        case 'extensions.disable':
+          result = await this.gatewayService.disableExtension(params);
+          break;
+        case 'extensions.updateConfig':
+          result = await this.gatewayService.updateExtensionConfig(params);
           break;
         default:
           this.logger.warn(`Unknown method: ${method}`);

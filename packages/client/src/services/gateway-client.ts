@@ -60,7 +60,7 @@ export class GatewayClient {
   private pendingRequests: Map<string, {
     resolve: (value: any) => void;
     reject: (error: any) => void;
-    timeout: number;
+    timeout: ReturnType<typeof setTimeout>;
     method?: string;  // 请求方法名，用于识别握手响应
   }> = new Map();
   
@@ -70,6 +70,9 @@ export class GatewayClient {
   private isManualClose: boolean = false;
   private connected: boolean = false;
   private connectionPromise: Promise<void> | null = null;
+  
+  // 状态变更事件处理器
+  private stateChangeHandlers: Set<(state: 'connecting' | 'connected' | 'disconnected') => void> = new Set();
 
   /**
    * 构造函数
@@ -134,6 +137,9 @@ export class GatewayClient {
           console.log('🔗 WebSocket URL:', this.ws!.url);
           this.reconnectAttempts = 0;
           
+          // 通知正在连接
+          this.notifyStateChange('connecting');
+          
           // 发送 connect 握手消息
           try {
             console.log('🤝 Starting handshake process...');
@@ -141,7 +147,9 @@ export class GatewayClient {
             console.log('✅ Gateway handshake successful');
             this.connected = true;
             this.connectionPromise = null; // 清除连接 promise
+            
             // 通知连接成功
+            this.notifyStateChange('connected');
             if (this.config.onConnected) {
               this.config.onConnected();
             }
@@ -150,6 +158,7 @@ export class GatewayClient {
             console.error('❌ Gateway handshake failed:', error);
             console.error('❌ Handshake error stack:', error instanceof Error ? error.stack : 'N/A');
             this.connectionPromise = null; // 清除连接 promise
+            this.notifyStateChange('disconnected');
             reject(error);
             this.ws?.close();
           }
@@ -177,7 +186,9 @@ export class GatewayClient {
           this.connected = false;
           this.connectionPromise = null;
           this.rejectAllPending(new Error('Gateway disconnected'));
+          
           // 通知断开连接
+          this.notifyStateChange('disconnected');
           if (this.config.onDisconnected) {
             this.config.onDisconnected();
           }
@@ -289,16 +300,39 @@ export class GatewayClient {
   /**
    * 检查连接状态
    * 
-   * @returns 是否已连接
+   * @returns 是否已连接（WebSocket 打开且握手完成）
    */
   isConnected(): boolean {
-    const state = {
-      connected: this.connected,
-      wsReadyState: this.ws?.readyState,
-      wsExists: !!this.ws,
-    };
-    console.log('🔍 [GatewayClient] isConnected() check:', state);
-    return this.connected;
+    const wsConnected = this.ws?.readyState === WebSocket.OPEN;
+    const handshakeComplete = this.connected;
+    return wsConnected && handshakeComplete;
+  }
+
+  /**
+   * 订阅连接状态变更事件
+   * 
+   * @param handler 状态变更处理器
+   * @returns 取消订阅函数
+   */
+  onStateChange(handler: (state: 'connecting' | 'connected' | 'disconnected') => void): () => void {
+    this.stateChangeHandlers.add(handler);
+    return () => this.stateChangeHandlers.delete(handler);
+  }
+
+  /**
+   * 通知状态变更
+   * 
+   * @param state 新状态
+   */
+  private notifyStateChange(state: 'connecting' | 'connected' | 'disconnected'): void {
+    console.log(`🔔 [GatewayClient] State changed to: ${state}`);
+    this.stateChangeHandlers.forEach(handler => {
+      try {
+        handler(state);
+      } catch (error) {
+        console.error('❌ Error in state change handler:', error);
+      }
+    });
   }
 
   /**

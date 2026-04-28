@@ -7,6 +7,9 @@ import { QuotaModule } from './quota/quota.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { HermesModule } from './hermes/hermes.module';
 import { GatewayModule } from './gateway/gateway.module';
+import { HermesCoreModule } from './hermes-core/hermes-core.module';
+import { ToolsModule } from './tools/tools.module';
+import { SkillsModule } from './skills/skills.module';
 
 @Module({
   imports: [
@@ -32,6 +35,9 @@ import { GatewayModule } from './gateway/gateway.module';
     ConversationModule,
     HermesModule,
     GatewayModule,
+    HermesCoreModule,
+    ToolsModule,
+    SkillsModule,
   ],
 })
 export class AppModule {}

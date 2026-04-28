@@ -349,6 +349,158 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return parseInt(result?.count || '0', 10);
   }
 
+  async findExpertById(id: string) {
+    return this.queryOne(
+      'SELECT * FROM experts WHERE id = $1',
+      [id]
+    );
+  }
+
+  async updateExpert(id: string, updates: any) {
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    const setClause = fields.map((field, index) => `"${field}" = $${index + 2}`).join(', ');
+    
+    return this.queryOne(
+      `UPDATE experts SET ${setClause}, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
+      [id, ...values]
+    );
+  }
+
+  async deleteExpert(id: string) {
+    return this.queryOne(
+      'DELETE FROM experts WHERE id = $1 RETURNING *',
+      [id]
+    );
+  }
+
+  // Task Plan methods
+  async createTaskPlan(data: {
+    id: string;
+    conversationId: string;
+    userInput: string;
+    planData: any;
+    status?: string;
+  }) {
+    return this.queryOne(
+      `INSERT INTO task_plans (id, conversation_id, user_input, plan_data, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       RETURNING *`,
+      [data.id, data.conversationId, data.userInput, JSON.stringify(data.planData), data.status || 'planning']
+    );
+  }
+
+  async findTaskPlanById(planId: string) {
+    return this.queryOne(
+      'SELECT * FROM task_plans WHERE id = $1',
+      [planId]
+    );
+  }
+
+  async updateTaskPlanStatus(planId: string, status: string) {
+    return this.queryOne(
+      `UPDATE task_plans SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [status, planId]
+    );
+  }
+
+  async updateTaskPlanData(planId: string, planData: any) {
+    return this.queryOne(
+      `UPDATE task_plans SET plan_data = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [JSON.stringify(planData), planId]
+    );
+  }
+
+  async findTaskPlansByConversationId(conversationId: string) {
+    return this.query(
+      'SELECT * FROM task_plans WHERE conversation_id = $1 ORDER BY created_at DESC',
+      [conversationId]
+    );
+  }
+
+  // Extension methods
+  async findAllExtensions() {
+    return this.query('SELECT * FROM extensions WHERE enabled = true ORDER BY downloads DESC');
+  }
+
+  async findExtensionById(id: string) {
+    return this.queryOne('SELECT * FROM extensions WHERE id = $1', [id]);
+  }
+
+  async findExtensionsByCategory(category: string) {
+    return this.query(
+      'SELECT * FROM extensions WHERE category = $1 AND enabled = true ORDER BY downloads DESC',
+      [category]
+    );
+  }
+
+  async searchExtensions(query: string) {
+    const searchQuery = `%${query}%`;
+    return this.query(
+      `SELECT * FROM extensions 
+       WHERE (name ILIKE $1 OR description ILIKE $1) AND enabled = true 
+       ORDER BY downloads DESC`,
+      [searchQuery]
+    );
+  }
+
+  async incrementExtensionDownloads(id: string) {
+    return this.queryOne(
+      'UPDATE extensions SET downloads = downloads + 1, "updatedAt" = NOW() WHERE id = $1 RETURNING *',
+      [id]
+    );
+  }
+
+  async findUserInstalledExtensions(userId: string) {
+    return this.query(
+      `SELECT e.*, ue.enabled as user_enabled, ue.config, ue."installedAt"
+       FROM extensions e
+       INNER JOIN user_extensions ue ON e.id = ue."extensionId"
+       WHERE ue."userId" = $1
+       ORDER BY ue."installedAt" DESC`,
+      [userId]
+    );
+  }
+
+  async installExtension(userId: string, extensionId: string, config?: any) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO user_extensions (id, "extensionId", "userId", enabled, config)
+       VALUES ($1, $2, $3, true, $4)
+       ON CONFLICT ("extensionId", "userId") DO UPDATE SET enabled = true, "updatedAt" = NOW()
+       RETURNING *`,
+      [id, extensionId, userId, config ? JSON.stringify(config) : null]
+    );
+  }
+
+  async uninstallExtension(userId: string, extensionId: string) {
+    return this.queryOne(
+      'DELETE FROM user_extensions WHERE "extensionId" = $1 AND "userId" = $2 RETURNING *',
+      [extensionId, userId]
+    );
+  }
+
+  async enableUserExtension(userId: string, extensionId: string) {
+    return this.queryOne(
+      'UPDATE user_extensions SET enabled = true, "updatedAt" = NOW() WHERE "extensionId" = $1 AND "userId" = $2 RETURNING *',
+      [extensionId, userId]
+    );
+  }
+
+  async disableUserExtension(userId: string, extensionId: string) {
+    return this.queryOne(
+      'UPDATE user_extensions SET enabled = false, "updatedAt" = NOW() WHERE "extensionId" = $1 AND "userId" = $2 RETURNING *',
+      [extensionId, userId]
+    );
+  }
+
+  async updateUserExtensionConfig(userId: string, extensionId: string, config: any) {
+    return this.queryOne(
+      'UPDATE user_extensions SET config = $1, "updatedAt" = NOW() WHERE "extensionId" = $2 AND "userId" = $3 RETURNING *',
+      [JSON.stringify(config), extensionId, userId]
+    );
+  }
+
   private generateUUID(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;

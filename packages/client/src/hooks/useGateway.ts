@@ -11,6 +11,7 @@ import { useEffect, useCallback, useRef, useState } from 'react';
 import { useGatewayStore } from '@/stores/gateway';
 import { getServiceContainer } from '@/services/service-container';
 import { onGatewayReady, onGatewayStartFailed } from '@/lib/tauri-commands';
+import { GatewayHealthChecker } from '@/services/gateway-health';
 
 export interface UseGatewayOptions {
   /** 自动连接 (默认 true) */
@@ -59,6 +60,7 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
 
   const serviceContainer = useRef(getServiceContainer());
   const gatewayClient = serviceContainer.current.gatewayClient;
+  const healthChecker = useRef<GatewayHealthChecker | null>(null);
 
   // 更新 store 状态
   const updateStatus = useCallback((running: boolean, connected: boolean) => {
@@ -109,7 +111,7 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     return gatewayClient.on(event, handler);
   }, [gatewayClient]);
 
-  // 重连逻辑
+  // 重连逻辑 - 使用指数退避策略
   const scheduleReconnect = useCallback(() => {
     if (isManualDisconnectRef.current) {
       return;
@@ -121,9 +123,19 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     }
 
     reconnectAttemptsRef.current++;
-    const delay = reconnectInterval * reconnectAttemptsRef.current;
+    
+    // 指数退避策略：1s, 2s, 4s, 8s, 16s, 最大 30s
+    const baseDelay = reconnectInterval;
+    const exponentialDelay = Math.min(
+      baseDelay * Math.pow(2, reconnectAttemptsRef.current - 1),
+      30000 // 最大 30 秒
+    );
+    
+    // 添加随机抖动（0-1秒）避免多个客户端同时重连
+    const jitter = Math.random() * 1000;
+    const delay = exponentialDelay + jitter;
 
-    console.log(`🔄 Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${delay}ms`);
+    console.log(`🔄 Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${Math.round(delay)}ms (exponential backoff)`);
 
     reconnectTimeoutRef.current = setTimeout(() => {
       connect().catch(() => {
@@ -166,21 +178,29 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     };
   }, [autoConnect, connect, gatewayClient, updateStatus]);
 
-  // 监听 GatewayClient 断开事件 (自动重连)
+  // 监听 GatewayClient 状态变更事件（实时检测断开）
   useEffect(() => {
-    const handleDisconnect = () => {
-      if (!isManualDisconnectRef.current) {
+    const unsubscribe = gatewayClient.onStateChange((state) => {
+      if (state === 'disconnected' && !isManualDisconnectRef.current) {
+        console.log('🔔 Gateway state changed to disconnected, scheduling reconnect');
         scheduleReconnect();
       }
-    };
+    });
 
-    // 通过定期检查连接状态来检测断开
+    return () => {
+      unsubscribe();
+    };
+  }, [gatewayClient, scheduleReconnect]);
+
+  // 备用检查：定期检查连接状态（每 2 秒）
+  useEffect(() => {
     const checkInterval = setInterval(() => {
       const wasConnected = gatewayClient.isConnected();
       if (!wasConnected && !isManualDisconnectRef.current && isRunning) {
-        handleDisconnect();
+        console.log('⚠️ Periodic check detected disconnection');
+        scheduleReconnect();
       }
-    }, 5000);
+    }, 2000); // 从 5 秒缩短到 2 秒
 
     return () => {
       clearInterval(checkInterval);
@@ -198,6 +218,25 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
       });
     }
   }, [autoConnect, isRunning, gatewayClient, connect]);
+
+  // 管理健康检查器生命周期
+  // 注意：暂时禁用健康检查器，因为 Gateway 不支持 ping 方法
+  // WebSocket 本身有心跳机制，onclose 事件足以检测断开
+  useEffect(() => {
+    // if (gatewayClient.isConnected() && !healthChecker.current) {
+    //   console.log('🏥 Initializing Gateway health checker');
+    //   healthChecker.current = new GatewayHealthChecker(gatewayClient);
+    //   healthChecker.current.start();
+    // } else if (!gatewayClient.isConnected() && healthChecker.current) {
+    //   console.log('🛑 Stopping Gateway health checker due to disconnection');
+    //   healthChecker.current.stop();
+    //   healthChecker.current = null;
+    // }
+
+    return () => {
+      healthChecker.current?.stop();
+    };
+  }, [gatewayClient.isConnected()]);
 
   return {
     isConnected: gatewayClient.isConnected(),

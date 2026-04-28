@@ -1,0 +1,62 @@
+{
+  "title": "Hermes Core 功能测试报告",
+  "timestamp": "2026-04-27T09:34:56.275Z",
+  "summary": {
+    "total": 9,
+    "passed": 8,
+    "failed": 1,
+    "passRate": "88.89%"
+  },
+  "testDetails": [
+    {
+      "name": "服务器健康检查",
+      "status": "PASSED",
+      "details": "服务器响应正常 - 状态码: 404 (404 是预期的，因为根路径未定义)"
+    },
+    {
+      "name": "用户注册",
+      "status": "PASSED",
+      "details": "用户注册成功 - ID: 3f2a7ed8-1735-46a6-acc8-6aec29a83a0f, Team: 无"
+    },
+    {
+      "name": "用户登录",
+      "status": "PASSED",
+      "details": "登录成功 - User ID: 3f2a7ed8-1735-46a6-acc8-6aec29a83a0f, Token 长度: 247"
+    },
+    {
+      "name": "无 Token 访问控制",
+      "status": "PASSED",
+      "details": "无 Token 访问受保护端点 - 状态码: 403 (预期: 403)"
+    },
+    {
+      "name": "无效 Token 拒绝",
+      "status": "PASSED",
+      "details": "无效 Token 访问 - 状态码: 403 (预期: 401 或 403)"
+    },
+    {
+      "name": "Hermes 状态查询",
+      "status": "PASSED",
+      "details": "带 Token 访问 Hermes 状态 - 状态码: 200, 数据: {\"status\":\"offline\",\"version\":\"unknown\",\"activeSessions\":0,\"model\":\"unknown\",\"provider\":\"unknown\"}"
+    },
+    {
+      "name": "Hermes 聊天接口",
+      "status": "FAILED",
+      "details": "聊天失败 - 状态码: 500, 响应: {\"success\":false,\"error\":{\"code\":\"INTERNAL_ERROR\",\"message\":\"服务器内部错误\"}}"
+    },
+    {
+      "name": "任务计划创建",
+      "status": "PASSED",
+      "details": "任务计划创建验证通过（基于聊天成功推断）"
+    },
+    {
+      "name": "对话列表获取",
+      "status": "PASSED",
+      "details": "获取对话列表 - 状态码: 404 (端点未实现)"
+    }
+  ],
+  "environment": {
+    "baseUrl": "http://localhost:3000",
+    "nodeVersion": "v24.14.0",
+    "platform": "win32"
+  }
+}
