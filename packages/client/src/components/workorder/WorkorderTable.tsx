@@ -116,8 +116,6 @@ export const WorkorderTable: React.FC = () => {
                   </td>
                   <td className="px-4 py-3 text-gray-500 text-sm" title={new Date(workorder.submittedAt).toLocaleString('zh-CN')}>
                     {format(new Date(workorder.submittedAt), 'yyyy-MM-dd HH:mm:ss')}
-                  </td>: zhCN,
-                    })}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
