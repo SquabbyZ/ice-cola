@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { Check, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -114,10 +114,9 @@ export const WorkorderTable: React.FC = () => {
                   <td className="px-4 py-3 text-gray-600">
                     {workorder.approvers.map(a => a.name).join(', ')}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 text-sm">
-                    {formatDistanceToNow(new Date(workorder.submittedAt), {
-                      addSuffix: true,
-                      locale: zhCN,
+                  <td className="px-4 py-3 text-gray-500 text-sm" title={new Date(workorder.submittedAt).toLocaleString('zh-CN')}>
+                    {format(new Date(workorder.submittedAt), 'yyyy-MM-dd HH:mm:ss')}
+                  </td>: zhCN,
                     })}
                   </td>
                   <td className="px-4 py-3">
