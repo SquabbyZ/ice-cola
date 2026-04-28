@@ -299,3 +299,22 @@ CREATE TABLE IF NOT EXISTS client_verification_codes (
 -- Create indexes for client_verification_codes
 CREATE INDEX IF NOT EXISTS idx_client_verification_codes_email ON client_verification_codes(email);
 CREATE INDEX IF NOT EXISTS idx_client_verification_codes_expires ON client_verification_codes(expires_at);
+
+-- Create team_invitations table for team invitation workflow
+CREATE TABLE IF NOT EXISTS team_invitations (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    team_id VARCHAR(36) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    invited_by VARCHAR(36) NOT NULL,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    status VARCHAR(20) DEFAULT 'pending',
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes for team_invitations
+CREATE INDEX IF NOT EXISTS idx_team_invitations_team ON team_invitations(team_id);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_email ON team_invitations(email);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token);
+CREATE INDEX IF NOT EXISTS idx_team_invitations_status ON team_invitations(status);

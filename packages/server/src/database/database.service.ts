@@ -557,6 +557,77 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  // Team Invitation methods
+  async createTeamInvitation(data: {
+    teamId: string;
+    email: string;
+    invitedBy: string;
+    token: string;
+    role: string;
+    expiresAt: Date;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO team_invitations (id, team_id, email, invited_by, token, role, status, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, NOW())
+       RETURNING *`,
+      [id, data.teamId, data.email, data.invitedBy, data.token, data.role, data.expiresAt.toISOString()]
+    );
+  }
+
+  async findTeamInvitationByToken(token: string) {
+    return this.queryOne(
+      'SELECT * FROM team_invitations WHERE token = $1',
+      [token]
+    );
+  }
+
+  async findTeamInvitationById(id: string) {
+    return this.queryOne(
+      'SELECT * FROM team_invitations WHERE id = $1',
+      [id]
+    );
+  }
+
+  async findTeamInvitationsByTeamId(teamId: string) {
+    return this.query(
+      `SELECT ti.*, u.name as inviter_name
+       FROM team_invitations ti
+       LEFT JOIN users u ON ti.invited_by = u.id
+       WHERE ti.team_id = $1
+       ORDER BY ti.created_at DESC`,
+      [teamId]
+    );
+  }
+
+  async findTeamInvitationsByEmail(email: string) {
+    return this.query(
+      'SELECT * FROM team_invitations WHERE email = $1 AND status = $2',
+      [email, 'pending']
+    );
+  }
+
+  async updateTeamInvitationStatus(id: string, status: string) {
+    return this.queryOne(
+      `UPDATE team_invitations SET status = $1 WHERE id = $2 RETURNING *`,
+      [status, id]
+    );
+  }
+
+  async deleteTeamInvitation(id: string) {
+    return this.queryOne(
+      'DELETE FROM team_invitations WHERE id = $1 RETURNING *',
+      [id]
+    );
+  }
+
+  async deleteTeamInvitationByToken(token: string) {
+    return this.queryOne(
+      'DELETE FROM team_invitations WHERE token = $1 RETURNING *',
+      [token]
+    );
+  }
+
   private generateUUID(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = (Math.random() * 16) | 0;
