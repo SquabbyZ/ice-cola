@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
+import { AdminModule } from './admin-admin/admin.module';
 import { QuotaModule } from './quota/quota.module';
 import { ConversationModule } from './conversation/conversation.module';
 import { HermesModule } from './hermes/hermes.module';
@@ -31,6 +32,7 @@ import { SkillsModule } from './skills/skills.module';
 
     DatabaseModule,
     AuthModule,
+    AdminModule,
     QuotaModule,
     ConversationModule,
     HermesModule,
