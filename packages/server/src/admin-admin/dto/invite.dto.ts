@@ -1,4 +1,4 @@
-import { IsEmail, IsString, IsEnum, IsOptional } from 'class-validator';
+import { IsEmail, IsString, IsEnum, IsOptional, MinLength, MaxLength } from 'class-validator';
 
 export enum AdminRole {
   OWNER = 'OWNER',

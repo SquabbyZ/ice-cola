@@ -81,6 +81,28 @@ export class AdminController {
     };
   }
 
+  @Get('invitations/:token/validate')
+  async validateInvitationToken(@Param('token') token: string) {
+    const invitation = await this.adminService.getInvitationByToken(token);
+    if (!invitation) {
+      return {
+        success: true,
+        data: {
+          valid: false,
+          message: '邀请无效或已过期',
+        },
+      };
+    }
+    return {
+      success: true,
+      data: {
+        valid: true,
+        email: invitation.email,
+        expiresAt: invitation.expiresAt,
+      },
+    };
+  }
+
   @Get('invitations/:token')
   @UseGuards(AuthGuard('jwt'))
   async getInvitationByToken(@Param('token') token: string) {
@@ -105,6 +127,8 @@ export class AdminController {
   @Post('invitations/accept')
   async acceptInvitation(@Body() dto: AcceptInvitationDto) {
     const result = await this.adminService.acceptInvitation(dto);
+    // Generate JWT token for the new user
+    const token = this.adminService.generateToken(result);
     return {
       success: true,
       data: {
@@ -114,6 +138,8 @@ export class AdminController {
           name: result.name,
           role: result.role,
         },
+        accessToken: token,
+        expiresIn: 900,
       },
     };
   }
