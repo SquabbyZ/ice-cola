@@ -245,3 +245,46 @@ CREATE INDEX IF NOT EXISTS idx_skills_status ON skills(status);
 CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
 CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON skill_versions(skill_id);
 CREATE INDEX IF NOT EXISTS idx_skill_reviews_skill ON skill_reviews(skill_id);
+
+-- admin 用户表
+CREATE TABLE IF NOT EXISTS admin_users (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    verified BOOLEAN DEFAULT true,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- admin 邀请表
+CREATE TABLE IF NOT EXISTS admin_invitations (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    email VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    token VARCHAR(64) NOT NULL UNIQUE,
+    status VARCHAR(20) DEFAULT 'pending',
+    invited_by VARCHAR(36) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 系统配置表
+CREATE TABLE IF NOT EXISTS system_config (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    key VARCHAR(100) UNIQUE NOT NULL,
+    value JSONB NOT NULL,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 客户端验证码记录表
+CREATE TABLE IF NOT EXISTS client_verification_codes (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    email VARCHAR(255) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(20) DEFAULT 'register',
+    expires_at TIMESTAMP NOT NULL,
+    error_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
