@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional } from 'class-validator';
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsOptional, IsArray } from 'class-validator';
 
 export class LoginDto {
   @IsEmail({}, { message: '请输入有效的邮箱地址' })
@@ -29,6 +29,13 @@ export class RegisterDto {
 export class SendCodeDto {
   @IsEmail({}, { message: '请输入有效的邮箱地址' })
   email: string;
+
+  @IsString()
+  captchaToken: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  captchaAnswer: string[];
 }
 
 export class ResetPasswordDto {
