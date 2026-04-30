@@ -18,10 +18,11 @@ const TYPE_COLORS = {
   extension: 'bg-green-100 text-green-700',
 };
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<string, string> = {
   pending: '待审批',
   approved: '已通过',
   rejected: '已拒绝',
+  all: '工单',
 };
 
 export const WorkorderTable: React.FC = () => {
