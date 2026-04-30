@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -17,6 +18,7 @@ const loginSchema = z.object({
 type LoginForm = z.infer<typeof loginSchema>;
 
 const Login: React.FC = () => {
+  const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   const {
     register,
@@ -30,9 +32,9 @@ const Login: React.FC = () => {
   const onSubmit = async (data: LoginForm) => {
     try {
       const response = await api.post('/admin/auth/login', data);
-      const { user, token } = response.data.data;
-      setAuth(user, token);
-      window.location.href = '/';
+      const { user, accessToken } = response.data.data;
+      setAuth(user, accessToken);
+      navigate('/');
     } catch (error: any) {
       const message = error.response?.data?.message || 'Login failed';
       setError('email', { message });
@@ -77,6 +79,16 @@ const Login: React.FC = () => {
               {isSubmitting ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
+          <div className="mt-4 text-center text-sm">
+            <Button
+              type="button"
+              variant="link"
+              className="text-primary"
+              onClick={() => navigate('/forgot-password')}
+            >
+              忘记密码？
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

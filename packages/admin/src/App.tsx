@@ -7,11 +7,13 @@ import Users from './pages/Users';
 import Invitations from './pages/Invitations';
 import Settings from './pages/Settings';
 import AcceptInvite from './pages/AcceptInvite';
+import ForgotPassword from './pages/ForgotPassword';
 
 const App: React.FC = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/" element={<Layout />}>
         <Route index element={<Dashboard />} />
