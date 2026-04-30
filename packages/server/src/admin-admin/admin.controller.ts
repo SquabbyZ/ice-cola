@@ -12,7 +12,6 @@ import {
   RevokeInvitationDto,
 } from './dto/invite.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { AuthGuard } from '@nestjs/passport';
 
 @Controller('admin/auth')
 export class AdminController {
@@ -38,7 +37,7 @@ export class AdminController {
 
   @Post('send-code')
   async sendCode(@Body() dto: SendCodeDto) {
-    await this.adminService.sendResetCode(dto.email);
+    await this.adminService.sendResetCode(dto.email, dto.captchaToken, dto.captchaAnswer);
     return {
       success: true,
       data: null,
@@ -57,7 +56,7 @@ export class AdminController {
   }
 
   @Post('invitations')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async createInvitation(@Body() dto: CreateInvitationDto) {
     // Note: In a real app, you'd get the current user from JWT
     const result = await this.adminService.createInvitation(
@@ -72,7 +71,7 @@ export class AdminController {
   }
 
   @Get('invitations')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async getInvitations() {
     const result = await this.adminService.getInvitations();
     return {
@@ -104,7 +103,7 @@ export class AdminController {
   }
 
   @Get('invitations/:token')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async getInvitationByToken(@Param('token') token: string) {
     const result = await this.adminService.getInvitationByToken(token);
     return {
@@ -114,7 +113,7 @@ export class AdminController {
   }
 
   @Delete('invitations/:id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async revokeInvitation(@Param('id') id: string) {
     await this.adminService.revokeInvitation(id);
     return {
@@ -145,7 +144,7 @@ export class AdminController {
   }
 
   @Get('users')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async getUsers() {
     const result = await this.adminService.getUsers();
     return {
@@ -155,7 +154,7 @@ export class AdminController {
   }
 
   @Delete('users/:id')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(JwtAuthGuard)
   async removeUser(@Param('id') id: string) {
     await this.adminService.removeUser(id);
     return {

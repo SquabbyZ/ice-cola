@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../database/database.service';
 import { AppError } from '../common/interfaces/errors';
+import { CaptchaService } from '../commons/captcha.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import {
@@ -15,6 +16,7 @@ import {
 export interface AdminUser {
   id: string;
   email: string;
+  password?: string;
   name: string | null;
   role: string;
   verified: boolean;
@@ -39,6 +41,8 @@ export class AdminService {
     private db: DatabaseService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    @Inject(forwardRef(() => CaptchaService))
+    private captchaService: CaptchaService,
   ) {}
 
   // ========== User Find Methods ==========
@@ -244,9 +248,17 @@ export class AdminService {
   // ========== User Management ==========
 
   async getUsers(): Promise<AdminUser[]> {
-    return this.db.query<AdminUser>(
-      'SELECT id, email, name, role, verified, "createdAt", "updatedAt" FROM admin_users ORDER BY "createdAt" ASC'
-    );
+    console.log('=== getUsers called ===');
+    try {
+      const result = await this.db.query<AdminUser>(
+        'SELECT id, email, name, role, verified, "createdAt", "updatedAt" FROM admin_users ORDER BY "createdAt" ASC'
+      );
+      console.log('=== getUsers result:', result);
+      return result;
+    } catch (error) {
+      console.error('=== getUsers error:', error);
+      throw error;
+    }
   }
 
   async removeUser(id: string): Promise<void> {
@@ -313,7 +325,17 @@ export class AdminService {
     return true;
   }
 
-  async sendResetCode(email: string): Promise<void> {
+  async sendResetCode(
+    email: string,
+    captchaToken: string,
+    captchaAnswer: string[]
+  ): Promise<void> {
+    // 1. Verify captcha
+    const captchaValid = await this.captchaService.verifyCaptcha(captchaToken, captchaAnswer);
+    if (!captchaValid) {
+      throw new AppError('INVALID_CAPTCHA', '图形验证失败', 400);
+    }
+
     const admin = await this.findAdminByEmail(email);
     if (!admin) {
       // Don't reveal if email exists
