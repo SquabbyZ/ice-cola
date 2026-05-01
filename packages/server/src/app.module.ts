@@ -11,6 +11,8 @@ import { GatewayModule } from './gateway/gateway.module';
 import { HermesCoreModule } from './hermes-core/hermes-core.module';
 import { ToolsModule } from './tools/tools.module';
 import { SkillsModule } from './skills/skills.module';
+import { WorkordersModule } from './workorders/workorders.module';
+import { TeamsModule } from './teams/teams.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { SkillsModule } from './skills/skills.module';
     HermesCoreModule,
     ToolsModule,
     SkillsModule,
+    WorkordersModule,
+    TeamsModule,
   ],
 })
 export class AppModule {}

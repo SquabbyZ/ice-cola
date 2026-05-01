@@ -18,10 +18,10 @@ export const CONFIG_KEYS = {
 } as const;
 
 // Keys that should be masked when returned in API responses
-const SENSITIVE_KEYS = new Set([
+const SENSITIVE_KEYS = [
   CONFIG_KEYS.RESEND_API_KEY,
   CONFIG_KEYS.CAPTCHA_SECRET_KEY,
-]);
+];
 
 @Injectable()
 export class ConfigService {
@@ -31,7 +31,7 @@ export class ConfigService {
    * Mask sensitive config value for API responses
    */
   private maskValue(key: string, value: any): any {
-    if (!SENSITIVE_KEYS.has(key)) {
+    if (!(SENSITIVE_KEYS as string[]).includes(key)) {
       return value;
     }
 

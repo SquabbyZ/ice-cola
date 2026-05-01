@@ -20,13 +20,13 @@ export class TeamsController {
 
   @Post()
   async createTeam(@Request() req: any, @Body() dto: CreateTeamDto) {
-    const result = await this.teamsService.createTeam(req.user.id, dto);
+    const result = await this.teamsService.createTeam(req.user.sub, dto);
     return { success: true, data: result };
   }
 
   @Get('my')
   async getMyTeams(@Request() req: any) {
-    const result = await this.teamsService.getMyTeams(req.user.id);
+    const result = await this.teamsService.getMyTeams(req.user.sub);
     return { success: true, data: result };
   }
 
@@ -81,7 +81,7 @@ export class TeamsController {
 
   @Post(':teamId/leave')
   async leaveTeam(@Param('teamId') teamId: string, @Request() req: any) {
-    const result = await this.teamsService.leaveTeam(teamId, req.user.id);
+    const result = await this.teamsService.leaveTeam(teamId, req.user.sub);
     return { success: true, data: result };
   }
 
@@ -91,25 +91,26 @@ export class TeamsController {
     @Request() req: any,
     @Body() dto: InviteMemberDto,
   ) {
-    const result = await this.teamsService.sendInvitation(teamId, req.user.id, dto.email, dto.role);
+    const result = await this.teamsService.sendInvitation(teamId, req.user.sub, dto.email, dto.role);
     return { success: true, data: result };
   }
 
   @Post('invitations/:token/accept')
+  @UseGuards(JwtAuthGuard)
   async acceptInvitation(@Param('token') token: string, @Request() req: any) {
-    const result = await this.teamsService.acceptInvitation(token, req.user.id);
+    const result = await this.teamsService.acceptInvitation(token, req.user.sub);
     return { success: true, data: result };
   }
 
   @Get('invitations/:id/revoke')
   async revokeInvitation(@Param('id') id: string, @Request() req: any) {
-    const result = await this.teamsService.revokeInvitation(id, req.user.id);
+    const result = await this.teamsService.revokeInvitation(id, req.user.sub);
     return { success: true, data: result };
   }
 
   @Get(':teamId/invitations')
   async getTeamInvitations(@Param('teamId') teamId: string, @Request() req: any) {
-    const result = await this.teamsService.getTeamInvitations(teamId, req.user.id);
+    const result = await this.teamsService.getTeamInvitations(teamId, req.user.sub);
     return { success: true, data: result };
   }
 }

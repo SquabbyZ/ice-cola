@@ -23,6 +23,7 @@ const Workorders: React.FC = () => {
 
   const {
     workorders,
+    history,
     filterType,
     filterStatus,
     isLoading,

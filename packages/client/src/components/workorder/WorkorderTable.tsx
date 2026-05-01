@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 import { Check, X, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useWorkordersStore, type Workorder } from '@/stores/workordersStore';
+import { useWorkordersStore } from '@/stores/workordersStore';
 import { WorkorderActionDialog } from './WorkorderActionDialog';
 
 const TYPE_LABELS = {
@@ -16,13 +17,6 @@ const TYPE_COLORS = {
   skill: 'bg-blue-100 text-blue-700',
   mcp: 'bg-purple-100 text-purple-700',
   extension: 'bg-green-100 text-green-700',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待审批',
-  approved: '已通过',
-  rejected: '已拒绝',
-  all: '工单',
 };
 
 export const WorkorderTable: React.FC = () => {
@@ -42,15 +36,8 @@ export const WorkorderTable: React.FC = () => {
     workorderName: string;
   }>({ open: false, action: 'approve', workorderId: '', workorderName: '' });
 
-  const workorders = useWorkordersStore(state => state.workorders);
+  const workorders = useWorkordersStore(state => state.getFilteredWorkorders());
   const filterStatus = useWorkordersStore(state => state.filterStatus);
-  const filterType = useWorkordersStore(state => state.filterType);
-
-  const filteredWorkorders = workorders.filter(w => {
-    if (filterStatus !== 'all' && w.status !== filterStatus) return false;
-    if (filterType !== 'all' && w.type !== filterType) return false;
-    return true;
-  });
 
   const pendingWorkorders = workorders.filter(w => w.status === 'pending');
   const allSelected = pendingWorkorders.length > 0 && selectedIds.length === pendingWorkorders.length;
@@ -67,56 +54,9 @@ export const WorkorderTable: React.FC = () => {
     }
   };
 
-  const renderRow = (workorder: Workorder) => (
-    <tr key={workorder.id} className="hover:bg-gray-50">
-      <td className="px-4 py-3">
-        <input
-          type="checkbox"
-          checked={selectedIds.includes(workorder.id)}
-          onChange={() => toggleSelect(workorder.id)}
-          className="rounded border-gray-300"
-        />
-      </td>
-      <td className="px-4 py-3">
-        <Badge className={TYPE_COLORS[workorder.type]}>
-          {TYPE_LABELS[workorder.type]}
-        </Badge>
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span>{workorder.targetIcon}</span>
-          <span className="font-medium text-gray-900">{workorder.targetName}</span>
-        </div>
-      </td>
-      <td className="px-4 py-3 text-gray-600">{workorder.applicantName}</td>
-      <td className="px-4 py-3 text-gray-600">
-        {workorder.approvers.map(a => a.name).join(', ')}
-      </td>
-      <td className="px-4 py-3 text-gray-500 text-sm" title={new Date(workorder.submittedAt).toLocaleString('zh-CN')}>
-        {format(new Date(workorder.submittedAt), 'yyyy-MM-dd HH:mm:ss')}
-      </td>
-      <td className="px-4 py-3">
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-            onClick={() => handleAction(workorder.id, workorder.targetName, 'approve')}
-          >
-            <Check className="w-4 h-4" />
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-            onClick={() => handleAction(workorder.id, workorder.targetName, 'reject')}
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-      </td>
-    </tr>
-  );
+  if (filterStatus !== 'pending' && filterStatus !== 'all') {
+    return null;
+  }
 
   return (
     <>
@@ -141,15 +81,67 @@ export const WorkorderTable: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredWorkorders.length === 0 ? (
+            {pendingWorkorders.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
                   <FileText className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                  <p>暂无{STATUS_LABELS[filterStatus] || ''}工单</p>
+                  <p>暂无待处理工单</p>
                 </td>
               </tr>
             ) : (
-              filteredWorkorders.map(renderRow)
+              pendingWorkorders.map(workorder => (
+                <tr key={workorder.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(workorder.id)}
+                      onChange={() => toggleSelect(workorder.id)}
+                      className="rounded border-gray-300"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge className={TYPE_COLORS[workorder.type]}>
+                      {TYPE_LABELS[workorder.type]}
+                    </Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span>{workorder.targetIcon}</span>
+                      <span className="font-medium text-gray-900">{workorder.targetName}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{workorder.applicantName}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {workorder.approvers.map(a => a.name).join(', ')}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500 text-sm">
+                    {formatDistanceToNow(new Date(workorder.submittedAt), {
+                      addSuffix: true,
+                      locale: zhCN,
+                    })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                        onClick={() => handleAction(workorder.id, workorder.targetName, 'approve')}
+                      >
+                        <Check className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleAction(workorder.id, workorder.targetName, 'reject')}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>

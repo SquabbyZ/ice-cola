@@ -11,13 +11,17 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3001,
+    port: 1992,
     proxy: {
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
       '/teams': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/admin': {
         target: 'http://localhost:3000',
         changeOrigin: true,
       },

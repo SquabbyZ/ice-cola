@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useSkillsStore } from '@/stores/skillsStore';
+import { useAuthStore } from '@/stores/authStore';
 import { SkillCard } from '@/components/SkillCard';
 
 const CATEGORIES = ['全部', '开发', '生产力', '工具', '写作', '分析'];
@@ -31,11 +32,16 @@ const Skills: React.FC = () => {
     getFilteredSkills,
   } = useSkillsStore();
 
+  const user = useAuthStore(state => state.user);
+  const teamId = user?.team?.id;
+
   useEffect(() => {
     loadPersonalSkills();
-    loadTeamSkills('team-001');
-    loadMarketplaceSkills('team-001');
-  }, [loadPersonalSkills, loadTeamSkills, loadMarketplaceSkills]);
+    if (teamId) {
+      loadTeamSkills(teamId);
+      loadMarketplaceSkills(teamId);
+    }
+  }, [loadPersonalSkills, loadTeamSkills, loadMarketplaceSkills, teamId]);
 
   const getCurrentSkills = () => {
     switch (activeTab) {
@@ -103,27 +109,26 @@ const Skills: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex gap-3 mb-8 bg-gray-100/50 p-1.5 rounded-xl w-fit">
-            <button onClick={() => setActiveTab('marketplace')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'marketplace' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
-              市场 ({counts.marketplace})
-            </button>
-            <button onClick={() => setActiveTab('team')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'team' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
-              我的团队 ({counts.team})
-            </button>
-            <button onClick={() => setActiveTab('personal')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'personal' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
-              我的 Skill ({counts.personal})
-            </button>
-          </div>
-
-          {activeTab === 'personal' && (
-            <div className="mb-6 flex justify-end">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex gap-3 bg-gray-100/50 p-1.5 rounded-xl">
+              <button onClick={() => setActiveTab('marketplace')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'marketplace' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
+                市场 ({counts.marketplace})
+              </button>
+              <button onClick={() => setActiveTab('team')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'team' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
+                我的团队 ({counts.team})
+              </button>
+              <button onClick={() => setActiveTab('personal')} className={`px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${activeTab === 'personal' ? 'bg-white shadow-md text-primary' : 'text-gray-600 hover:text-gray-900'}`}>
+                我的 Skill ({counts.personal})
+              </button>
+            </div>
+            {activeTab === 'personal' && (
               <Button className="gap-2">
                 <Plus className="w-4 h-4" />
                 <Sparkles className="w-4 h-4" />
                 创建 Skill
               </Button>
-            </div>
-          )}
+            )}
+          </div>
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>

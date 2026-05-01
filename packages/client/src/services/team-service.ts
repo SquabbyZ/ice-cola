@@ -110,7 +110,7 @@ class TeamService {
   }
 
   async acceptInvitation(token: string): Promise<void> {
-    await axios.post(`${API_BASE}/teams/invitations/accept`, { token }, {
+    await axios.post(`/teams/invitations/${token}/accept`, {}, {
       headers: this.getAuthHeaders(),
     });
   }

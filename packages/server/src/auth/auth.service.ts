@@ -129,6 +129,25 @@ export class AuthService {
     return { success: true };
   }
 
+  async getCurrentUser(userId: string) {
+    const user = await this.db.findUserById(userId);
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+    return {
+      id: (user as any).id,
+      email: (user as any).email,
+      name: (user as any).name,
+      team: (user as any).teamId
+        ? {
+            id: (user as any).teamId,
+            name: (user as any).team_name,
+            role: (user as any).role,
+          }
+        : null,
+    };
+  }
+
   private async generateTokens(
     userId: string,
     teamId: string | null,

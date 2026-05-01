@@ -10,3 +10,4 @@ export { useUsageStore } from './usage';
 export { useQuotaStore } from './quota';
 export { useExpertStore } from './experts';
 export { useTeamStore } from './team';
+export { useAuthStore } from './authStore';

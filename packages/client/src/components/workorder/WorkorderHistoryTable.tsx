@@ -1,5 +1,6 @@
 import React from 'react';
-import { format } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
+import { zhCN } from 'date-fns/locale';
 import { History, Check, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useWorkordersStore } from '@/stores/workordersStore';
@@ -73,8 +74,11 @@ export const WorkorderHistoryTable: React.FC = () => {
                 </Badge>
               </td>
               <td className="px-4 py-3 text-gray-500 text-sm">{record.comment || '-'}</td>
-              <td className="px-4 py-3 text-gray-500 text-sm" title={new Date(record.processedAt).toLocaleString('zh-CN')}>
-                {format(new Date(record.processedAt), 'yyyy-MM-dd HH:mm:ss')}
+              <td className="px-4 py-3 text-gray-500 text-sm">
+                {formatDistanceToNow(new Date(record.processedAt), {
+                  addSuffix: true,
+                  locale: zhCN,
+                })}
               </td>
             </tr>
           ))}

@@ -177,7 +177,7 @@ export const useWorkordersStore = create<WorkordersState>((set, get) => ({
     }));
   },
 
-  batchApprove: async (ids) => {
+batchApprove: async (ids) => {
     for (const id of ids) {
       await get().approve(id);
     }

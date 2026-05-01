@@ -32,4 +32,29 @@ export class EmailService {
     //   text,
     // });
   }
+
+  /**
+   * Send team invitation email
+   */
+  async sendTeamInviteEmail(
+    email: string,
+    inviterName: string,
+    teamName: string,
+    inviteLink: string,
+  ): Promise<void> {
+    const text = `
+您好，
+
+${inviterName} 邀请您加入团队 "${teamName}"。
+
+点击以下链接接受邀请：
+${inviteLink}
+
+链接 7 天内有效。
+
+— ${TEAM_NAME}
+`.trim();
+
+    this.logger.log(`[DEV] Team invite email to ${email}:\n${text}`);
+  }
 }

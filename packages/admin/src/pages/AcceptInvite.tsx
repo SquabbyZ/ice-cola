@@ -55,7 +55,7 @@ const AcceptInvite: React.FC = () => {
         const response = await api.get('/admin/auth/invitations');
         const invitations = response.data.data || [];
         const invitation = invitations.find(
-          (inv: any) => inv.token === token && inv.status === 'PENDING'
+          (inv: any) => inv.token === token && inv.status === 'pending'
         );
 
         if (invitation) {

@@ -299,6 +299,66 @@ export class TeamsService {
     };
   }
 
+  async validateInvitation(token: string) {
+    try {
+      const invitation = await this.db.findTeamInvitationByToken(token);
+
+      if (!invitation) {
+        return {
+          valid: false,
+          message: '邀请不存在',
+        };
+      }
+
+      if (invitation.status !== 'pending') {
+        return {
+          valid: false,
+          message: '邀请已失效',
+        };
+      }
+
+      if (new Date(invitation.expires_at) < new Date()) {
+        return {
+          valid: false,
+          message: '邀请已过期',
+        };
+      }
+
+      // Get team info - catch error if team doesn't exist
+      let teamName = 'Unknown Team';
+      try {
+        const team = await this.getTeam(invitation.team_id);
+        teamName = team.name;
+      } catch (e) {
+        // Team might have been deleted
+      }
+
+      // Get inviter info
+      let inviterName = 'Unknown';
+      try {
+        const inviter = await this.db.findUserById(invitation.invited_by);
+        inviterName = inviter?.name || inviter?.email || 'Unknown';
+      } catch (e) {
+        // Inviter might have been deleted
+      }
+
+      return {
+        valid: true,
+        teamId: invitation.team_id,
+        teamName,
+        inviterName,
+        email: invitation.email,
+        expiresAt: invitation.expires_at,
+      };
+    } catch (error) {
+      console.error('validateInvitation error:', error);
+      return {
+        valid: false,
+        message: '邀请验证失败',
+      };
+    }
+  }
+
   async acceptInvitation(token: string, userId: string) {
     // Find invitation by token
     const invitation = await this.db.findTeamInvitationByToken(token);

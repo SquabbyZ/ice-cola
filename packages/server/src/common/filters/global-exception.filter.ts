@@ -22,6 +22,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
 
+    console.error('=== GlobalExceptionFilter caught exception ===');
+    console.error('Exception type:', typeof exception);
+    console.error('Exception:', exception);
+    console.error('Stack:', exception instanceof Error ? exception.stack : 'N/A');
+
     let errorResponse: ErrorResponse;
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
 
