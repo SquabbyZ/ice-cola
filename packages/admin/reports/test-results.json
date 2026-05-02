@@ -1,0 +1,114 @@
+{
+  "testDate": "2026-05-02T08:34:31.081Z",
+  "pages": [
+    {
+      "name": "Login",
+      "url": "/login",
+      "passed": true,
+      "errors": [],
+      "elements": [
+        {
+          "selector": "#email",
+          "visible": true
+        },
+        {
+          "selector": "#password",
+          "visible": true
+        },
+        {
+          "selector": "button[type=\"submit\"]",
+          "visible": true
+        }
+      ],
+      "screenshot": "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola\\packages\\admin\\screenshots\\login.png"
+    },
+    {
+      "name": "Dashboard",
+      "url": "/",
+      "passed": true,
+      "errors": [],
+      "elements": [
+        {
+          "selector": "h2",
+          "visible": false
+        },
+        {
+          "selector": ".card",
+          "visible": false
+        }
+      ],
+      "screenshot": "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola\\packages\\admin\\screenshots\\dashboard.png",
+      "consoleErrors": [
+        "The above error occurred in the <Dashboard> component:\n\n    at Dashboard (http://localhost:1994/src/pages/Dashboard.tsx:24:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries."
+      ]
+    },
+    {
+      "name": "Users",
+      "url": "/users",
+      "passed": true,
+      "errors": [],
+      "elements": [
+        {
+          "selector": "h2",
+          "visible": true
+        },
+        {
+          "selector": "table",
+          "visible": false
+        }
+      ],
+      "screenshot": "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola\\packages\\admin\\screenshots\\users.png",
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+        "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      ]
+    },
+    {
+      "name": "Profile",
+      "url": "/profile",
+      "passed": true,
+      "errors": [],
+      "elements": [
+        {
+          "selector": "#email",
+          "visible": false
+        },
+        {
+          "selector": "#name",
+          "visible": false
+        },
+        {
+          "selector": "#currentPassword",
+          "visible": false
+        }
+      ],
+      "screenshot": "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola\\packages\\admin\\screenshots\\profile.png",
+      "consoleErrors": [
+        "The above error occurred in the <Profile> component:\n\n    at Profile (http://localhost:1994/src/pages/Profile.tsx:42:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries."
+      ]
+    },
+    {
+      "name": "Settings",
+      "url": "/settings",
+      "passed": true,
+      "errors": [],
+      "elements": [
+        {
+          "selector": "#resendApiKey",
+          "visible": false
+        },
+        {
+          "selector": "#captchaSiteKey",
+          "visible": false
+        }
+      ],
+      "screenshot": "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola\\packages\\admin\\screenshots\\settings.png",
+      "consoleErrors": [
+        "The above error occurred in the <ResendConfigForm> component:\n\n    at ResendConfigForm (http://localhost:1994/src/pages/Settings.tsx:46:17)\n    at div\n    at _c9 (http://localhost:1994/src/components/ui/card.tsx:106:12)\n    at div\n    at _c (http://localhost:1994/src/components/ui/card.tsx:20:11)\n    at div\n    at Settings (http://localhost:1994/src/pages/Settings.tsx:560:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries.",
+        "The above error occurred in the <CaptchaConfigForm> component:\n\n    at CaptchaConfigForm (http://localhost:1994/src/pages/Settings.tsx:177:17)\n    at div\n    at _c9 (http://localhost:1994/src/components/ui/card.tsx:106:12)\n    at div\n    at _c (http://localhost:1994/src/components/ui/card.tsx:20:11)\n    at div\n    at Settings (http://localhost:1994/src/pages/Settings.tsx:560:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries.",
+        "The above error occurred in the <UrlConfigForm> component:\n\n    at UrlConfigForm (http://localhost:1994/src/pages/Settings.tsx:314:17)\n    at div\n    at _c9 (http://localhost:1994/src/components/ui/card.tsx:106:12)\n    at div\n    at _c (http://localhost:1994/src/components/ui/card.tsx:20:11)\n    at div\n    at Settings (http://localhost:1994/src/pages/Settings.tsx:560:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries.",
+        "The above error occurred in the <VerificationConfigForm> component:\n\n    at VerificationConfigForm (http://localhost:1994/src/pages/Settings.tsx:439:17)\n    at div\n    at _c9 (http://localhost:1994/src/components/ui/card.tsx:106:12)\n    at div\n    at _c (http://localhost:1994/src/components/ui/card.tsx:20:11)\n    at div\n    at Settings (http://localhost:1994/src/pages/Settings.tsx:560:17)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Outlet (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4537:26)\n    at main\n    at div\n    at div\n    at Layout (http://localhost:1994/src/components/Layout.tsx:30:23)\n    at RenderedRoute (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4131:5)\n    at Routes (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4601:5)\n    at App\n    at Router (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:4544:15)\n    at BrowserRouter (http://localhost:1994/node_modules/.vite/deps/react-router-dom.js?v=81f0d1da:5290:5)\n\nConsider adding an error boundary to your tree to customize error handling behavior.\nVisit https://reactjs.org/link/error-boundaries to learn more about error boundaries."
+      ]
+    }
+  ]
+}

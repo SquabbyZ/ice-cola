@@ -181,7 +181,7 @@ const MOCK_EXTENSIONS: Extension[] = [
   },
 ];
 
-const CATEGORIES = ['全部', '开发工具', '生产力', '通讯', '工具', '文档'];
+// // const CATEGORIES = ['全部', '开发工具', '生产力', '通讯', '工具', '文档'];
 
 export const useExtensionStore = create<ExtensionState>((set, get) => ({
   extensions: [],

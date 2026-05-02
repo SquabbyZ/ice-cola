@@ -2,23 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+// import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/authStore';
+import { authService } from '@/services/auth-service';
 import { teamService, type Team, type TeamMember } from '@/services/team-service';
 import InviteMemberDialog from '@/components/InviteMemberDialog';
+import ConfirmDialog from '@/components/ConfirmDialog';
 import { toast } from 'sonner';
 import {
   User,
   Users,
   Mail,
   Plus,
-  Settings,
   Shield,
   Crown,
   Loader2,
-  X,
   AlertCircle,
+  Key,
 } from 'lucide-react';
 
 const Profile: React.FC = () => {
@@ -29,10 +30,19 @@ const Profile: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [showInviteMember, setShowInviteMember] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showRemoveMember, setShowRemoveMember] = useState(false);
+  const [memberToRemove, setMemberToRemove] = useState<{ id: string; email: string } | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<'ADMIN' | 'MEMBER'>('MEMBER');
+//   const [inviteEmail, setInviteEmail] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Change password state
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     loadTeams();
@@ -76,7 +86,8 @@ const Profile: React.FC = () => {
 
     setActionLoading(true);
     try {
-      const team = await teamService.createTeam(newTeamName.trim());
+      const name = newTeamName.trim();
+      const team = await teamService.createTeam(name);
       setTeams([...teams, team]);
       setSelectedTeam(team);
       setShowCreateTeam(false);
@@ -93,53 +104,44 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleInviteMember = async () => {
-    if (!inviteEmail.trim() || !selectedTeam) {
-      toast.error('请输入邮箱地址');
-      return;
-    }
-
-    setActionLoading(true);
-    try {
-      const updatedMembers = await teamService.addMember(selectedTeam.id, inviteEmail.trim(), inviteRole);
-      setMembers(updatedMembers);
-      setShowInviteMember(false);
-      setInviteEmail('');
-      setInviteRole('MEMBER');
-      toast.success('邀请成功');
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || '邀请成员失败');
-    } finally {
-      setActionLoading(false);
-    }
+  const handleRemoveMember = (memberId: string, memberEmail: string) => {
+    if (!selectedTeam) return;
+    setMemberToRemove({ id: memberId, email: memberEmail });
+    setShowRemoveMember(true);
   };
 
-  const handleRemoveMember = async (memberId: string, memberEmail: string) => {
-    if (!selectedTeam) return;
-
-    if (!confirm(`确定要移除成员 ${memberEmail} 吗？`)) return;
+  const confirmRemoveMember = async () => {
+    if (!selectedTeam || !memberToRemove) return;
 
     setActionLoading(true);
     try {
-      await teamService.removeMember(selectedTeam.id, memberId);
-      setMembers(members.filter(m => m.id !== memberId));
+      const teamId = selectedTeam.id;
+      await teamService.removeMember(teamId, memberToRemove.id);
+      setMembers(members.filter(m => m.id !== memberToRemove.id));
       toast.success('已移除成员');
     } catch (error: any) {
       toast.error(error.response?.data?.message || '移除成员失败');
     } finally {
       setActionLoading(false);
+      setShowRemoveMember(false);
+      setMemberToRemove(null);
     }
   };
 
   const handleLeaveTeam = async () => {
     if (!selectedTeam) return;
 
-    if (!confirm('确定要退出该团队吗？')) return;
+    setShowLeaveConfirm(true);
+  };
+
+  const confirmLeaveTeam = async () => {
+    if (!selectedTeam) return;
 
     setActionLoading(true);
     try {
-      await teamService.leaveTeam(selectedTeam.id);
-      const remainingTeams = teams.filter(t => t.id !== selectedTeam.id);
+      const teamId = selectedTeam.id;
+      await teamService.leaveTeam(teamId);
+      const remainingTeams = teams.filter(t => t.id !== teamId);
       setTeams(remainingTeams);
       setSelectedTeam(remainingTeams.length > 0 ? remainingTeams[0] : null);
       toast.success('已退出团队');
@@ -165,6 +167,45 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handleChangePassword = async () => {
+    setPasswordError('');
+
+    if (!currentPassword) {
+      setPasswordError('请输入当前密码');
+      return;
+    }
+    if (!newPassword) {
+      setPasswordError('请输入新密码');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPasswordError('新密码长度至少为6位');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('两次输入的密码不一致');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await authService.changePassword({
+        currentPassword,
+        newPassword,
+      });
+      toast.success('密码修改成功');
+      setShowChangePassword(false);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error: any) {
+      const message = error.response?.data?.message || '密码修改失败';
+      toast.error(message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -187,9 +228,19 @@ const Profile: React.FC = () => {
           {/* 用户信息 */}
           <Card className="bg-white border-gray-200">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="w-5 h-5 text-primary" />
-                账号信息
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-primary" />
+                  账号信息
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowChangePassword(!showChangePassword)}
+                >
+                  <Key className="w-4 h-4 mr-1" />
+                  修改密码
+                </Button>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -214,6 +265,60 @@ const Profile: React.FC = () => {
                   </div>
                 )}
               </div>
+
+              {showChangePassword && (
+                <div className="mt-6 p-4 border-t">
+                  <h4 className="font-medium mb-4">修改密码</h4>
+                  <div className="space-y-3 max-w-md">
+                    <div>
+                      <label className="text-sm text-gray-600 mb-1 block">当前密码</label>
+                      <Input
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="请输入当前密码"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600 mb-1 block">新密码</label>
+                      <Input
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="请输入新密码（至少6位）"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm text-gray-600 mb-1 block">确认新密码</label>
+                      <Input
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="请再次输入新密码"
+                        onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
+                      />
+                    </div>
+                    {passwordError && (
+                      <p className="text-sm text-red-500">{passwordError}</p>
+                    )}
+                    <div className="flex gap-2 pt-2">
+                      <Button onClick={handleChangePassword} disabled={actionLoading}>
+                        {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+                        确认修改
+                      </Button>
+                      <Button variant="outline" onClick={() => {
+                        setShowChangePassword(false);
+                        setCurrentPassword('');
+                        setNewPassword('');
+                        setConfirmPassword('');
+                        setPasswordError('');
+                      }}>
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -278,7 +383,7 @@ const Profile: React.FC = () => {
                     <div>
                       <h4 className="font-semibold text-lg">{selectedTeam.name}</h4>
                       <p className="text-sm text-gray-500">
-                        角色: {getRoleBadge(selectedTeam.role || user?.team?.role)}
+                        角色: {getRoleBadge(selectedTeam.role || user?.team?.role || "")}
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -375,6 +480,30 @@ const Profile: React.FC = () => {
           teamName={selectedTeam.name}
         />
       )}
+
+      {/* Leave Team Confirm Dialog */}
+      <ConfirmDialog
+        open={showLeaveConfirm}
+        onOpenChange={setShowLeaveConfirm}
+        title="退出团队"
+        description={`确定要退出团队"${selectedTeam?.name}"吗？退出后你将不再是该团队的成员。`}
+        confirmText="退出"
+        cancelText="取消"
+        variant="destructive"
+        onConfirm={confirmLeaveTeam}
+      />
+
+      {/* Remove Member Confirm Dialog */}
+      <ConfirmDialog
+        open={showRemoveMember}
+        onOpenChange={setShowRemoveMember}
+        title="移除成员"
+        description={`确定要移除成员 "${memberToRemove?.email}" 吗？`}
+        confirmText="移除"
+        cancelText="取消"
+        variant="destructive"
+        onConfirm={confirmRemoveMember}
+      />
     </div>
   );
 };

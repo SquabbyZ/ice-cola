@@ -114,7 +114,7 @@ const TopBar: React.FC = () => {
 
           {/* User Menu */}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
+            <DropdownMenuTrigger>
               <Button
                 variant="ghost"
                 className="h-8 px-2 gap-2 rounded-full hover:bg-gray-100"

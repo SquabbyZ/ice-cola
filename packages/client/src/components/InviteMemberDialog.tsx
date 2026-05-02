@@ -77,12 +77,16 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
   const handleClose = () => {
     setEmail('');
     setResult(null);
+  };
+
+  const handleCancel = () => {
+    handleClose();
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent onOpenChange={onOpenChange}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Mail className="w-5 h-5 text-primary" />
@@ -157,7 +161,7 @@ const InviteMemberDialog: React.FC<InviteMemberDialogProps> = ({
             </div>
           ) : (
             <>
-              <Button variant="outline" onClick={handleClose} disabled={isSending}>
+              <Button variant="outline" onClick={handleCancel} disabled={isSending}>
                 Cancel
               </Button>
               <Button onClick={handleSendInvite} disabled={isSending}>

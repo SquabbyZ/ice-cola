@@ -109,7 +109,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadSkills: async (teamId) => {
+  loadSkills: async (_teamId) => {
     set({ isLoading: true, error: null });
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -129,7 +129,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  loadTeamSkills: async (teamId) => {
+  loadTeamSkills: async (_teamId) => {
     set({ isLoading: true, error: null });
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -139,7 +139,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  loadMarketplaceSkills: async (teamId) => {
+  loadMarketplaceSkills: async (_teamId) => {
     set({ isLoading: true, error: null });
     try {
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -149,7 +149,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  createSkill: async (teamId, data) => {
+  createSkill: async (_teamId, data) => {
     try {
       const newSkill: Skill = {
         id: `skill-${Date.now()}`,
@@ -200,7 +200,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  getVersions: async (skillId) => {
+  getVersions: async (_skillId) => {
     return [];
   },
 
@@ -224,7 +224,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }));
   },
 
-  rejectTeamPublish: async (skillId, comment) => {
+  rejectTeamPublish: async (skillId, _comment) => {
     set(state => ({
       personalSkills: state.personalSkills.map(s =>
         s.id === skillId ? { ...s, status: 'personal' } : s

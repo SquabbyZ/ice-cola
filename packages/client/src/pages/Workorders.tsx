@@ -11,19 +11,11 @@ const TYPE_FILTERS = [
   { key: 'extension', label: '插件' },
 ];
 
-const STATUS_FILTERS = [
-  { key: 'pending', label: '待审批' },
-  { key: 'approved', label: '已通过' },
-  { key: 'rejected', label: '已拒绝' },
-  { key: 'all', label: '全部' },
-];
-
 const Workorders: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'list' | 'history'>('list');
 
   const {
     workorders,
-    history,
     filterType,
     filterStatus,
     isLoading,

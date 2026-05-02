@@ -24,7 +24,6 @@ const Skills: React.FC = () => {
     loadPersonalSkills,
     loadTeamSkills,
     loadMarketplaceSkills,
-    createSkill,
     updateSkill,
     deleteSkill,
     setSearchQuery,

@@ -6,11 +6,13 @@ import { TeamsService } from './teams.service';
 import { DatabaseModule } from '../database/database.module';
 import { EmailService } from '../commons/email.service';
 import { ConfigService } from '../admin-admin/config.service';
+import { AdminModule } from '../admin-admin/admin.module';
 
 @Module({
   imports: [
     DatabaseModule,
     JwtModule.register({}),
+    AdminModule,
   ],
   controllers: [TeamsController, InvitationsController],
   providers: [TeamsService, EmailService, ConfigService],

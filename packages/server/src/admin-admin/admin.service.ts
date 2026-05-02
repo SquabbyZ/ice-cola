@@ -274,6 +274,87 @@ export class AdminService {
     await this.db.query('DELETE FROM admin_users WHERE id = $1', [id]);
   }
 
+  async updateUserRole(id: string, role: string): Promise<AdminUser> {
+    if (role !== AdminRole.ADMIN && role !== AdminRole.MEMBER) {
+      throw new AppError('INVALID_ROLE', '无效的角色', 400);
+    }
+
+    const admin = await this.findAdminById(id);
+    if (!admin) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+    if (admin.role === AdminRole.OWNER) {
+      throw new AppError('CANNOT_CHANGE_OWNER_ROLE', '无法修改所有者角色', 400);
+    }
+
+    const result = await this.db.queryOne<AdminUser>(
+      `UPDATE admin_users SET role = $1, "updatedAt" = NOW() WHERE id = $2
+       RETURNING id, email, name, role, verified, "createdAt", "updatedAt"`,
+      [role, id]
+    );
+
+    return result;
+  }
+
+  async getStats(): Promise<{
+    totalUsers: number;
+    pendingInvitations: number;
+    activeSessions: number;
+  }> {
+    const usersResult = await this.db.query<{ count: string }>(
+      'SELECT COUNT(*) as count FROM admin_users'
+    );
+    const totalUsers = parseInt(usersResult[0]?.count || '0', 10);
+
+    const invitationsResult = await this.db.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM admin_invitations
+       WHERE status = 'pending' AND expires_at > NOW()`
+    );
+    const pendingInvitations = parseInt(invitationsResult[0]?.count || '0', 10);
+
+    // For active sessions, we can use a simple approach:
+    // Count recently active users (logged in within last hour)
+    // Or return 0 if we don't track sessions yet
+    const activeSessions = 0;
+
+    return {
+      totalUsers,
+      pendingInvitations,
+      activeSessions,
+    };
+  }
+
+  async updateProfile(id: string, name: string): Promise<AdminUser> {
+    const result = await this.db.queryOne<AdminUser>(
+      `UPDATE admin_users SET name = $1, "updatedAt" = NOW() WHERE id = $2
+       RETURNING id, email, name, role, verified, "createdAt", "updatedAt"`,
+      [name, id]
+    );
+    return result;
+  }
+
+  async changePassword(
+    id: string,
+    currentPassword: string,
+    newPassword: string
+  ): Promise<void> {
+    const admin = await this.findAdminById(id);
+    if (!admin) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+
+    const isPasswordValid = await this.verifyPassword(currentPassword, admin.password);
+    if (!isPasswordValid) {
+      throw new AppError('INVALID_PASSWORD', '当前密码错误', 400);
+    }
+
+    const password = await bcrypt.hash(newPassword, 10);
+    await this.db.query(
+      `UPDATE admin_users SET password = $1, "updatedAt" = NOW() WHERE id = $2`,
+      [password, id]
+    );
+  }
+
   // ========== Verification Code Methods ==========
 
   async createVerificationCode(

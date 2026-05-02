@@ -8,6 +8,7 @@ import { ClientAuthService } from './client-auth.service';
 import { CaptchaService } from '../commons/captcha.service';
 import { EmailService } from '../commons/email.service';
 import { JwtStrategy } from './jwt.strategy';
+import { AdminModule } from '../admin-admin/admin.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { JwtStrategy } from './jwt.strategy';
       }),
       inject: [ConfigService],
     }),
+    AdminModule,
   ],
   controllers: [AuthController, ClientAuthController],
   providers: [

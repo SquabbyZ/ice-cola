@@ -39,7 +39,7 @@ export class AuthService {
 
   async login(data: LoginRequest): Promise<AuthResponse> {
     const response = await axios.post(`${API_BASE}/auth/login`, data);
-    const { accessToken, refreshToken, user } = response.data.data;
+    const { accessToken, refreshToken } = response.data.data;
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     return response.data.data;
@@ -47,7 +47,7 @@ export class AuthService {
 
   async register(data: RegisterRequest): Promise<AuthResponse> {
     const response = await axios.post(`${API_BASE}/auth/register`, data);
-    const { accessToken, refreshToken, user } = response.data.data;
+    const { accessToken, refreshToken } = response.data.data;
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     return response.data.data;
@@ -94,6 +94,10 @@ export class AuthService {
     return !!localStorage.getItem('accessToken');
   }
 
+  getToken(): string | null {
+    return localStorage.getItem('accessToken');
+  }
+
   // Client auth methods for registration with email verification
   async getCaptcha(): Promise<{ token: string; imageUrl: string }> {
     const response = await axios.post(`${API_BASE}/client/auth/captcha`);
@@ -120,10 +124,19 @@ export class AuthService {
     name: string;
   }): Promise<AuthResponse> {
     const response = await axios.post(`${API_BASE}/client/auth/register`, data);
-    const { accessToken, refreshToken, user } = response.data.data;
+    const { accessToken, refreshToken } = response.data.data;
     localStorage.setItem('accessToken', accessToken);
     localStorage.setItem('refreshToken', refreshToken);
     return response.data.data;
+  }
+
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<void> {
+    await axios.post(`${API_BASE}/auth/change-password`, data, {
+      headers: this.getAuthHeaders(),
+    });
   }
 }
 

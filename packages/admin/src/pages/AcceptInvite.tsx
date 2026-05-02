@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -10,11 +11,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import api from '../services/api';
 
 const registerSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  name: z.string().min(2, 'acceptInvite.nameMinLength'),
+  password: z.string().min(6, 'acceptInvite.passwordMinLength'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: 'Passwords do not match',
+  message: 'acceptInvite.passwordsNotMatch',
   path: ['confirmPassword'],
 });
 
@@ -26,6 +27,7 @@ interface InvitationInfo {
 }
 
 const AcceptInvite: React.FC = () => {
+  const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
@@ -51,7 +53,6 @@ const AcceptInvite: React.FC = () => {
       }
 
       try {
-        // Try to get invitation info by checking if token is valid
         const response = await api.get('/admin/auth/invitations');
         const invitations = response.data.data || [];
         const invitation = invitations.find(
@@ -68,8 +69,6 @@ const AcceptInvite: React.FC = () => {
           setIsValidToken(false);
         }
       } catch (error) {
-        // If API call fails, still allow the form to show
-        // The actual validation happens on submit
         setIsValidToken(true);
       } finally {
         setIsLoading(false);
@@ -91,7 +90,7 @@ const AcceptInvite: React.FC = () => {
       });
       setRegisterSuccess(true);
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to accept invitation');
+      alert(error.response?.data?.message || t('acceptInvite.acceptFailed'));
     } finally {
       setIsRegistering(false);
     }
@@ -100,7 +99,7 @@ const AcceptInvite: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-500">Verifying invitation...</p>
+        <p className="text-gray-500">{t('acceptInvite.verifying')}</p>
       </div>
     );
   }
@@ -110,14 +109,14 @@ const AcceptInvite: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Invalid Invitation</CardTitle>
+            <CardTitle>{t('acceptInvite.invalidTitle')}</CardTitle>
             <CardDescription>
-              This invitation link is invalid or has expired.
+              {t('acceptInvite.invalidDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600">
-              Please contact your administrator for a new invitation.
+              {t('acceptInvite.contactAdmin')}
             </p>
           </CardContent>
         </Card>
@@ -130,17 +129,17 @@ const AcceptInvite: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <Card className="w-full max-w-md">
           <CardHeader>
-            <CardTitle>Invitation Accepted</CardTitle>
+            <CardTitle>{t('acceptInvite.successTitle')}</CardTitle>
             <CardDescription>
-              You have successfully joined the team.
+              {t('acceptInvite.successDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <p className="text-sm text-gray-600 mb-4">
-              You can now login with your credentials.
+              {t('acceptInvite.goToLogin')}
             </p>
             <Button onClick={() => (window.location.href = '/login')} className="w-full">
-              Go to Login
+              {t('acceptInvite.goToLogin')}
             </Button>
           </CardContent>
         </Card>
@@ -152,61 +151,61 @@ const AcceptInvite: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Accept Invitation</CardTitle>
+          <CardTitle>{t('acceptInvite.title')}</CardTitle>
           <CardDescription>
-            You've been invited to join the admin team
+            {t('acceptInvite.subtitle')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {invitationInfo && (
             <div className="mb-4 p-3 bg-gray-50 rounded">
               <p className="text-sm text-gray-600">
-                Invitation sent to: <strong>{invitationInfo.email}</strong>
+                {t('acceptInvite.invitationSentTo')}: <strong>{invitationInfo.email}</strong>
               </p>
               <p className="text-xs text-gray-400">
-                Expires: {new Date(invitationInfo.expiresAt).toLocaleDateString()}
+                {t('acceptInvite.expiresAt')}: {new Date(invitationInfo.expiresAt).toLocaleDateString()}
               </p>
             </div>
           )}
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
+              <Label htmlFor="name">{t('acceptInvite.nameLabel')}</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="John Doe"
+                placeholder={t('acceptInvite.namePlaceholder')}
                 {...register('name')}
               />
               {errors.name && (
-                <p className="text-sm text-red-500">{errors.name.message}</p>
+                <p className="text-sm text-red-500">{t('acceptInvite.nameMinLength')}</p>
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('acceptInvite.passwordLabel')}</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Create a password"
+                placeholder={t('acceptInvite.passwordPlaceholder')}
                 {...register('password')}
               />
               {errors.password && (
-                <p className="text-sm text-red-500">{errors.password.message}</p>
+                <p className="text-sm text-red-500">{t('acceptInvite.passwordMinLength')}</p>
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">{t('acceptInvite.confirmPasswordLabel')}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
-                placeholder="Confirm your password"
+                placeholder={t('acceptInvite.confirmPasswordPlaceholder')}
                 {...register('confirmPassword')}
               />
               {errors.confirmPassword && (
-                <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
+                <p className="text-sm text-red-500">{t('acceptInvite.passwordsNotMatch')}</p>
               )}
             </div>
             <Button type="submit" className="w-full" disabled={isRegistering}>
-              {isRegistering ? 'Accepting...' : 'Accept Invitation'}
+              {isRegistering ? t('acceptInvite.accepting') : t('acceptInvite.acceptInvite')}
             </Button>
           </form>
         </CardContent>

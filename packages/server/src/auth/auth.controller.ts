@@ -1,6 +1,6 @@
 import { Controller, Post, Body, UseGuards, Get, Request } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, RefreshTokenDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, RefreshTokenDto, ChangePasswordDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
@@ -46,11 +46,25 @@ export class AuthController {
 
   @Post('logout')
   @UseGuards(JwtAuthGuard)
-  async logout() {
-    // 需要获取当前用户
+  async logout(@Request() req: any) {
+    await this.authService.logout(req.user.id);
     return {
       success: true,
       data: null,
+    };
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@Request() req: any, @Body() dto: ChangePasswordDto) {
+    const result = await this.authService.changePassword(
+      req.user.id,
+      dto.currentPassword,
+      dto.newPassword
+    );
+    return {
+      success: true,
+      data: result,
     };
   }
 }

@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Brain, Key, Database, HelpCircle, User, ChevronLeft, ExternalLink, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, ChevronRight } from 'lucide-react';
+import { X, Settings, Brain, Key, Database, HelpCircle, User, ChevronLeft, Eye, EyeOff, Save, CheckCircle, XCircle, Loader2, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { GatewayRpcService } from '@/services/gateway-rpc';
 import { ApiKeyService } from '@/services/apikey-service';
 import { gatewayClient } from '@/lib/gateway-client';

@@ -11,3 +11,4 @@ export { useQuotaStore } from './quota';
 export { useExpertStore } from './experts';
 export { useTeamStore } from './team';
 export { useAuthStore } from './authStore';
+export { useMCPStore, type MCPServer, type MCPConnection } from './mcpStore';

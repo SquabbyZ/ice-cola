@@ -1,16 +1,38 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { EmailTemplateService } from './email-template.service';
+import { Resend } from 'resend';
 
 const TEAM_NAME = '加冰可乐团队';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
+  private resend: Resend | null = null;
 
-  /**
-   * Send registration verification code email
-   * Note: This is a stub implementation. In production, integrate with an email provider like Resend.
-   */
+  constructor(
+    private configService: ConfigService,
+    private emailTemplateService: EmailTemplateService,
+  ) {
+    const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
+    if (resendApiKey) {
+      this.resend = new Resend(resendApiKey);
+    }
+  }
+
   async sendVerificationCode(email: string, code: string): Promise<void> {
+    const rendered = await this.emailTemplateService.renderByKey('verification_code', { code });
+
+    if (!rendered) {
+      this.logger.warn('Verification code template not found, using fallback');
+      await this.sendFallbackEmail(email, code);
+      return;
+    }
+
+    await this.sendEmail(email, rendered.subject, rendered.body);
+  }
+
+  private async sendFallbackEmail(email: string, code: string): Promise<void> {
     const text = `
 您好，
 
@@ -20,22 +42,33 @@ export class EmailService {
 — ${TEAM_NAME}
 `.trim();
 
-    // In development, just log the email
     this.logger.log(`[DEV] Verification code email to ${email}:\n${text}`);
-
-    // In production, you would integrate with Resend or another email provider:
-    // const resend = new Resend(process.env.RESEND_API_KEY);
-    // await resend.emails.send({
-    //   from: 'noreply@example.com',
-    //   to: email,
-    //   subject: '注册验证码',
-    //   text,
-    // });
   }
 
-  /**
-   * Send team invitation email
-   */
+  private async sendEmail(to: string, subject: string, html: string): Promise<void> {
+    if (!this.resend) {
+      this.logger.warn('Resend client not configured, logging email instead');
+      this.logger.log(`[DEV] Email to ${to}:\nSubject: ${subject}\n${html}`);
+      return;
+    }
+
+    const fromEmail = this.configService.get<string>('RESEND_FROM_EMAIL') || 'onboarding@resend.dev';
+
+    try {
+      const res = await this.resend.emails.send({
+        from: fromEmail,
+        to: [to],
+        subject: subject,
+        html: html,
+      });
+
+      this.logger.log(`Resend email sent to ${to}, MessageId: ${res?.data?.id}`);
+    } catch (error) {
+      this.logger.error(`Failed to send email via Resend to ${to}:`, error);
+      throw error;
+    }
+  }
+
   async sendTeamInviteEmail(
     email: string,
     inviterName: string,

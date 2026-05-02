@@ -1,7 +1,7 @@
 import React from 'react';
 import { Clock, Plus, Play, CheckCircle2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+// import { Badge } from '@/components/ui/badge';
 
 const Tasks: React.FC = () => {
   return (

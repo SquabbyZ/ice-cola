@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -11,23 +12,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import api from '../services/api';
 
 const emailSchema = z.object({
-  email: z.string().email('请输入有效的邮箱地址'),
+  email: z.string().email('forgotPassword.invalidEmail'),
 });
 
 const codeSchema = z.object({
-  code: z.string().length(6, '验证码为6位数字'),
+  code: z.string().length(6, 'forgotPassword.codeLength'),
 });
 
 const passwordSchema = z.object({
   password: z.string()
-    .min(8, '密码至少8位')
+    .min(8, 'forgotPassword.passwordMinLength')
     .max(128)
-    .regex(/[A-Z]/, '密码必须包含大写字母')
-    .regex(/[a-z]/, '密码必须包含小写字母')
-    .regex(/[0-9]/, '密码必须包含数字'),
+    .regex(/[A-Z]/, 'forgotPassword.passwordUppercase')
+    .regex(/[a-z]/, 'forgotPassword.passwordLowercase')
+    .regex(/[0-9]/, 'forgotPassword.passwordNumber'),
   confirmPassword: z.string(),
 }).refine((data) => data.password === data.confirmPassword, {
-  message: '两次密码输入不一致',
+  message: 'forgotPassword.passwordsNotMatch',
   path: ['confirmPassword'],
 });
 
@@ -38,6 +39,7 @@ type PasswordForm = z.infer<typeof passwordSchema>;
 type Step = 'email' | 'captcha' | 'code' | 'password';
 
 const ForgotPassword: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('email');
   const [email, setEmail] = useState('');
@@ -88,7 +90,7 @@ const ForgotPassword: React.FC = () => {
         setStep('code');
       }
     } catch (error: any) {
-      const message = error.response?.data?.message || '验证失败，请重试';
+      const message = error.response?.data?.message || t('forgotPassword.verificationFailed');
       alert(message);
     } finally {
       setIsLoading(false);
@@ -105,7 +107,7 @@ const ForgotPassword: React.FC = () => {
       });
       setStep('password');
     } catch (error: any) {
-      const message = error.response?.data?.message || '验证码错误';
+      const message = error.response?.data?.message || t('forgotPassword.invalidCode');
       codeForm.setError('code', { message });
     } finally {
       setIsLoading(false);
@@ -120,10 +122,10 @@ const ForgotPassword: React.FC = () => {
         code: codeForm.getValues('code'),
         newPassword: data.password,
       });
-      alert('密码重置成功，请使用新密码登录');
+      alert(t('forgotPassword.resetSuccess'));
       navigate('/login');
     } catch (error: any) {
-      const message = error.response?.data?.message || '重置失败，请重试';
+      const message = error.response?.data?.message || t('forgotPassword.resetFailed');
       alert(message);
     } finally {
       setIsLoading(false);
@@ -134,103 +136,99 @@ const ForgotPassword: React.FC = () => {
     <div className="min-h-screen flex items-center justify-center bg-gray-100">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>找回密码</CardTitle>
+          <CardTitle>{t('forgotPassword.title')}</CardTitle>
           <CardDescription>
-            {step === 'email' && '请输入您的管理员邮箱'}
-            {step === 'captcha' && '请先完成图形验证'}
-            {step === 'code' && '请输入发送到邮箱的验证码'}
-            {step === 'password' && '请设置新密码'}
+            {step === 'email' && t('forgotPassword.stepEmail')}
+            {step === 'captcha' && t('forgotPassword.stepCaptcha')}
+            {step === 'code' && t('forgotPassword.stepCode')}
+            {step === 'password' && t('forgotPassword.stepPassword')}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {/* Email Step */}
           {step === 'email' && (
             <form onSubmit={emailForm.handleSubmit(handleEmailSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="email">邮箱</Label>
+                <Label htmlFor="email">{t('forgotPassword.emailLabel')}</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="admin@example.com"
+                  placeholder={t('forgotPassword.emailPlaceholder')}
                   {...emailForm.register('email')}
                 />
                 {emailForm.formState.errors.email && (
-                  <p className="text-sm text-red-500">{emailForm.formState.errors.email.message}</p>
+                  <p className="text-sm text-red-500">{t(emailForm.formState.errors.email.message as string)}</p>
                 )}
               </div>
-              <Button type="submit" className="w-full">发送验证码</Button>
+              <Button type="submit" className="w-full">{t('forgotPassword.sendCode')}</Button>
             </form>
           )}
 
-          {/* Code Step */}
           {step === 'code' && (
             <form onSubmit={codeForm.handleSubmit(handleCodeSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="code">验证码</Label>
+                <Label htmlFor="code">{t('forgotPassword.codeLabel')}</Label>
                 <Input
                   id="code"
                   type="text"
-                  placeholder="请输入6位验证码"
+                  placeholder={t('forgotPassword.codePlaceholder')}
                   maxLength={6}
                   {...codeForm.register('code')}
                 />
                 {codeForm.formState.errors.code && (
-                  <p className="text-sm text-red-500">{codeForm.formState.errors.code.message}</p>
+                  <p className="text-sm text-red-500">{t('forgotPassword.codeLength')}</p>
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? '验证中...' : '验证'}
+                {isLoading ? t('forgotPassword.verifying') : t('forgotPassword.verify')}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={loadCaptcha}>
-                重新获取验证码
+                {t('forgotPassword.resendCode')}
               </Button>
             </form>
           )}
 
-          {/* Password Step */}
           {step === 'password' && (
             <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">新密码</Label>
+                <Label htmlFor="password">{t('forgotPassword.newPassword')}</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="至少8位，包含大小写和数字"
+                  placeholder={t('forgotPassword.passwordPlaceholder')}
                   {...passwordForm.register('password')}
                 />
                 {passwordForm.formState.errors.password && (
-                  <p className="text-sm text-red-500">{passwordForm.formState.errors.password.message}</p>
+                  <p className="text-sm text-red-500">{t(passwordForm.formState.errors.password.message as string)}</p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">确认密码</Label>
+                <Label htmlFor="confirmPassword">{t('forgotPassword.confirmPassword')}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
-                  placeholder="再次输入新密码"
+                  placeholder={t('forgotPassword.confirmPasswordPlaceholder')}
                   {...passwordForm.register('confirmPassword')}
                 />
                 {passwordForm.formState.errors.confirmPassword && (
-                  <p className="text-sm text-red-500">{passwordForm.formState.errors.confirmPassword.message}</p>
+                  <p className="text-sm text-red-500">{t('forgotPassword.passwordsNotMatch')}</p>
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? '重置中...' : '重置密码'}
+                {isLoading ? t('forgotPassword.resetting') : t('forgotPassword.resetPassword')}
               </Button>
             </form>
           )}
         </CardContent>
       </Card>
 
-      {/* Captcha Dialog */}
       <Dialog open={showCaptchaDialog} onOpenChange={setShowCaptchaDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>图形验证</DialogTitle>
-            <DialogDescription>请依次点击以下汉字</DialogDescription>
+            <DialogTitle>{t('captcha.title')}</DialogTitle>
+            <DialogDescription>{t('captcha.instruction')}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4">
-            <img src={captchaImage} alt="验证码" className="rounded-md" />
+            <img src={captchaImage} alt={t('captcha.title')} className="rounded-md" />
             <CaptchaInput onVerify={handleCaptchaVerify} disabled={isLoading} />
           </div>
         </DialogContent>
@@ -239,11 +237,11 @@ const ForgotPassword: React.FC = () => {
   );
 };
 
-// Captcha input component for click-based verification
 const CaptchaInput: React.FC<{
   onVerify: (answer: string[]) => void;
   disabled: boolean;
 }> = ({ onVerify, disabled }) => {
+  const { t } = useTranslation();
   const [answer, setAnswer] = useState<string[]>([]);
   const chars = '天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏';
 
@@ -277,10 +275,10 @@ const CaptchaInput: React.FC<{
         ))}
       </div>
       <div className="text-center text-sm text-muted-foreground mb-2">
-        已选择: {answer.join(' ')} ({answer.length}/4)
+        {t('captcha.selected')}: {answer.join(' ')} ({answer.length}/4)
       </div>
       <Button type="button" variant="outline" className="w-full" onClick={handleReset}>
-        重置
+        {t('captcha.reset')}
       </Button>
     </div>
   );

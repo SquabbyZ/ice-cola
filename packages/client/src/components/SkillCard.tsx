@@ -23,12 +23,12 @@ export const SkillCard: React.FC<SkillCardProps> = ({
   skill,
   onInstall,
   onUninstall,
-  onEnable,
-  onDisable,
+// onEnable,
+// onDisable,
   onEdit,
   onDelete,
   onPublish,
-  onVersionHistory,
+// onVersionHistory,
   showActions = true,
 }) => {
 const [showMenu, setShowMenu] = useState(false);

@@ -166,6 +166,9 @@ export class GatewayGateway implements OnModuleInit {
         case 'experts.list':
           result = await this.gatewayService.listExperts(params);
           break;
+        case 'experts.get':
+          result = await this.gatewayService.getExpert(params);
+          break;
         case 'experts.create':
           result = await this.gatewayService.createExpert(params);
           break;
@@ -177,6 +180,18 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'experts.setActive':
           result = await this.gatewayService.setActiveExpert(params);
+          break;
+        case 'experts.categories':
+          result = await this.gatewayService.getExpertCategories(params);
+          break;
+        case 'experts.stats':
+          result = await this.gatewayService.getExpertStats(params);
+          break;
+        case 'experts.rate':
+          result = await this.gatewayService.rateExpert(params);
+          break;
+        case 'experts.recordUsage':
+          result = await this.gatewayService.recordExpertUsage(params);
           break;
         case 'extensions.list':
           result = await this.gatewayService.getAllExtensions();

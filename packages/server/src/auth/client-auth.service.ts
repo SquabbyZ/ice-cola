@@ -134,16 +134,10 @@ export class ClientAuthService {
     const clientIp = 'unknown';
     this.checkRateLimit(clientIp);
 
-    // Check if email is verified
+    // Check if email is verified (set by verifyCode)
     const verificationStatus = this.verifiedCache.get(dto.email);
     if (!verificationStatus?.verified) {
       throw new AppError('EMAIL_NOT_VERIFIED', '请先完成邮箱验证', 400);
-    }
-
-    // Re-verify the code from database (to ensure it's still valid)
-    const record = await this.db.findValidVerificationCode(dto.email, dto.code, 'register');
-    if (!record) {
-      throw new AppError('INVALID_CODE', '验证码错误或已过期', 400);
     }
 
     // Check if user already exists
@@ -165,7 +159,7 @@ export class ClientAuthService {
     const tokens = await this.generateTokens(user.id, null, 'MEMBER');
 
     // Clean up verification record
-    await this.db.markVerificationCodeAsVerified(record.id);
+    await this.db.markVerificationCodeAsVerified(verificationStatus.codeId);
     this.verifiedCache.delete(dto.email);
 
     this.logger.log(`User ${dto.email} registered successfully`);

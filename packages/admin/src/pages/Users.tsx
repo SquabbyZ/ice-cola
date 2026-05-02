@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Trash2, UserPlus } from 'lucide-react';
+import { Trash2, UserPlus, Settings2 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -27,7 +28,8 @@ import {
 import api from '../services/api';
 
 const inviteSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('users.invalidEmail'),
+  role: z.enum(['ADMIN', 'MEMBER']),
 });
 
 type InviteForm = z.infer<typeof inviteSchema>;
@@ -40,7 +42,8 @@ interface User {
   createdAt: string;
 }
 
-const InviteUserDialog: React.FC = () => {
+const InviteUserDialog: React.FC<{ onSuccess?: () => void }> = ({ onSuccess }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
@@ -51,21 +54,25 @@ const InviteUserDialog: React.FC = () => {
     formState: { errors },
   } = useForm<InviteForm>({
     resolver: zodResolver(inviteSchema),
+    defaultValues: {
+      role: 'MEMBER',
+    },
   });
 
   const onSubmit = async (data: InviteForm) => {
     setIsSubmitting(true);
     setSuccessMessage('');
     try {
-      await api.post('/admin/auth/invitations', { email: data.email });
-      setSuccessMessage('Invitation sent successfully!');
+      await api.post('/admin/auth/invitations', { email: data.email, role: data.role });
+      setSuccessMessage(t('users.invitationSent'));
       reset();
       setTimeout(() => {
         setOpen(false);
         setSuccessMessage('');
+        onSuccess?.();
       }, 1500);
     } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to send invitation';
+      const message = error.response?.data?.message || t('users.invitationSentFailed');
       alert(message);
     } finally {
       setIsSubmitting(false);
@@ -77,27 +84,41 @@ const InviteUserDialog: React.FC = () => {
       <DialogTrigger asChild>
         <Button>
           <UserPlus className="h-4 w-4 mr-2" />
-          Send Invitation
+          {t('users.sendInvitation')}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite New User</DialogTitle>
+          <DialogTitle>{t('users.inviteTitle')}</DialogTitle>
           <DialogDescription>
-            Send an invitation to a new admin user.
+            {t('users.inviteDesc')}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t('users.emailLabel')}</Label>
             <Input
               id="email"
               type="email"
-              placeholder="user@example.com"
+              placeholder={t('users.emailPlaceholder')}
               {...register('email')}
             />
             {errors.email && (
-              <p className="text-sm text-red-500">{errors.email.message}</p>
+              <p className="text-sm text-red-500">{t('users.invalidEmail')}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="role">{t('users.roleLabel')}</Label>
+            <select
+              id="role"
+              {...register('role')}
+              className="w-full px-3 py-2 border rounded-md bg-white"
+            >
+              <option value="ADMIN">{t('users.roleAdmin')}</option>
+              <option value="MEMBER">{t('users.roleMember')}</option>
+            </select>
+            {errors.role && (
+              <p className="text-sm text-red-500">{t('users.roleRequired')}</p>
             )}
           </div>
           {successMessage && (
@@ -105,10 +126,10 @@ const InviteUserDialog: React.FC = () => {
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
+              {t('users.cancel')}
             </Button>
             <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Sending...' : 'Send Invitation'}
+              {isSubmitting ? t('users.sending') : t('users.sendInvitationBtn')}
             </Button>
           </DialogFooter>
         </form>
@@ -117,7 +138,66 @@ const InviteUserDialog: React.FC = () => {
   );
 };
 
+const RoleChangeDialog: React.FC<{
+  user: User;
+  onSuccess?: () => void;
+}> = ({ user, onSuccess }) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleRoleChange = async (newRole: 'ADMIN' | 'MEMBER') => {
+    setIsSubmitting(true);
+    try {
+      await api.put(`/admin/auth/users/${user.id}/role`, { role: newRole });
+      setOpen(false);
+      onSuccess?.();
+    } catch (error: any) {
+      alert(error.response?.data?.message || t('users.roleChangeFailed'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <Settings2 className="h-4 w-4 text-gray-500" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('users.changeRoleTitle')}</DialogTitle>
+          <DialogDescription>
+            {t('users.changeRoleDesc', { name: user.name || user.email })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <Button
+            variant={user.role === 'ADMIN' ? 'default' : 'outline'}
+            className="w-full justify-start"
+            disabled={isSubmitting || user.role === 'ADMIN'}
+            onClick={() => handleRoleChange('ADMIN')}
+          >
+            {t('users.roleAdmin')}
+          </Button>
+          <Button
+            variant={user.role === 'MEMBER' ? 'default' : 'outline'}
+            className="w-full justify-start"
+            disabled={isSubmitting || user.role === 'MEMBER'}
+            onClick={() => handleRoleChange('MEMBER')}
+          >
+            {t('users.roleMember')}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 const Users: React.FC = () => {
+  const { t } = useTranslation();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -126,8 +206,9 @@ const Users: React.FC = () => {
     try {
       const response = await api.get('/admin/auth/users');
       setUsers(response.data.data || []);
-    } catch (error: any) {
-      setError(error.response?.data?.message || 'Failed to load users');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      setError(err.response?.data?.message || t('users.loadFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -135,21 +216,22 @@ const Users: React.FC = () => {
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [t]);
 
   const handleRemoveUser = async (userId: string, userRole: string) => {
     if (userRole === 'OWNER') {
-      alert('Cannot remove the owner.');
+      alert(t('users.cannotRemoveOwner'));
       return;
     }
-    if (!confirm('Are you sure you want to remove this user?')) {
+    if (!confirm(t('users.confirmRemove'))) {
       return;
     }
     try {
       await api.delete(`/admin/auth/users/${userId}`);
       fetchUsers();
-    } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to remove user');
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { message?: string } } };
+      alert(err.response?.data?.message || t('users.removeFailed'));
     }
   };
 
@@ -157,39 +239,39 @@ const Users: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Users</h2>
-          <p className="text-gray-600">Manage system users</p>
+          <h2 className="text-2xl font-bold text-gray-800">{t('users.title')}</h2>
+          <p className="text-gray-600">{t('users.subtitle')}</p>
         </div>
-        <InviteUserDialog />
+        <InviteUserDialog onSuccess={fetchUsers} />
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>All Users</CardTitle>
-          <CardDescription>A list of all admin users in the system</CardDescription>
+          <CardTitle>{t('users.allUsers')}</CardTitle>
+          <CardDescription>{t('users.allUsersDesc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-gray-500">Loading users...</p>
+            <p className="text-gray-500">{t('users.loading')}</p>
           ) : error ? (
             <p className="text-red-500">{error}</p>
           ) : users.length === 0 ? (
-            <p className="text-gray-500">No users found.</p>
+            <p className="text-gray-500">{t('users.noUsers')}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Created At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('users.name')}</TableHead>
+                  <TableHead>{t('users.email')}</TableHead>
+                  <TableHead>{t('users.role')}</TableHead>
+                  <TableHead>{t('users.createdAt')}</TableHead>
+                  <TableHead className="text-right">{t('users.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name}</TableCell>
+                    <TableCell className="font-medium">{user.name || '-'}</TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       <span
@@ -201,22 +283,29 @@ const Users: React.FC = () => {
                             : 'bg-gray-100 text-gray-800'
                         }`}
                       >
-                        {user.role}
+                        {user.role === 'OWNER' ? t('users.roleOwner') :
+                         user.role === 'ADMIN' ? t('users.roleAdmin') :
+                         t('users.roleMember')}
                       </span>
                     </TableCell>
                     <TableCell>
                       {new Date(user.createdAt).toLocaleDateString()}
                     </TableCell>
                     <TableCell className="text-right">
-                      {user.role !== 'OWNER' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleRemoveUser(user.id, user.role)}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      )}
+                      <div className="flex items-center justify-end gap-1">
+                        {user.role !== 'OWNER' && (
+                          <>
+                            <RoleChangeDialog user={user} onSuccess={fetchUsers} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveUser(user.id, user.role)}
+                            >
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

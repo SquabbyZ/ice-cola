@@ -51,6 +51,8 @@ services:
       - JWT_SECRET=icecola-prod-secret-change-this
       - JWT_EXPIRES_IN=7d
       - WS_PORT=3001
+      - RESEND_FROM_EMAIL=onboarding@resend.dev
+      - RESEND_API_KEY=re_3znDftrT_Q54JGBmWMnuL7Lhmi26sXjDB
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,3 +81,7 @@ services:
 volumes:
   hermes-data:
   postgres-data:
+
+networks:
+  default:
+    driver: bridge

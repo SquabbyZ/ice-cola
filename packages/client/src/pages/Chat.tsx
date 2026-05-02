@@ -3,20 +3,12 @@ import {
   Code,
   MessageSquare,
   FileText,
-  TrendingUp,
   BarChart3,
   Search,
-  FolderOpen,
   Presentation,
-  Palette,
-  Mail,
   AtSign,
   Paperclip,
-  Mic,
   Send,
-  ChevronDown,
-  Sparkles,
-  FolderPlus,
   Menu,
   X,
   Check
@@ -27,15 +19,14 @@ import { useExpertStore } from '@/stores/experts';
 import { useConversationStore } from '@/stores/conversations';
 import { useGateway } from '@/hooks/useGateway';
 import ChatMessageItem from '@/components/ChatMessageItem';
-import { ExpertSelector } from '@/components/ExpertSelector';
+// import { ExpertSelector } from '@/components/ExpertSelector';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { TimeoutManager } from '@/lib/timeout-manager';
 import { conversationService } from '@/services/conversation-service';
-
-type Mode = 'start' | 'code' | 'office' | 'task';
+
 
 const Chat: React.FC = () => {
-  const [activeMode, setActiveMode] = useState<Mode>('office');
+  // const [activeMode, setActiveMode] = useState<Mode>('office');
   const [message, setMessage] = useState('');
   const [editContent, setEditContent] = useState('');
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -51,7 +42,7 @@ const Chat: React.FC = () => {
   const { messages, addMessage, setMessages, setSending, isSending, sessionKey,
           editingMessageId, setEditingMessageId, deleteMessage,
           addToPendingQueue, removeFromPendingQueue, getPendingMessages, clearPendingQueue } = useChatStore();
-  const { prompts: experts, activeExpertId, setActiveExpert, loadPrompts } = useExpertStore();
+  const { loadPrompts } = useExpertStore();
   const {
     currentConversationId,
     setCurrentConversationId,
@@ -288,23 +279,23 @@ const Chat: React.FC = () => {
     };
   }, [on]);
 
-  const modes: { id: Mode; icon: React.FC<any>; label: string }[] = [
-    { id: 'start', icon: Sparkles, label: '开始' },
-    { id: 'code', icon: Code, label: '代码开发' },
-    { id: 'office', icon: MessageSquare, label: '日常办公' },
-    { id: 'task', icon: FolderOpen, label: '任务' },
-  ];
+//   const modes: { id: Mode; icon: React.FC<any>; label: string }[] = [
+//     { id: 'start', icon: Sparkles, label: '开始' },
+//     { id: 'code', icon: Code, label: '代码开发' },
+//     { id: 'office', icon: MessageSquare, label: '日常办公' },
+//     { id: 'task', icon: FolderOpen, label: '任务' },
+//   ];
 
-  const quickActions = [
-    { icon: FileText, label: '文档处理' },
-    { icon: TrendingUp, label: '金融服务' },
-    { icon: BarChart3, label: '数据分析及可视化' },
-    { icon: Search, label: '深度研究' },
-    { icon: FolderOpen, label: '产品管理' },
-    { icon: Presentation, label: '幻灯片' },
-    { icon: Palette, label: '设计' },
-    { icon: Mail, label: '邮件编辑' },
-  ];
+//   const quickActions = [
+//     { icon: FileText, label: '文档处理' },
+//     { icon: TrendingUp, label: '金融服务' },
+//     { icon: BarChart3, label: '数据分析及可视化' },
+//     { icon: Search, label: '深度研究' },
+//     { icon: FolderOpen, label: '产品管理' },
+//     { icon: Presentation, label: '幻灯片' },
+//     { icon: Palette, label: '设计' },
+//     { icon: Mail, label: '邮件编辑' },
+//   ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -656,7 +647,7 @@ const Chat: React.FC = () => {
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="max-w-4xl mx-auto px-8 py-6 space-y-6">
               {messages.map((msg) => {
-              const isDeleteConfirming = deleteConfirmId === msg.id;
+              // const isDeleteConfirming = deleteConfirmId === msg.id;
               return (
                 <ChatMessageItem
                   key={msg.id}

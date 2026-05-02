@@ -335,17 +335,82 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Expert methods
-  async listExperts(skip: number, take: number) {
-    return this.query(
-      `SELECT * FROM experts ORDER BY "createdAt" DESC LIMIT $1 OFFSET $2`,
-      [take, skip]
+  async createExpert(data: {
+    teamId?: string;
+    name: string;
+    description?: string;
+    systemPrompt?: string;
+    icon?: string;
+    color?: string;
+    category?: string;
+    isDefault?: boolean;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO experts (id, "teamId", name, description, "systemPrompt", icon, color, category, is_default, enabled, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), NOW())
+       RETURNING *`,
+      [
+        id,
+        data.teamId || null,
+        data.name,
+        data.description || null,
+        data.systemPrompt || null,
+        data.icon || null,
+        data.color || null,
+        data.category || null,
+        data.isDefault ?? false,
+      ]
     );
   }
 
-  async countExperts(): Promise<number> {
-    const result = await this.queryOne<{ count: string }>(
-      'SELECT COUNT(*) as count FROM experts'
-    );
+  async listExperts(teamId?: string, skip?: number, take?: number, category?: string) {
+    const offset = skip || 0;
+    const limit = take || 50;
+
+    let query = 'SELECT * FROM experts WHERE 1=1';
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (teamId) {
+      query += ` AND ("teamId" = $${paramIndex} OR "teamId" IS NULL)`;
+      params.push(teamId);
+      paramIndex++;
+    } else {
+      query += ` AND "teamId" IS NULL`;
+    }
+
+    if (category && category !== 'all') {
+      query += ` AND category = $${paramIndex}`;
+      params.push(category);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY is_default DESC, "createdAt" DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, offset);
+
+    return this.query(query, params);
+  }
+
+  async countExperts(teamId?: string, category?: string): Promise<number> {
+    let query = 'SELECT COUNT(*) as count FROM experts WHERE 1=1';
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (teamId) {
+      query += ` AND ("teamId" = $${paramIndex} OR "teamId" IS NULL)`;
+      params.push(teamId);
+      paramIndex++;
+    } else {
+      query += ` AND "teamId" IS NULL`;
+    }
+
+    if (category && category !== 'all') {
+      query += ` AND category = $${paramIndex}`;
+      params.push(category);
+    }
+
+    const result = await this.queryOne<{ count: string }>(query, params);
     return parseInt(result?.count || '0', 10);
   }
 
@@ -357,19 +422,184 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateExpert(id: string, updates: any) {
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
-    const setClause = fields.map((field, index) => `"${field}" = $${index + 2}`).join(', ');
-    
-    return this.queryOne(
-      `UPDATE experts SET ${setClause}, "updatedAt" = NOW() WHERE id = $1 RETURNING *`,
-      [id, ...values]
+    const allowedFields = ['name', 'description', 'systemPrompt', 'icon', 'color', 'category', 'enabled', 'is_default', 'call_count', 'rating'];
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (allowedFields.includes(key) && value !== undefined) {
+        // Convert camelCase to snake_case
+        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        fields.push(`"${snakeKey}" = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+
+    if (fields.length === 0) return this.findExpertById(id);
+
+    fields.push('"updatedAt" = NOW()');
+    values.push(id);
+
+    const rows = await this.query(
+      `UPDATE experts SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
     );
+    return rows[0];
   }
 
   async deleteExpert(id: string) {
     return this.queryOne(
       'DELETE FROM experts WHERE id = $1 RETURNING *',
+      [id]
+    );
+  }
+
+  async incrementExpertCallCount(id: string) {
+    return this.queryOne(
+      'UPDATE experts SET call_count = call_count + 1, "updatedAt" = NOW() WHERE id = $1 RETURNING *',
+      [id]
+    );
+  }
+
+  async updateExpertRating(id: string, rating: number) {
+    return this.queryOne(
+      'UPDATE experts SET rating = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *',
+      [rating, id]
+    );
+  }
+
+  async getExpertStats(id: string) {
+    const expert = await this.findExpertById(id);
+    if (!expert) return null;
+
+    return {
+      id: expert.id,
+      name: expert.name,
+      callCount: expert.call_count || 0,
+      rating: expert.rating || 0,
+      createdAt: expert.createdAt,
+    };
+  }
+
+  // Expert usage tracking
+  async createExpertUsage(data: {
+    expertId: string;
+    userId: string;
+    teamId?: string;
+    tokens?: number;
+    duration?: number;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO expert_usage (id, expert_id, user_id, team_id, tokens, duration, "createdAt")
+       VALUES ($1, $2, $3, $4, $5, $6, NOW())
+       RETURNING *`,
+      [id, data.expertId, data.userId, data.teamId || null, data.tokens || 0, data.duration || 0]
+    );
+  }
+
+  async getExpertUsageStats(expertId: string, period?: 'day' | 'week' | 'month') {
+    let startDate: Date;
+    const now = new Date();
+
+    switch (period) {
+      case 'day':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        break;
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+    }
+
+    const result = await this.queryOne<{ total_calls: string; total_tokens: string; avg_duration: string }>(
+      `SELECT COALESCE(COUNT(*), 0) as total_calls,
+              COALESCE(SUM(tokens), 0) as total_tokens,
+              COALESCE(AVG(duration), 0) as avg_duration
+       FROM expert_usage
+       WHERE expert_id = $1 AND "createdAt" >= $2`,
+      [expertId, startDate.toISOString()]
+    );
+
+    return {
+      totalCalls: parseInt(result?.total_calls || '0', 10),
+      totalTokens: parseInt(result?.total_tokens || '0', 10),
+      avgDuration: parseFloat(result?.avg_duration || '0'),
+    };
+  }
+
+  // Expert categories methods
+  async createExpertCategory(data: {
+    name: string;
+    description?: string;
+    icon?: string;
+    color?: string;
+    sortOrder?: number;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO expert_categories (id, name, description, icon, color, sort_order, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       RETURNING *`,
+      [id, data.name, data.description || null, data.icon || null, data.color || null, data.sortOrder || 0]
+    );
+  }
+
+  async listExpertCategories() {
+    return this.query(
+      'SELECT * FROM expert_categories ORDER BY sort_order ASC, name ASC'
+    );
+  }
+
+  async findExpertCategoryById(id: string) {
+    return this.queryOne(
+      'SELECT * FROM expert_categories WHERE id = $1',
+      [id]
+    );
+  }
+
+  async findExpertCategoryByName(name: string) {
+    return this.queryOne(
+      'SELECT * FROM expert_categories WHERE name = $1',
+      [name]
+    );
+  }
+
+  async updateExpertCategory(id: string, updates: any) {
+    const allowedFields = ['name', 'description', 'icon', 'color', 'sort_order'];
+    const fields: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (allowedFields.includes(key) && value !== undefined) {
+        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        fields.push(`"${snakeKey}" = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+
+    if (fields.length === 0) return this.findExpertCategoryById(id);
+
+    fields.push('"updatedAt" = NOW()');
+    values.push(id);
+
+    const rows = await this.query(
+      `UPDATE expert_categories SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+    return rows[0];
+  }
+
+  async deleteExpertCategory(id: string) {
+    return this.queryOne(
+      'DELETE FROM expert_categories WHERE id = $1 RETURNING *',
       [id]
     );
   }
@@ -625,6 +855,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.queryOne(
       'DELETE FROM team_invitations WHERE token = $1 RETURNING *',
       [token]
+    );
+  }
+
+  async updateUserPassword(userId: string, passwordHash: string) {
+    return this.queryOne(
+      `UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
+      [passwordHash, userId]
     );
   }
 

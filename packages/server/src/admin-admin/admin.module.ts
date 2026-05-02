@@ -5,6 +5,8 @@ import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
+import { EmailTemplateController } from './email-template.controller';
+import { EmailTemplateService } from '../commons/email-template.service';
 import { CaptchaService } from '../commons/captcha.service';
 
 @Module({
@@ -20,8 +22,8 @@ import { CaptchaService } from '../commons/captcha.service';
       inject: [NestConfigService],
     }),
   ],
-  controllers: [AdminController, ConfigController],
-  providers: [AdminService, ConfigService, CaptchaService],
-  exports: [AdminService, ConfigService],
+  controllers: [AdminController, ConfigController, EmailTemplateController],
+  providers: [AdminService, ConfigService, EmailTemplateService, CaptchaService],
+  exports: [AdminService, ConfigService, EmailTemplateService],
 })
 export class AdminModule {}

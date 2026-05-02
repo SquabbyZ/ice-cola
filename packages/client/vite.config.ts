@@ -28,6 +28,10 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      '/client': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
   envPrefix: ['VITE_', 'TAURI_'],

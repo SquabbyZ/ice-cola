@@ -13,6 +13,7 @@ import { ToolsModule } from './tools/tools.module';
 import { SkillsModule } from './skills/skills.module';
 import { WorkordersModule } from './workorders/workorders.module';
 import { TeamsModule } from './teams/teams.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { TeamsModule } from './teams/teams.module';
     SkillsModule,
     WorkordersModule,
     TeamsModule,
+    McpModule,
   ],
 })
 export class AppModule {}

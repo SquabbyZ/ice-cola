@@ -20,7 +20,7 @@ interface ConversationState {
   renameConversation: (teamId: string, conversationId: string, title: string) => Promise<void>;
 }
 
-export const useConversationStore = create<ConversationState>((set, get) => ({
+export const useConversationStore = create<ConversationState>((set) => ({
   conversations: [],
   currentConversationId: null,
   isLoading: false,

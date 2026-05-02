@@ -2,17 +2,20 @@ import * as React from "react"
 import { cn } from "@/lib/utils"
 
 interface SliderProps {
-  value?: number[]
-  onValueChange?: (value: number[]) => void
-  min?: number
-  max?: number
-  step?: number
-  className?: string
+  value?: number[];
+  defaultValue?: number[];
+  onValueChange?: (value: number[]) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  className?: string;
 }
 
 const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
-  ({ className, value = [0], onValueChange, min = 0, max = 100, step = 1 }, ref) => {
-    const percentage = ((value[0] - min) / (max - min)) * 100;
+  ({ className, value, defaultValue = [0], onValueChange, min = 0, max = 100, step = 1 }, ref) => {
+    const [internalValue] = React.useState(defaultValue);
+    const currentValue = value ?? internalValue;
+    const percentage = ((currentValue[0] - min) / (max - min)) * 100;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       const newValue = parseFloat(e.target.value);
@@ -38,7 +41,7 @@ const Slider = React.forwardRef<HTMLDivElement, SliderProps>(
           min={min}
           max={max}
           step={step}
-          value={value[0]}
+          value={currentValue[0]}
           onChange={handleChange}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
         />

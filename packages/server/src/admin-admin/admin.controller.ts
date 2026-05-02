@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UseGuards, Get, Delete, Param, Query } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Delete, Param, Query, Put, Request } from '@nestjs/common';
 import { AdminService } from './admin.service';
 import {
   LoginDto,
@@ -161,6 +161,57 @@ export class AdminController {
       success: true,
       data: null,
       message: '用户已删除',
+    };
+  }
+
+  // ========== Dashboard Stats ==========
+
+  @Get('stats')
+  @UseGuards(JwtAuthGuard)
+  async getStats() {
+    const stats = await this.adminService.getStats();
+    return {
+      success: true,
+      data: stats,
+    };
+  }
+
+  // ========== Update User Role ==========
+
+  @Put('users/:id/role')
+  @UseGuards(JwtAuthGuard)
+  async updateUserRole(@Param('id') id: string, @Body() body: { role: string }) {
+    const result = await this.adminService.updateUserRole(id, body.role);
+    return {
+      success: true,
+      data: result,
+      message: '角色已更新',
+    };
+  }
+
+  // ========== Profile & Password ==========
+
+  @Put('profile')
+  @UseGuards(JwtAuthGuard)
+  async updateProfile(@Body() body: { name: string }, @Request() req: any) {
+    const userId = req.user.sub;
+    const result = await this.adminService.updateProfile(userId, body.name);
+    return {
+      success: true,
+      data: result,
+      message: '个人资料已更新',
+    };
+  }
+
+  @Put('change-password')
+  @UseGuards(JwtAuthGuard)
+  async changePassword(@Body() body: { currentPassword: string; newPassword: string }, @Request() req: any) {
+    const userId = req.user.sub;
+    await this.adminService.changePassword(userId, body.currentPassword, body.newPassword);
+    return {
+      success: true,
+      data: null,
+      message: '密码已修改',
     };
   }
 }

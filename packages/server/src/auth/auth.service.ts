@@ -129,6 +129,25 @@ export class AuthService {
     return { success: true };
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.db.findUserById(userId) as UserRow | null;
+
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isPasswordValid) {
+      throw new AppError('AUTH_INVALID_PASSWORD', '当前密码错误', 400);
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await this.db.updateUserPassword(userId, newPasswordHash);
+
+    return { success: true, message: '密码修改成功' };
+  }
+
   async getCurrentUser(userId: string) {
     const user = await this.db.findUserById(userId);
     if (!user) {

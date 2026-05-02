@@ -120,11 +120,40 @@ CREATE TABLE IF NOT EXISTS experts (
     "systemPrompt" TEXT,
     icon VARCHAR(50),
     color VARCHAR(20),
+    category VARCHAR(100),
+    rating DECIMAL(3, 2) DEFAULT 0.00,
+    is_default BOOLEAN DEFAULT false,
     call_count INTEGER DEFAULT 0,
     enabled BOOLEAN DEFAULT true,
     "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_expert_team FOREIGN KEY ("teamId") REFERENCES teams(id) ON DELETE SET NULL
+);
+
+-- Create expert_usage table for tracking expert usage statistics
+CREATE TABLE IF NOT EXISTS expert_usage (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    expert_id VARCHAR(36) NOT NULL,
+    user_id VARCHAR(36),
+    team_id VARCHAR(36),
+    tokens INTEGER DEFAULT 0,
+    duration INTEGER DEFAULT 0,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_expert_usage_expert FOREIGN KEY (expert_id) REFERENCES experts(id) ON DELETE CASCADE,
+    CONSTRAINT fk_expert_usage_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+    CONSTRAINT fk_expert_usage_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
+);
+
+-- Create expert_categories table for marketplace categorization
+CREATE TABLE IF NOT EXISTS expert_categories (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    icon VARCHAR(50),
+    color VARCHAR(20),
+    sort_order INTEGER DEFAULT 0,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create task_plans table for Hermes Core task planning
@@ -173,6 +202,46 @@ CREATE TABLE IF NOT EXISTS user_extensions (
     CONSTRAINT fk_user_extension_extension FOREIGN KEY ("extensionId") REFERENCES extensions(id) ON DELETE CASCADE,
     CONSTRAINT fk_user_extension_user FOREIGN KEY ("userId") REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT unique_user_extension UNIQUE ("extensionId", "userId")
+);
+
+-- Create mcp_servers table for MCP marketplace
+CREATE TABLE IF NOT EXISTS mcp_servers (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
+    author VARCHAR(255),
+    category VARCHAR(100) NOT NULL,
+    icon VARCHAR(500),
+    color VARCHAR(20),
+    tags TEXT[],
+    homepage TEXT,
+    repository TEXT,
+    enabled BOOLEAN DEFAULT true,
+    config_schema JSONB,
+    instructions TEXT,
+    ratings DECIMAL(3, 2) DEFAULT 0.00,
+    installs INTEGER DEFAULT 0,
+    team_id VARCHAR(36),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_mcp_server_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE SET NULL
+);
+
+-- Create user_mcp_connections table for tracking user MCP server connections
+CREATE TABLE IF NOT EXISTS user_mcp_connections (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    user_id VARCHAR(36) NOT NULL,
+    server_id VARCHAR(36) NOT NULL,
+    status VARCHAR(50) NOT NULL DEFAULT 'disconnected',
+    config JSONB,
+    connected_at TIMESTAMP,
+    disconnected_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_user_mcp_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_mcp_server FOREIGN KEY (server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE,
+    CONSTRAINT unique_user_mcp_connection UNIQUE (user_id, server_id)
 );
 
 -- Create skills table
@@ -245,7 +314,20 @@ CREATE INDEX IF NOT EXISTS idx_skills_status ON skills(status);
 CREATE INDEX IF NOT EXISTS idx_skills_category ON skills(category);
 CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON skill_versions(skill_id);
 CREATE INDEX IF NOT EXISTS idx_skill_reviews_skill ON skill_reviews(skill_id);
-<<<<<<< HEAD
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_category ON mcp_servers(category);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_team ON mcp_servers(team_id);
+CREATE INDEX IF NOT EXISTS idx_user_mcp_connections_user ON user_mcp_connections(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_mcp_connections_server ON user_mcp_connections(server_id);
+CREATE INDEX IF NOT EXISTS idx_experts_team ON experts("teamId");
+CREATE INDEX IF NOT EXISTS idx_experts_category ON experts(category);
+CREATE INDEX IF NOT EXISTS idx_experts_enabled ON experts(enabled);
+CREATE INDEX IF NOT EXISTS idx_experts_is_default ON experts(is_default);
+CREATE INDEX IF NOT EXISTS idx_expert_usage_expert ON expert_usage(expert_id);
+CREATE INDEX IF NOT EXISTS idx_expert_usage_user ON expert_usage(user_id);
+CREATE INDEX IF NOT EXISTS idx_expert_usage_team ON expert_usage(team_id);
+CREATE INDEX IF NOT EXISTS idx_expert_usage_created ON expert_usage("createdAt");
+CREATE INDEX IF NOT EXISTS idx_expert_categories_name ON expert_categories(name);
+
 -- Create workorders table for approval workflow
 CREATE TABLE IF NOT EXISTS workorders (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
@@ -301,18 +383,7 @@ CREATE TABLE IF NOT EXISTS client_verification_codes (
 CREATE INDEX IF NOT EXISTS idx_client_verification_codes_email ON client_verification_codes(email);
 CREATE INDEX IF NOT EXISTS idx_client_verification_codes_expires ON client_verification_codes(expires_at);
 
--- Create team_invitations table for team invitation workflow
-CREATE TABLE IF NOT EXISTS team_invitations (
-    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
-    team_id VARCHAR(36) NOT NULL,
-    email VARCHAR(255) NOT NULL,
-    invited_by VARCHAR(36) NOT NULL,
-    token VARCHAR(64) NOT NULL UNIQUE,
-    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
-    status VARCHAR(20) DEFAULT 'pending',
-=======
-
--- admin 用户表
+-- Create admin users table
 CREATE TABLE IF NOT EXISTS admin_users (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -324,7 +395,20 @@ CREATE TABLE IF NOT EXISTS admin_users (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- admin 邀请表
+-- Seed default admin owner account
+INSERT INTO admin_users (id, email, password, name, role, verified, "createdAt", "updatedAt")
+VALUES (
+    uuid_generate_v4()::text,
+    '601709253@qq.com',
+    '$2a$10$hqTi18RDqe.MgD3SL3bgYuZ.FhUX7ywty1CBmQe0TNoliLmhgc8EG',
+    'Owner',
+    'OWNER',
+    true,
+    CURRENT_TIMESTAMP,
+    CURRENT_TIMESTAMP
+) ON CONFLICT (email) DO NOTHING;
+
+-- Create admin invitations table
 CREATE TABLE IF NOT EXISTS admin_invitations (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     email VARCHAR(255) NOT NULL,
@@ -332,19 +416,30 @@ CREATE TABLE IF NOT EXISTS admin_invitations (
     token VARCHAR(64) NOT NULL UNIQUE,
     status VARCHAR(20) DEFAULT 'pending',
     invited_by VARCHAR(36) NOT NULL,
->>>>>>> feature/auth-verification
     expires_at TIMESTAMP NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-<<<<<<< HEAD
+-- Create team_invitations table for team invitation workflow
+CREATE TABLE IF NOT EXISTS team_invitations (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    team_id VARCHAR(36) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    invited_by VARCHAR(36) NOT NULL,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    status VARCHAR(20) DEFAULT 'pending',
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Create indexes for team_invitations
 CREATE INDEX IF NOT EXISTS idx_team_invitations_team ON team_invitations(team_id);
 CREATE INDEX IF NOT EXISTS idx_team_invitations_email ON team_invitations(email);
 CREATE INDEX IF NOT EXISTS idx_team_invitations_token ON team_invitations(token);
 CREATE INDEX IF NOT EXISTS idx_team_invitations_status ON team_invitations(status);
-=======
--- 系统配置表
+
+-- System configuration table
 CREATE TABLE IF NOT EXISTS system_config (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     key VARCHAR(100) UNIQUE NOT NULL,
@@ -352,14 +447,85 @@ CREATE TABLE IF NOT EXISTS system_config (
     "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 客户端验证码记录表
-CREATE TABLE IF NOT EXISTS client_verification_codes (
+-- Email templates table for configurable email content
+CREATE TABLE IF NOT EXISTS email_templates (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
-    email VARCHAR(255) NOT NULL,
-    code VARCHAR(6) NOT NULL,
-    type VARCHAR(20) DEFAULT 'register',
-    expires_at TIMESTAMP NOT NULL,
-    error_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    key VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    subject VARCHAR(500) NOT NULL,
+    body TEXT NOT NULL,
+    variables JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT true,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
->>>>>>> feature/auth-verification
+
+-- Insert default verification code template
+INSERT INTO email_templates (key, name, subject, body, variables, is_active)
+VALUES (
+    'verification_code',
+    '注册验证码',
+    '您的注册验证码',
+    '<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#f5f5f5;font-family:Microsoft YaHei,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f5;padding:40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.08);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);padding:40px 30px;text-align:center;">
+                            <h1 style="color:#ffffff;font-size:24px;font-weight:600;margin:0;">加冰可乐</h1>
+                            <p style="color:rgba(255,255,255,0.85);font-size:14px;margin:8px 0 0;">AI 办公助手</p>
+                        </td>
+                    </tr>
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding:40px 30px;">
+                            <h2 style="color:#333333;font-size:20px;font-weight:600;margin:0 0 20px;">您好</h2>
+                            <p style="color:#666666;font-size:15px;line-height:1.8;margin:0 0 30px;">
+                                您的注册验证码是：
+                            </p>
+                            <div style="background:#f8f9ff;border:2px dashed #667eea;border-radius:12px;padding:30px;text-align:center;margin:0 0 30px;">
+                                <span style="font-size:36px;font-weight:700;color:#667eea;letter-spacing:8px;">{{code}}</span>
+                            </div>
+                            <p style="color:#999999;font-size:13px;margin:0;">
+                                验证码 5 分钟内有效，请勿泄露给他人。
+                            </p>
+                        </td>
+                    </tr>
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background:#f8f9ff;padding:20px 30px;text-align:center;">
+                            <p style="color:#999999;font-size:12px;margin:0;">
+                                此邮件由系统自动发送，请勿回复。
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>',
+    '["code"]',
+    true
+) ON CONFLICT (key) DO NOTHING;
+
+-- Seed default MCP servers
+INSERT INTO mcp_servers (id, name, description, version, author, category, icon, color, tags, homepage, repository, config_schema, instructions, ratings, installs)
+VALUES
+    ('mcp-filesystem-001', '文件系统', '访问和管理本地文件系统，读取、写入文件和目录', '1.0.0', 'OpenClaw Team', 'tool', '📁', '#3B82F6', ARRAY['filesystem', 'file', 'storage'], 'https://github.com/openclaw/mcp-filesystem', 'https://github.com/openclaw/mcp-filesystem', '{"basePath": {"type": "string", "description": "允许访问的基础目录路径", "required": true, "default": "/"}}', '使用此服务器可以读取和写入本地文件系统。支持文件浏览、创建、编辑和删除操作。', 4.9, 34521),
+    ('mcp-github-001', 'GitHub', '与 GitHub API 集成，管理仓库、PR、Issues 和 Actions', '2.1.0', 'OpenClaw Team', 'development', '🐙', '#24292F', ARRAY['github', 'git', 'repository', 'pr', 'issues'], 'https://github.com/openclaw/mcp-github', 'https://github.com/openclaw/mcp-github', '{"token": {"type": "string", "description": "GitHub Personal Access Token", "required": true, "default": ""}}', '集成 GitHub API，可以查看仓库、创建和管理 PR、Issues，支持 GitHub Actions 状态查询。', 4.8, 28934),
+    ('mcp-sqlite-001', 'SQLite 数据库', '连接 SQLite 数据库，执行查询和管理数据', '1.2.0', 'Community', 'data', '🗄️', '#334155', ARRAY['database', 'sqlite', 'sql', 'data'], NULL, NULL, '{"dbPath": {"type": "string", "description": "SQLite 数据库文件路径", "required": true, "default": "./data.db"}}', '连接本地 SQLite 数据库，执行 SQL 查询和管理数据库结构。', 4.6, 15678),
+    ('mcp-slack-001', 'Slack', '与 Slack 工作区集成，发送消息和管理频道', '1.5.0', 'OpenClaw Team', 'communication', '💬', '#4A154B', ARRAY['slack', 'chat', 'team', 'message'], NULL, NULL, '{"botToken": {"type": "string", "description": "Slack Bot User OAuth Token", "required": true, "default": ""}, "defaultChannel": {"type": "string", "description": "默认发布消息的频道", "required": false, "default": "#general"}}', '连接 Slack 工作区，发送频道消息、创建线程和管理频道成员。', 4.7, 19876),
+    ('mcp-brave-search-001', 'Brave 搜索', '使用 Brave Search API 进行网络搜索', '1.0.0', 'Community', 'tool', '🔍', '#FB722F', ARRAY['search', 'web', 'brave', 'internet'], NULL, NULL, '{"apiKey": {"type": "string", "description": "Brave Search API Key", "required": true, "default": ""}}', '使用 Brave Search API 进行网络搜索，获取实时搜索结果。', 4.5, 12345),
+    ('mcp-sentry-001', 'Sentry 监控', '集成 Sentry 监控，获取错误报告和性能数据', '0.9.0', 'Community', 'development', '🐘', '#FF4757', ARRAY['sentry', 'monitoring', 'error', 'performance'], NULL, NULL, '{"dsn": {"type": "string", "description": "Sentry DSN URL", "required": true, "default": ""}}', '连接 Sentry 获取项目错误报告、性能监控数据和用户反馈。', 4.4, 8765),
+    ('mcp-postgres-001', 'PostgreSQL', '连接 PostgreSQL 数据库，执行高级查询和数据管理', '1.3.0', 'OpenClaw Team', 'data', '🐘', '#336791', ARRAY['database', 'postgresql', 'sql', 'data'], NULL, NULL, '{"host": {"type": "string", "description": "数据库主机地址", "required": true, "default": "localhost"}, "port": {"type": "string", "description": "数据库端口", "required": false, "default": "5432"}, "database": {"type": "string", "description": "数据库名称", "required": true, "default": "postgres"}, "username": {"type": "string", "description": "数据库用户名", "required": true, "default": "postgres"}, "password": {"type": "string", "description": "数据库密码", "required": true, "default": ""}}', '连接 PostgreSQL 数据库，支持复杂查询、事务处理和数据库管理。', 4.8, 21345),
+    ('mcp-fetch-001', 'HTTP 请求', '发送 HTTP 请求，访问外部 API 和网页内容', '1.1.0', 'OpenClaw Team', 'tool', '🌐', '#10B981', ARRAY['http', 'api', 'fetch', 'web', 'request'], NULL, NULL, '{"timeout": {"type": "string", "description": "请求超时时间（毫秒）", "required": false, "default": "30000"}, "userAgent": {"type": "string", "description": "User-Agent 头信息", "required": false, "default": "IceCola/1.0"}}', '发送 HTTP/HTTPS 请求，访问外部 API 和获取网页内容。支持 GET、POST、PUT、DELETE 等方法。', 4.9, 45678)
+ON CONFLICT (id) DO NOTHING;

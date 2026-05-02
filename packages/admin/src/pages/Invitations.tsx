@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowLeft } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -21,6 +22,7 @@ interface Invitation {
 }
 
 const Invitations: React.FC = () => {
+  const { t } = useTranslation();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -29,11 +31,10 @@ const Invitations: React.FC = () => {
   const fetchInvitations = async () => {
     try {
       const response = await api.get('/admin/auth/invitations');
-      // Filter to show only pending invitations
       const allInvitations = response.data.data || [];
       setInvitations(allInvitations.filter((inv: Invitation) => inv.status === 'PENDING'));
     } catch (error: any) {
-      setError(error.response?.data?.message || 'Failed to load invitations');
+      setError(error.response?.data?.message || t('invitations.loadFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -44,7 +45,7 @@ const Invitations: React.FC = () => {
   }, []);
 
   const handleRevokeInvitation = async (invitationId: string) => {
-    if (!confirm('Are you sure you want to revoke this invitation?')) {
+    if (!confirm(t('invitations.confirmRevoke'))) {
       return;
     }
     setRevokingId(invitationId);
@@ -52,7 +53,7 @@ const Invitations: React.FC = () => {
       await api.delete(`/admin/auth/invitations/${invitationId}`);
       fetchInvitations();
     } catch (error: any) {
-      alert(error.response?.data?.message || 'Failed to revoke invitation');
+      alert(error.response?.data?.message || t('invitations.revokeFailed'));
     } finally {
       setRevokingId(null);
     }
@@ -61,38 +62,38 @@ const Invitations: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-2xl font-bold text-gray-800">Invitations</h2>
-        <p className="text-gray-600">Manage team invitations</p>
+        <h2 className="text-2xl font-bold text-gray-800">{t('invitations.title')}</h2>
+        <p className="text-gray-600">{t('invitations.subtitle')}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Pending Invitations</CardTitle>
+          <CardTitle>{t('invitations.pendingInvitations')}</CardTitle>
           <CardDescription>
-            Invitations that are waiting to be accepted
+            {t('invitations.pendingDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-gray-500">Loading invitations...</p>
+            <p className="text-gray-500">{t('invitations.loading')}</p>
           ) : error ? (
             <p className="text-red-500">{error}</p>
           ) : invitations.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-gray-500">No pending invitations.</p>
+              <p className="text-gray-500">{t('invitations.noInvitations')}</p>
               <p className="text-sm text-gray-400 mt-1">
-                Go to Users page to send new invitations.
+                {t('invitations.goToUsers')}
               </p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Sent Date</TableHead>
-                  <TableHead>Expires At</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('invitations.email')}</TableHead>
+                  <TableHead>{t('invitations.status')}</TableHead>
+                  <TableHead>{t('invitations.sentDate')}</TableHead>
+                  <TableHead>{t('invitations.expiresAt')}</TableHead>
+                  <TableHead className="text-right">{t('invitations.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -118,7 +119,7 @@ const Invitations: React.FC = () => {
                         disabled={revokingId === invitation.id}
                       >
                         <ArrowLeft className="h-4 w-4 mr-1" />
-                        {revokingId === invitation.id ? 'Revoking...' : 'Revoke'}
+                        {revokingId === invitation.id ? t('invitations.revoking') : t('invitations.revoke')}
                       </Button>
                     </TableCell>
                   </TableRow>

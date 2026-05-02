@@ -577,23 +577,279 @@ export class GatewayService {
     };
   }
 
-  async listExperts(params: { teamId?: string; skip?: number; take?: number } = {}) {
+  async listExperts(params: { teamId?: string; skip?: number; take?: number; category?: string } = {}) {
     const skip = params.skip || 0;
     const take = params.take || 50;
 
-    const experts = await this.db.listExperts(skip, take);
-    const total = await this.db.countExperts();
+    const experts = await this.db.listExperts(params.teamId, skip, take, params.category);
+    const total = await this.db.countExperts(params.teamId, params.category);
 
     return {
       ok: true,
       experts: experts.map(e => ({
         id: e.id,
         name: e.name,
-        description: e.description,
-        calls: e.callCount || 0,
-        status: e.enabled ? 'active' : 'idle',
+        description: e.description || '',
+        systemPrompt: e.systemprompt || '',
+        icon: e.icon || '🤖',
+        color: e.color || '#3B82F6',
+        category: e.category || null,
+        isDefault: e.is_default || false,
+        enabled: e.enabled ?? true,
+        callCount: e.call_count || 0,
+        rating: e.rating || 0,
+        teamId: e.teamid || null,
+        createdAt: e.createdat,
+        updatedAt: e.updatedat,
       })),
       total,
+    };
+  }
+
+  async getExpert(params: { id: string }) {
+    const expert = await this.db.findExpertById(params.id);
+    if (!expert) {
+      throw new Error('Expert not found');
+    }
+
+    return {
+      ok: true,
+      expert: {
+        id: expert.id,
+        name: expert.name,
+        description: expert.description || '',
+        systemPrompt: expert.systemprompt || '',
+        icon: expert.icon || '🤖',
+        color: expert.color || '#3B82F6',
+        category: expert.category || null,
+        isDefault: expert.is_default || false,
+        enabled: expert.enabled ?? true,
+        callCount: expert.call_count || 0,
+        rating: expert.rating || 0,
+        teamId: expert.teamid || null,
+        createdAt: expert.createdat,
+        updatedAt: expert.updatedat,
+      },
+    };
+  }
+
+  async createExpert(params: {
+    name: string;
+    description?: string;
+    systemPrompt?: string;
+    icon?: string;
+    color?: string;
+    category?: string;
+    teamId?: string;
+    isDefault?: boolean;
+  }) {
+    if (!params.name) {
+      throw new Error('Expert name is required');
+    }
+
+    const expert = await this.db.createExpert({
+      teamId: params.teamId,
+      name: params.name,
+      description: params.description,
+      systemPrompt: params.systemPrompt,
+      icon: params.icon || '🤖',
+      color: params.color || '#3B82F6',
+      category: params.category,
+      isDefault: params.isDefault,
+    });
+
+    return {
+      ok: true,
+      expert: {
+        id: expert.id,
+        name: expert.name,
+        description: expert.description || '',
+        systemPrompt: expert.systemprompt || '',
+        icon: expert.icon || '🤖',
+        color: expert.color || '#3B82F6',
+        category: expert.category || null,
+        isDefault: expert.is_default || false,
+        enabled: expert.enabled ?? true,
+        callCount: expert.call_count || 0,
+        rating: expert.rating || 0,
+        teamId: expert.teamid || null,
+        createdAt: expert.createdat,
+        updatedAt: expert.updatedat,
+      },
+    };
+  }
+
+  async updateExpert(params: {
+    id: string;
+    name?: string;
+    description?: string;
+    systemPrompt?: string;
+    icon?: string;
+    color?: string;
+    category?: string;
+    enabled?: boolean;
+    isDefault?: boolean;
+    callCount?: number;
+    rating?: number;
+  }) {
+    const existing = await this.db.findExpertById(params.id);
+    if (!existing) {
+      throw new Error('Expert not found');
+    }
+
+    // Build updates object with only provided fields
+    const updates: any = {};
+    if (params.name !== undefined) updates.name = params.name;
+    if (params.description !== undefined) updates.description = params.description;
+    if (params.systemPrompt !== undefined) updates.systemPrompt = params.systemPrompt;
+    if (params.icon !== undefined) updates.icon = params.icon;
+    if (params.color !== undefined) updates.color = params.color;
+    if (params.category !== undefined) updates.category = params.category;
+    if (params.enabled !== undefined) updates.enabled = params.enabled;
+    if (params.isDefault !== undefined) updates.is_default = params.isDefault;
+    if (params.callCount !== undefined) updates.call_count = params.callCount;
+    if (params.rating !== undefined) updates.rating = params.rating;
+
+    const updated = await this.db.updateExpert(params.id, updates);
+
+    return {
+      ok: true,
+      expert: {
+        id: updated.id,
+        name: updated.name,
+        description: updated.description || '',
+        systemPrompt: updated.systemprompt || '',
+        icon: updated.icon || '🤖',
+        color: updated.color || '#3B82F6',
+        category: updated.category || null,
+        isDefault: updated.is_default || false,
+        enabled: updated.enabled ?? true,
+        callCount: updated.call_count || 0,
+        rating: updated.rating || 0,
+        teamId: updated.teamid || null,
+        createdAt: updated.createdat,
+        updatedAt: updated.updatedat,
+      },
+    };
+  }
+
+  async deleteExpert(params: { id: string }) {
+    const existing = await this.db.findExpertById(params.id);
+    if (!existing) {
+      throw new Error('Expert not found');
+    }
+
+    await this.db.deleteExpert(params.id);
+
+    return {
+      ok: true,
+      message: 'Expert deleted successfully',
+    };
+  }
+
+  async setActiveExpert(params: { id: string; userId?: string }) {
+    // This would typically update a user preference or session state
+    // For now, we just return success
+    const expert = await this.db.findExpertById(params.id);
+    if (!expert) {
+      throw new Error('Expert not found');
+    }
+
+    return {
+      ok: true,
+      activeExpert: {
+        id: expert.id,
+        name: expert.name,
+        systemPrompt: expert.systemprompt,
+      },
+    };
+  }
+
+  async recordExpertUsage(params: {
+    expertId: string;
+    userId: string;
+    teamId?: string;
+    tokens?: number;
+    duration?: number;
+  }) {
+    // Record the usage
+    await this.db.createExpertUsage({
+      expertId: params.expertId,
+      userId: params.userId,
+      teamId: params.teamId,
+      tokens: params.tokens,
+      duration: params.duration,
+    });
+
+    // Increment call count
+    await this.db.incrementExpertCallCount(params.expertId);
+
+    return {
+      ok: true,
+    };
+  }
+
+  async getExpertStats(params: { id: string }) {
+    const stats = await this.db.getExpertStats(params.id);
+    if (!stats) {
+      throw new Error('Expert not found');
+    }
+
+    const [dailyStats, weeklyStats, monthlyStats] = await Promise.all([
+      this.db.getExpertUsageStats(params.id, 'day'),
+      this.db.getExpertUsageStats(params.id, 'week'),
+      this.db.getExpertUsageStats(params.id, 'month'),
+    ]);
+
+    return {
+      ok: true,
+      stats: {
+        ...stats,
+        daily: dailyStats,
+        weekly: weeklyStats,
+        monthly: monthlyStats,
+      },
+    };
+  }
+
+  async getExpertCategories(params: { teamId?: string }) {
+    // Get distinct categories from experts
+    let query = 'SELECT DISTINCT category FROM experts WHERE category IS NOT NULL';
+    const paramsArray: any[] = [];
+
+    if (params.teamId) {
+      query += ' AND ("teamId" = $1 OR "teamId" IS NULL)';
+      paramsArray.push(params.teamId);
+    } else {
+      query += ' AND "teamId" IS NULL';
+    }
+
+    query += ' ORDER BY category';
+
+    const results = await this.db.query(query, paramsArray);
+
+    return {
+      ok: true,
+      categories: results.map(r => r.category),
+    };
+  }
+
+  async rateExpert(params: { id: string; rating: number }) {
+    if (params.rating < 1 || params.rating > 5) {
+      throw new Error('Rating must be between 1 and 5');
+    }
+
+    const expert = await this.db.updateExpertRating(params.id, params.rating);
+    if (!expert) {
+      throw new Error('Expert not found');
+    }
+
+    return {
+      ok: true,
+      expert: {
+        id: expert.id,
+        rating: expert.rating,
+      },
     };
   }
 
@@ -635,22 +891,6 @@ export class GatewayService {
   }
 
   // ===== Additional methods for compatibility =====
-  
-  async createExpert(params: any): Promise<any> {
-    throw new Error('Not implemented');
-  }
-
-  async updateExpert(params: any): Promise<any> {
-    throw new Error('Not implemented');
-  }
-
-  async deleteExpert(params: any): Promise<any> {
-    throw new Error('Not implemented');
-  }
-
-  async setActiveExpert(params: any): Promise<any> {
-    throw new Error('Not implemented');
-  }
 
   async getAllExtensions(): Promise<any> {
     return [];
