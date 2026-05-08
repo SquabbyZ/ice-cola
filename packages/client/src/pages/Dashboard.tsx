@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   FileText,
   BarChart3,
@@ -9,213 +9,325 @@ import {
   Calendar,
   ArrowUpRight,
   Sparkles,
-  MessageSquare,
   Puzzle,
+  Zap,
   Clock,
-  Zap
+  MessageSquare,
 } from 'lucide-react';
 import { useGateway } from '@/hooks/useGateway';
-import { useGatewayStore } from '@/stores/gateway';
 import { useUsageStore } from '@/stores/usage';
 import { useQuotaStore } from '@/stores/quota';
 import { useExpertStore } from '@/stores/experts';
 import { QuotaProgressBar } from '@/components/QuotaProgressBar';
 
 const Dashboard: React.FC = () => {
-  // 驱动 gateway 连接并同步状态到 useGatewayStore
+  const { t } = useTranslation();
   useGateway({ autoConnect: true });
 
-  const { isRunning, isConnected } = useGatewayStore();
   const { stats, refreshAllStats } = useUsageStore();
   const { loadConfig, refreshStatus } = useQuotaStore();
   const { prompts: experts, loadPrompts } = useExpertStore();
 
-  // 计算真实统计数据
-  const activeSessions = stats.month.requestCount;
-  const skillCount = experts.length;
+  const [isLoading, setIsLoading] = useState(true);
 
-  // 加载用量、配额和专家数据
+  const activeSessions = isLoading ? 0 : stats.month.requestCount;
+  const skillCount = isLoading ? 0 : experts.length;
+
   useEffect(() => {
-    refreshAllStats();
-    loadConfig();
-    refreshStatus();
-    loadPrompts();
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        await Promise.all([
+          refreshAllStats(),
+          loadConfig(),
+          refreshStatus(),
+          loadPrompts(),
+        ]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, []);
 
   const workspaceActions = [
-    { 
-      title: '文档处理', 
-      desc: '分析、总结并从复杂的 PDF 和文档中提取关键洞察。',
+    {
+      title: t('dashboard.workspace.docProcessing'),
+      desc: t('dashboard.workspace.docProcessingDesc'),
       icon: FileText,
-      action: '启动工具'
+      action: t('dashboard.workspace.launchTool'),
     },
-    { 
-      title: '数据分析', 
-      desc: '从原始电子表格数据生成图表和结构化报告。',
+    {
+      title: t('dashboard.workspace.dataAnalysis'),
+      desc: t('dashboard.workspace.dataAnalysisDesc'),
       icon: BarChart3,
-      action: '启动工具'
+      action: t('dashboard.workspace.launchTool'),
     },
-    { 
-      title: '邮件助手', 
-      desc: '自动起草专业回复并整理收件箱优先级。',
+    {
+      title: t('dashboard.workspace.emailAssistant'),
+      desc: t('dashboard.workspace.emailAssistantDesc'),
       icon: Mail,
-      action: '启动工具'
+      action: t('dashboard.workspace.launchTool'),
     },
-    { 
-      title: '日程管理', 
-      desc: '协调跨团队会议并解决时区冲突。',
+    {
+      title: t('dashboard.workspace.scheduleManagement'),
+      desc: t('dashboard.workspace.scheduleManagementDesc'),
       icon: Calendar,
-      action: '启动工具'
+      action: t('dashboard.workspace.launchTool'),
     },
   ];
 
   return (
-    <div className="flex-1 bg-gray-50">
-      <div className="p-4 md:p-6 lg:p-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Welcome Banner - 响应式 */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl md:rounded-2xl p-4 md:p-6 lg:p-8 mb-6 md:mb-8 border border-blue-100">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-4">
-                  <Badge variant="secondary" className="bg-white/80 text-xs gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    AI 助手 v1.0 已就绪
-                  </Badge>
-                </div>
-                <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold text-gray-900 mb-2 md:mb-3">
-                  释放创意
-                  <span className="text-primary">，成就现实</span>
-                </h1>
-                <p className="text-sm md:text-base text-muted-foreground max-w-xl mb-4 md:mb-6">
-                  随时随地触发，本地完成。你的认知工作区已优化，准备好迎接今天的深度工作。
-                </p>
-                <div className="flex flex-wrap gap-2 md:gap-3">
-                  <Button size="sm" className="gap-2">
-                    开始深度工作
-                  </Button>
-                  <Button variant="outline" size="sm" className="bg-white">
-                    查看教程
-                  </Button>
-                </div>
+    <div className="flex-1 bg-gradient-to-br from-zinc-50 via-zinc-50/80 to-zinc-100/50 overflow-y-auto">
+      <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
+        {/* Welcome Section - Bento Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8">
+          {/* Welcome Banner - Large Tile with refined design */}
+          <div className="lg:col-span-3 bento-tile p-5 lg:p-6 relative overflow-hidden animate-fade-in-up">
+            {/* Background with subtle gradient mesh */}
+            <div className="absolute inset-0 bg-gradient-to-br from-zinc-900/5 via-zinc-900/2 to-transparent" />
+            <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-mint/5 rounded-full blur-[60px] -translate-y-1/4 translate-x-1/4" />
+
+            <div className="relative flex flex-col h-full">
+              {/* Hero typography - single line title */}
+              <div className="mb-auto">
+                {isLoading ? (
+                  <>
+                    <Skeleton className="h-10 w-64 mb-2 rounded" />
+                    <Skeleton className="h-6 w-48 rounded" />
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-3xl lg:text-[2rem] font-bold tracking-tight leading-tight mb-2">
+                      <span className="text-zinc-900">{t('dashboard.welcomeTitle')}</span>
+                      <span className="text-gradient bg-gradient-to-r from-zinc-600 via-zinc-500 to-zinc-400 bg-clip-text">
+                        {t('dashboard.welcomeTitleGradient')}
+                      </span>
+                    </h1>
+
+                    <p className="text-sm text-zinc-500 leading-relaxed">
+                      {t('dashboard.welcomeSubtitle')}
+                    </p>
+                  </>
+                )}
               </div>
-              <div className="hidden lg:block flex-shrink-0">
-                <div className="w-48 h-48 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center shadow-lg">
-                  <div className="w-40 h-40 rounded-full bg-gradient-to-br from-blue-400 to-purple-600 flex items-center justify-center">
-                    <Sparkles className="w-20 h-20 text-white/80" />
+
+              {/* Action buttons - fixed at bottom */}
+              {isLoading ? (
+                <div className="flex items-center gap-3 mt-6">
+                  <Skeleton className="h-9 w-32 rounded-xl" />
+                  <Skeleton className="h-9 w-28 rounded-xl" />
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 mt-6">
+                  <Button className="btn-ice gap-2 h-9 px-4 text-sm shadow-lg shadow-zinc-900/10">
+                    <Zap className="w-3.5 h-3.5" />
+                    {t('dashboard.startDeepWork')}
+                  </Button>
+                  <Button variant="outline" className="h-9 px-4 text-sm bg-white/70 backdrop-blur-sm border-zinc-200/60 hover:bg-white/90 text-zinc-600">
+                    {t('dashboard.viewTutorial')}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Stats Overview Card - Right Tile */}
+          <div className="lg:col-span-2 bento-tile p-4 animate-fade-in-up relative overflow-hidden" style={{ animationDelay: '100ms' }}>
+            {/* Subtle background */}
+            <div className="absolute inset-0 bg-gradient-to-br from-zinc-100/60 via-zinc-50/40 to-transparent" />
+
+            <div className="relative">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">{t('dashboard.statistics')}</h3>
+                <Sparkles className="w-4 h-4 text-zinc-300" />
+              </div>
+
+              {/* Stats grid - icon as top-right watermark, more compact */}
+              <div className="grid grid-cols-2 gap-2">
+                {/* Stat 1: Active Sessions */}
+                <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-zinc-200/50 group hover:shadow-md hover:shadow-zinc-200/30 transition-all duration-300 cursor-pointer relative overflow-hidden">
+                  <div className="absolute top-1 right-1 w-8 h-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <MessageSquare className="w-full h-full text-blue-600" />
+                  </div>
+                  <div className="relative">
+                    {isLoading ? (
+                      <Skeleton className="h-7 w-12 rounded" />
+                    ) : (
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{activeSessions}</div>
+                    )}
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.todayConversations')}</div>
+                  </div>
+                </div>
+
+                {/* Stat 2: Skills */}
+                <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-zinc-200/50 group hover:shadow-md hover:shadow-zinc-200/30 transition-all duration-300 cursor-pointer relative overflow-hidden">
+                  <div className="absolute top-1 right-1 w-8 h-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Puzzle className="w-full h-full text-purple-600" />
+                  </div>
+                  <div className="relative">
+                    {isLoading ? (
+                      <Skeleton className="h-7 w-12 rounded" />
+                    ) : (
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{skillCount}</div>
+                    )}
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.totalSkills')}</div>
+                  </div>
+                </div>
+
+                {/* Stat 3: Experts */}
+                <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-zinc-200/50 group hover:shadow-md hover:shadow-zinc-200/30 transition-all duration-300 cursor-pointer relative overflow-hidden">
+                  <div className="absolute top-1 right-1 w-8 h-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Zap className="w-full h-full text-green-600" />
+                  </div>
+                  <div className="relative">
+                    {isLoading ? (
+                      <Skeleton className="h-7 w-12 rounded" />
+                    ) : (
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{0}</div>
+                    )}
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.activeExperts')}</div>
+                  </div>
+                </div>
+
+                {/* Stat 4: MCP */}
+                <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-zinc-200/50 group hover:shadow-md hover:shadow-zinc-200/30 transition-all duration-300 cursor-pointer relative overflow-hidden">
+                  <div className="absolute top-1 right-1 w-8 h-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Clock className="w-full h-full text-orange-600" />
+                  </div>
+                  <div className="relative">
+                    {isLoading ? (
+                      <Skeleton className="h-7 w-12 rounded" />
+                    ) : (
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{0}</div>
+                    )}
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.stats.mcpServices')}</div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Stats Cards - 响应式网格 */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-4 md:p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-                    <MessageSquare className="w-5 h-5 text-primary" />
-                  </div>
-                  <Badge variant="secondary" className="bg-green-100 text-green-700 text-xs">
-                    {isRunning && isConnected ? '在线' : '离线'}
-                  </Badge>
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">{activeSessions}</h3>
-                <p className="text-sm text-gray-500">活跃会话</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-4 md:p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
-                    <Puzzle className="w-5 h-5 text-purple-600" />
-                  </div>
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">{skillCount}</h3>
-                <p className="text-sm text-gray-500">Skill 数量</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-4 md:p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-green-600" />
-                  </div>
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">0</h3>
-                <p className="text-sm text-gray-500">MCP 服务</p>
-              </CardContent>
-            </Card>
-            
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-4 md:p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center">
-                    <Clock className="w-5 h-5 text-orange-600" />
-                  </div>
-                </div>
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900">0</h3>
-                <p className="text-sm text-gray-500">定时任务</p>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* 配额进度 */}
-          <div className="mb-6 md:mb-8">
+        {/* Quota Progress */}
+        <div className="mb-8 animate-fade-in-up" style={{ animationDelay: '600ms' }}>
+          {isLoading ? (
+            <div className="bento-tile p-6">
+              <div className="flex items-center justify-between mb-4">
+                <Skeleton className="h-5 w-24 rounded" />
+                <Skeleton className="h-5 w-16 rounded" />
+              </div>
+              <Skeleton className="h-4 w-full rounded" />
+              <div className="flex justify-between mt-2">
+                <Skeleton className="h-4 w-20 rounded" />
+                <Skeleton className="h-4 w-20 rounded" />
+              </div>
+            </div>
+          ) : (
             <QuotaProgressBar />
-          </div>
+          )}
+        </div>
 
-          {/* Workspace Actions - 响应式 */}
-          <div className="mb-6 md:mb-8">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 md:mb-6 gap-2">
-              <h2 className="text-xl font-semibold text-gray-900">工作区工具</h2>
-              <Button variant="ghost" size="sm" className="gap-1 text-primary">
-                全部工具
+        {/* Workspace Actions - Bento Grid */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-5">
+            {isLoading ? (
+              <Skeleton className="h-6 w-32 rounded" />
+            ) : (
+              <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">{t('dashboard.workspaceTools')}</h2>
+            )}
+            {isLoading ? (
+              <Skeleton className="h-8 w-20 rounded" />
+            ) : (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900">
+                {t('dashboard.allTools')}
                 <ArrowUpRight className="w-4 h-4" />
               </Button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              {workspaceActions.map((action, index) => (
-                <Card key={index} className="hover:shadow-lg transition-all cursor-pointer group bg-white border-gray-200">
-                  <CardContent className="p-4 md:p-6">
-                    <div className="mb-4">
-                      <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center mb-4">
-                        <action.icon className="w-5 h-5 text-primary" />
-                      </div>
-                      <h3 className="font-semibold text-gray-900 mb-2">{action.title}</h3>
-                      <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{action.desc}</p>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-primary uppercase tracking-wide">
-                        {action.action}
-                      </span>
-                      <ArrowUpRight className="w-4 h-4 text-gray-400 group-hover:text-primary transition-colors" />
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            )}
           </div>
 
-          {/* Recent Operations */}
-          <div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 md:mb-4 gap-2">
-              <h2 className="text-xl font-semibold text-gray-900">最近会话</h2>
-              <Button variant="ghost" size="sm" className="gap-1 text-primary">
-                查看全部
-              </Button>
-            </div>
-            <Card className="bg-white border-gray-200">
-              <CardContent className="p-6 text-center text-muted-foreground">
-                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                <p>暂无会话记录</p>
-                <p className="text-sm">开始对话以创建您的第一个会话</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {isLoading
+              ? Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className="bento-tile p-5 animate-fade-in-up" style={{ animationDelay: `${(index + 6) * 100}ms` }}>
+                    <div className="flex flex-col h-full">
+                      <Skeleton className="h-5 w-3/4 mb-2 rounded" />
+                      <Skeleton className="h-4 w-full mb-4 rounded" />
+                      <div className="flex items-center justify-between mt-auto pt-4 border-t border-zinc-100/50">
+                        <Skeleton className="h-4 w-16 rounded" />
+                        <Skeleton className="h-4 w-4 rounded" />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              : workspaceActions.map((action, index) => (
+                  <div
+                    key={action.title}
+                    className="bento-tile p-5 group cursor-pointer hover-lift animate-fade-in-up relative overflow-hidden"
+                    style={{ animationDelay: `${(index + 6) * 100}ms` }}
+                  >
+                    {/* Icon watermark in top-right */}
+                    <div className="absolute top-3 right-3 w-14 h-14 opacity-10 group-hover:opacity-25 group-hover:scale-125 transition-all duration-300">
+                      <action.icon className="w-full h-full text-blue-600" />
+                    </div>
+
+                    <div className="flex flex-col h-full relative">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-zinc-900 mb-2 group-hover:text-zinc-700 transition-colors">
+                          {action.title}
+                        </h3>
+                        <p className="text-sm text-zinc-500 leading-relaxed line-clamp-2">
+                          {action.desc}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-100/50">
+                        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider group-hover:text-zinc-600 transition-colors">
+                          {action.action}
+                        </span>
+                        <ArrowUpRight className="w-4 h-4 text-zinc-300 group-hover:text-zinc-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
           </div>
+        </div>
+
+        {/* Recent Operations */}
+        <div className="animate-fade-in-up" style={{ animationDelay: '800ms' }}>
+          <div className="flex items-center justify-between mb-5">
+            {isLoading ? (
+              <Skeleton className="h-6 w-28 rounded" />
+            ) : (
+              <h2 className="text-lg font-semibold text-zinc-900 tracking-tight">{t('dashboard.recentSessions')}</h2>
+            )}
+            {isLoading ? (
+              <Skeleton className="h-8 w-20 rounded" />
+            ) : (
+              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900">
+                {t('dashboard.viewAll')}
+              </Button>
+            )}
+          </div>
+
+          {isLoading ? (
+            <div className="bento-tile p-8">
+              <div className="flex flex-col items-center">
+                <Skeleton className="w-16 h-16 rounded-2xl mb-4" />
+                <Skeleton className="h-5 w-32 mb-2 rounded" />
+                <Skeleton className="h-4 w-48 rounded" />
+              </div>
+            </div>
+          ) : (
+            <div className="bento-tile p-8 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-zinc-100/80 flex items-center justify-center mx-auto mb-4">
+                <MessageSquare className="w-8 h-8 text-zinc-300" />
+              </div>
+              <p className="text-sm font-medium text-zinc-500 mb-1">{t('dashboard.noSessions')}</p>
+              <p className="text-xs text-zinc-400">{t('dashboard.startConversationHint')}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
