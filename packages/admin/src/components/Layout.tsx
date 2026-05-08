@@ -239,7 +239,7 @@ const Layout: React.FC = () => {
                       </motion.div>
                     </div>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent side="right" align="start" className="w-48">
+                  <DropdownMenuContent side="left" align="start" className="w-48">
                     <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
                       {t('ai.nav.title')}
                     </div>
@@ -354,7 +354,7 @@ const Layout: React.FC = () => {
                       <User className="h-[18px] w-[18px] text-primary-foreground" />
                     </div>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent side="right" align="center" className="w-48">
+                  <DropdownMenuContent side="left" align="end" className="w-48">
                     <div className="px-2 py-1.5">
                       <p className="text-sm font-medium truncate">{user?.name || 'Admin'}</p>
                       <p className="text-xs text-muted-foreground truncate">

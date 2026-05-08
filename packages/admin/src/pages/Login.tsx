@@ -74,7 +74,7 @@ const Login: React.FC = () => {
           interactive={true}
           parallax={true}
           parallaxStrength={0.15}
-          linesGradient={['#3b82f6', '#8b5cf6', '#ec4899', '#06b6d4']}
+          linesGradient={['#1e3a5f', '#4c1d95', '#831843', '#164e63']}
         />
       </div>
 

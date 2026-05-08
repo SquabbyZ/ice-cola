@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { Button } from '../components/ui/button';
 import { Spinner } from '../components/ui/spinner';
 import { Input } from '../components/ui/input';
+import { PasswordInput } from '../components/ui/password-input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import api from '../services/api';
@@ -183,9 +184,8 @@ const AcceptInvite: React.FC = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">{t('acceptInvite.passwordLabel')}</Label>
-              <Input
+              <PasswordInput
                 id="password"
-                type="password"
                 placeholder={t('acceptInvite.passwordPlaceholder')}
                 {...register('password')}
               />
@@ -195,9 +195,8 @@ const AcceptInvite: React.FC = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">{t('acceptInvite.confirmPasswordLabel')}</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 placeholder={t('acceptInvite.confirmPasswordPlaceholder')}
                 {...register('confirmPassword')}
               />

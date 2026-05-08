@@ -4,6 +4,7 @@ interface CaptchaVerifyProps {
   imageUrl: string;
   onVerify: (answer: string[]) => Promise<void>;
   onRefresh: () => Promise<void>;
+  onError?: (message: string) => void;
   disabled?: boolean;
 }
 
@@ -11,6 +12,7 @@ const CaptchaVerify: React.FC<CaptchaVerifyProps> = ({
   imageUrl,
   onVerify,
   onRefresh,
+  onError,
   disabled = false,
 }) => {
   const [selectedChars, setSelectedChars] = useState<string[]>([]);
@@ -46,7 +48,12 @@ const CaptchaVerify: React.FC<CaptchaVerifyProps> = ({
     try {
       await onVerify(answer);
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || '验证失败');
+      const errorMessage = err.response?.data?.message || err.message || '验证失败';
+      if (onError) {
+        onError(errorMessage);
+      } else {
+        setError(errorMessage);
+      }
       setSelectedChars([]);
     } finally {
       setIsVerifying(false);

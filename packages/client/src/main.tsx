@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { useAuthStore } from './stores/authStore';
+import './i18n';
 import './index.css';
 
 // Initialize auth on app start

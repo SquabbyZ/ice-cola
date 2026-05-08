@@ -27,9 +27,24 @@ export const DropdownMenu: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const DropdownMenuTrigger: React.FC<{
   children: React.ReactNode;
-}> = ({ children }) => {
+  asChild?: boolean;
+}> = ({ children, asChild }) => {
   const context = useContext(DropdownMenuContext);
   if (!context) throw new Error('DropdownMenuTrigger must be used within DropdownMenu');
+
+  if (asChild) {
+    return (
+      <div
+        onClick={(e) => {
+          e.stopPropagation();
+          context.setOpen(!context.open);
+        }}
+        className="cursor-pointer"
+      >
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div
@@ -47,8 +62,10 @@ export const DropdownMenuTrigger: React.FC<{
 export const DropdownMenuContent: React.FC<{
   children: React.ReactNode;
   align?: 'start' | 'end';
+  side?: 'top' | 'bottom' | 'left' | 'right';
+  sideOffset?: number;
   className?: string;
-}> = ({ children, align = 'end', className = '' }) => {
+}> = ({ children, align = 'end', side = 'bottom', sideOffset = 0, className = '' }) => {
   const context = useContext(DropdownMenuContext);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -56,12 +73,23 @@ export const DropdownMenuContent: React.FC<{
 
   if (!context.open) return null;
 
+  const positionStyle: React.CSSProperties = {};
+  if (align === 'start') {
+    positionStyle.left = sideOffset;
+  } else if (align === 'end') {
+    positionStyle.right = sideOffset;
+  }
+
+  if (side === 'top') {
+    positionStyle.bottom = '100%';
+  }
+
   return (
     <div
       ref={ref}
       onClick={(e) => e.stopPropagation()}
       className={`absolute z-50 mt-2 min-w-[8rem] overflow-hidden rounded-lg border bg-white shadow-lg ${className}`}
-      style={{ [align]: 0 }}
+      style={positionStyle}
     >
       {children}
     </div>

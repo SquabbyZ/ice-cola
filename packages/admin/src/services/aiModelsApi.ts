@@ -386,4 +386,12 @@ export const aiModelsApi = {
   // Test Connection
   testConnection: (providerId: string) =>
     api.post<{ success: boolean; data: { success: boolean; message: string } }>(`/admin/ai/providers/${providerId}/test-connection`),
+
+  // Usage Logs
+  getUsageLogs: (params?: { teamId?: string; limit?: number; offset?: number }) =>
+    api.get<{ success: boolean; data: UsageLog[]; meta?: { total: number } }>('/admin/ai/usage-logs', { params }),
+
+  // Usage Stats
+  getUsageStats: (params?: { teamId?: string; period?: 'day' | 'week' | 'month' }) =>
+    api.get<{ success: boolean; data: UsageStats }>('/admin/ai/usage-stats', { params }),
 };

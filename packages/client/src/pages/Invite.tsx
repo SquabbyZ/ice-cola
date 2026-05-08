@@ -2,9 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { teamService } from '@/services/team-service';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Users, Mail, CheckCircle, XCircle } from 'lucide-react';
+import { Loader2, Users, Mail, CheckCircle, XCircle, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface InvitationInfo {
@@ -71,10 +70,10 @@ const Invite: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50/50">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          <p className="text-gray-500">Verifying invitation...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-zinc-400" />
+          <p className="text-zinc-500">Verifying invitation...</p>
         </div>
       </div>
     );
@@ -82,133 +81,125 @@ const Invite: React.FC = () => {
 
   if (!token || isValidToken === false || !invitationInfo?.valid) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center">
-                <XCircle className="w-6 h-6 text-red-500" />
-              </div>
-              <div>
-                <CardTitle>Invalid Invitation</CardTitle>
-                <CardDescription>This invitation link is invalid or has expired.</CardDescription>
-              </div>
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50/50 p-4">
+        {/* Background decoration */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/4 -left-20 w-80 h-80 bg-zinc-200/20 rounded-full blur-3xl" />
+          <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-zinc-300/10 rounded-full blur-3xl" />
+        </div>
+
+        <div className="bento-tile p-8 w-full max-w-md relative z-10 animate-fade-in-up">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-2xl bg-red-100/50 flex items-center justify-center">
+              <XCircle className="w-7 h-7 text-red-500" />
             </div>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-gray-600 mb-4">
-              {invitationInfo?.message || 'Please contact your team administrator for a new invitation.'}
-            </p>
-            <Button variant="outline" onClick={() => navigate('/')} className="w-full">
-              Go to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
+            <div>
+              <h2 className="text-xl font-semibold text-zinc-900">Invalid Invitation</h2>
+              <p className="text-sm text-zinc-500">This invitation link is invalid or has expired.</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-zinc-600 mb-6">
+            {invitationInfo?.message || 'Please contact your team administrator for a new invitation.'}
+          </p>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate('/')}
+            className="w-full h-12 rounded-xl border-zinc-200/50 hover:bg-zinc-100"
+          >
+            Go to Dashboard
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Users className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <CardTitle>Team Invitation</CardTitle>
-              <CardDescription>You've been invited to join a team</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Invitation Info */}
-          <div className="p-4 bg-gray-50 rounded-lg space-y-3">
-            <div className="flex items-center gap-2">
-              <Users className="w-4 h-4 text-gray-400" />
-              <span className="text-sm text-gray-500">Team</span>
-              <span className="font-semibold ml-auto">{invitationInfo.teamName}</span>
-            </div>
-            {invitationInfo.inviterName && (
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-500">Invited by</span>
-                <span className="font-semibold ml-auto">{invitationInfo.inviterName}</span>
-              </div>
-            )}
-            {invitationInfo.email && (
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <span className="text-sm text-gray-500">To email</span>
-                <span className="font-semibold ml-auto">{invitationInfo.email}</span>
-              </div>
-            )}
-          </div>
+    <div className="min-h-screen flex items-center justify-center bg-zinc-50/50 p-4">
+      {/* Background decoration */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-zinc-200/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-zinc-300/10 rounded-full blur-3xl" />
+      </div>
 
-          {/* Actions based on auth state */}
-          {isAuthenticated ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 p-3 bg-green-50 rounded-lg">
-                <CheckCircle className="w-5 h-5 text-green-500" />
-                <span className="text-sm text-green-700">
-                  Logged in as {user?.email}
-                </span>
-              </div>
-              <Button
-                onClick={handleAcceptInvitation}
-                className="w-full"
-                disabled={isAccepting}
-              >
-                {isAccepting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Accepting...
-                  </>
-                ) : (
-                  'Accept Invitation'
-                )}
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="p-3 bg-amber-50 rounded-lg flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-amber-500" />
-                <span className="text-sm text-amber-700">
-                  Please log in first to accept this invitation
-                </span>
-              </div>
-              <Button
-                onClick={() => navigate('/login')}
-                className="w-full"
-              >
-                Log In to Accept
-              </Button>
+      <div className="bento-tile p-8 w-full max-w-md relative z-10 animate-fade-in-up">
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-14 h-14 rounded-2xl bg-zinc-100/80 flex items-center justify-center">
+            <Users className="w-7 h-7 text-zinc-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-zinc-900">Team Invitation</h2>
+            <p className="text-sm text-zinc-500">You've been invited to join a team</p>
+          </div>
+        </div>
+
+        {/* Invitation Info */}
+        <div className="p-5 bg-zinc-50/50 rounded-2xl space-y-4 mb-6">
+          <div className="flex items-center gap-3">
+            <Users className="w-4 h-4 text-zinc-400" />
+            <span className="text-sm text-zinc-500">Team</span>
+            <span className="font-semibold text-zinc-900 ml-auto">{invitationInfo.teamName}</span>
+          </div>
+          {invitationInfo.inviterName && (
+            <div className="flex items-center gap-3">
+              <Mail className="w-4 h-4 text-zinc-400" />
+              <span className="text-sm text-zinc-500">Invited by</span>
+              <span className="font-semibold text-zinc-900 ml-auto">{invitationInfo.inviterName}</span>
             </div>
           )}
-        </CardContent>
-      </Card>
+          {invitationInfo.email && (
+            <div className="flex items-center gap-3">
+              <Mail className="w-4 h-4 text-zinc-400" />
+              <span className="text-sm text-zinc-500">To email</span>
+              <span className="font-semibold text-zinc-900 ml-auto truncate max-w-[180px]">{invitationInfo.email}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Actions based on auth state */}
+        {isAuthenticated ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-4 bg-green-50/50 rounded-xl border border-green-100/50">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+              <span className="text-sm text-green-700">
+                Logged in as {user?.email}
+              </span>
+            </div>
+            <Button
+              onClick={handleAcceptInvitation}
+              className="w-full btn-ice h-12 rounded-xl"
+              disabled={isAccepting}
+            >
+              {isAccepting ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Accepting...
+                </>
+              ) : (
+                'Accept Invitation'
+              )}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3 p-4 bg-amber-50/50 rounded-xl border border-amber-100/50">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <span className="text-sm text-amber-700">
+                Please log in first to accept this invitation
+              </span>
+            </div>
+            <Button
+              onClick={() => navigate('/login')}
+              className="w-full btn-ice h-12 rounded-xl"
+            >
+              Log In to Accept
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
-
-function AlertTriangle({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-    >
-      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-      <line x1="12" x2="12" y1="9" y2="13" />
-      <line x1="12" x2="12.01" y1="17" y2="17" />
-    </svg>
-  );
-}
 
 export default Invite;

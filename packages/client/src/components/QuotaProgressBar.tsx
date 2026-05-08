@@ -6,15 +6,14 @@
  */
 
 import { useState } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useTranslation } from 'react-i18next';
 import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
 import { useQuotaStore } from '@/stores/quota';
 import { useUsageStore } from '@/stores/usage';
 import { AlertCircle, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react';
 
 export function QuotaProgressBar() {
+  const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
   const { status, config } = useQuotaStore();
   const { stats } = useUsageStore();
@@ -23,183 +22,199 @@ export function QuotaProgressBar() {
   const currentCost = status?.currentCost ?? 0;
   const budget = status?.budget ?? config?.monthlyBudget ?? 200;
   const utilization = status?.utilization ?? 0;
-  const isWarning = status?.isWarning ?? false;
-  const isExceeded = status?.isExceeded ?? false;
 
   if (!config) {
     return (
-      <Card className="bg-white border-gray-200">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-primary" />
-            月度配额使用情况
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="animate-pulse space-y-2">
-            <div className="h-4 bg-gray-200 rounded w-full"></div>
-            <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+      <div className="bento-tile p-4 animate-fade-in-up">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
           </div>
-        </CardContent>
-      </Card>
+          <span className="text-sm font-medium text-zinc-500">{t('dashboard.stats.activeSessions')}</span>
+        </div>
+        <div className="animate-pulse space-y-2">
+          <div className="h-3 bg-zinc-200 rounded-full w-full"></div>
+          <div className="h-3 bg-zinc-200 rounded-full w-3/4"></div>
+        </div>
+      </div>
     );
   }
 
+  // 根据用量百分比获取颜色级别
+  // 0%: 绿色（正常）
+  // 1-49%: 绿色（正常）
+  // 50-84%: 黄色（警告）
+  // 85-99%: 红色（危险）
+  // 100%: 灰色（额度用完）
+  const getUtilizationLevel = () => {
+    if (utilization >= 1) return 'exhausted'; // 100% 额度用完
+    if (utilization >= 0.85) return 'danger'; // 85-99% 危险
+    if (utilization >= 0.50) return 'warning'; // 50-84% 警告
+    return 'normal'; // 0-49% 正常（含0%）
+  };
+
+  const level = getUtilizationLevel();
+
   const getColor = () => {
-    if (isExceeded) return 'bg-red-500';
-    if (isWarning) return 'bg-yellow-500';
-    return 'bg-green-500';
+    if (level === 'exhausted') return 'bg-zinc-400';
+    if (level === 'danger') return 'bg-red-500';
+    if (level === 'warning') return 'bg-yellow-500';
+    return 'bg-gradient-to-r from-green-500 to-emerald-500';
   };
 
   return (
-    <Card className="bg-white border-gray-200">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <TrendingUp className="w-5 h-5 text-primary" />
-            月度配额使用情况
-          </CardTitle>
-          <Button
-            variant="ghost"
-            size="sm"
+    <div className="bento-tile p-4 animate-fade-in-up relative overflow-hidden" style={{ animationDelay: '600ms' }}>
+      {/* Background gradient */}
+      <div className={`absolute inset-0 transition-opacity duration-500 ${
+        level === 'exhausted' ? 'bg-gradient-to-r from-zinc-500/5 to-zinc-600/5' :
+        level === 'danger' ? 'bg-gradient-to-r from-red-500/5 to-orange-500/5' :
+        level === 'warning' ? 'bg-gradient-to-r from-yellow-500/5 to-amber-500/5' :
+        'bg-gradient-to-r from-green-500/5 to-emerald-500/5'
+      }`} />
+
+      <div className="relative">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm ${
+              level === 'exhausted' ? 'bg-gradient-to-br from-zinc-500 to-zinc-600' :
+              level === 'danger' ? 'bg-gradient-to-br from-red-500 to-red-600' :
+              level === 'warning' ? 'bg-gradient-to-br from-yellow-500 to-amber-500' :
+              'bg-gradient-to-br from-green-500 to-emerald-500'
+            }`}>
+              <TrendingUp className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-900">{t('settings.quota')}</h3>
+              <p className="text-xs text-zinc-500">{t('settings.currentUsage')}</p>
+            </div>
+          </div>
+
+          <button
             onClick={() => setShowDetails(!showDetails)}
-            className="gap-1 text-gray-500 hover:text-gray-700"
+            className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
           >
             {showDetails ? (
               <>
-                收起详情
-                <ChevronUp className="w-4 h-4" />
+                {t('common.back')}
+                <ChevronUp className="w-3.5 h-3.5" />
               </>
             ) : (
               <>
-                查看详情
-                <ChevronDown className="w-4 h-4" />
+                {t('common.all')}
+                <ChevronDown className="w-3.5 h-3.5" />
               </>
             )}
-          </Button>
+          </button>
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
-          {/* 用量信息 */}
-          <div className="flex justify-between items-center text-sm">
-            <span className="text-gray-600">
-              ${currentCost.toFixed(2)} / ${budget.toFixed(2)}
-            </span>
-            <span className={`font-semibold ${
-              isExceeded ? 'text-red-600' :
-              isWarning ? 'text-yellow-600' :
-              'text-green-600'
-            }`}>
-              {(utilization * 100).toFixed(0)}%
+
+        {/* Usage info - single line */}
+        <div className="flex items-baseline justify-between mb-3">
+          <div className="flex items-baseline gap-1">
+            <span className="text-xl font-bold text-zinc-900 font-mono">${currentCost.toFixed(2)}</span>
+            <span className="text-xs text-zinc-400">/ ${budget.toFixed(2)}</span>
+          </div>
+          <span className={`text-sm font-semibold ${
+            level === 'exhausted' ? 'text-zinc-500' :
+            level === 'danger' ? 'text-red-600' :
+            level === 'warning' ? 'text-yellow-600' :
+            'text-green-600'
+          }`}>
+            {(utilization * 100).toFixed(0)}%
+          </span>
+        </div>
+
+        {/* Progress bar */}
+        <Progress
+          value={utilization * 100}
+          className={`h-2 ${getColor()}`}
+        />
+
+        {/* Warning/Danger alert - 当用量 >= 50% 时显示 */}
+        {(level === 'warning' || level === 'danger' || level === 'exhausted') && (
+          <div className={`mt-3 flex items-center gap-2 text-xs rounded-lg px-3 py-2 ${
+            level === 'exhausted' ? 'bg-zinc-100 text-zinc-500' :
+            level === 'danger' ? 'bg-red-50 text-red-600' : 'bg-yellow-50 text-yellow-600'
+          }`}>
+            <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+            <span>
+              {level === 'exhausted'
+                ? t('settings.hardLimitDesc')
+                : level === 'danger'
+                ? `${t('settings.dangerThreshold')}: ${(utilization * 100).toFixed(0)}%`
+                : `${t('settings.warningThreshold')}: ${(utilization * 100).toFixed(0)}%`}
             </span>
           </div>
+        )}
 
-          {/* 进度条 */}
-          <Progress
-            value={utilization * 100}
-            className={`h-3 ${getColor()}`}
-          />
-
-          {/* 警告信息 */}
-          {isWarning && (
-            <Alert variant="warning">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                用量已达到 {(utilization * 100).toFixed(0)}%，请注意控制使用
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* 超限信息 */}
-          {isExceeded && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                已超出预算上限 (${config.monthlyBudget.toFixed(2)})，{config.hardLimit ? '无法发送新请求' : '请谨慎使用'}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* 配置信息 */}
-          {!isWarning && !isExceeded && (
-            <div className="text-xs text-gray-500">
-              <p>预警阈值: {(config.warningThreshold * 100).toFixed(0)}%</p>
-              <p>{config.hardLimit ? '硬限制已启用' : '软限制模式'}</p>
-            </div>
-          )}
-
-          {/* 展开的详细用量 */}
-          {showDetails && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="grid grid-cols-3 gap-4">
-                {/* 今日 */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-2">今日</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">成本</span>
-                      <span className="font-medium">${stats.today.totalCost.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">Token</span>
-                      <span className="font-medium">
-                        {(stats.today.totalInputTokens + stats.today.totalOutputTokens).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">请求数</span>
-                      <span className="font-medium">{stats.today.requestCount}</span>
-                    </div>
-                  </div>
+        {/* Expanded details */}
+        {showDetails && (
+          <div className="mt-4 pt-4 border-t border-zinc-200/50 grid grid-cols-3 gap-3">
+            {/* Today */}
+            <div className="bg-zinc-50/80 rounded-lg p-3">
+              <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-2">{t('settings.todayLabel')}</div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.cost')}</span>
+                  <span className="text-sm font-bold text-zinc-900 font-mono">${stats.today.totalCost.toFixed(2)}</span>
                 </div>
-
-                {/* 本周 */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-2">本周</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">成本</span>
-                      <span className="font-medium">${stats.week.totalCost.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">Token</span>
-                      <span className="font-medium">
-                        {(stats.week.totalInputTokens + stats.week.totalOutputTokens).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">请求数</span>
-                      <span className="font-medium">{stats.week.requestCount}</span>
-                    </div>
-                  </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.tokens')}</span>
+                  <span className="text-xs font-medium text-zinc-700">
+                    {(stats.today.totalInputTokens + stats.today.totalOutputTokens).toLocaleString()}
+                  </span>
                 </div>
-
-                {/* 本月 */}
-                <div className="bg-gray-50 rounded-lg p-3">
-                  <div className="text-xs text-gray-500 mb-2">本月</div>
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">成本</span>
-                      <span className="font-medium">${stats.month.totalCost.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">Token</span>
-                      <span className="font-medium">
-                        {(stats.month.totalInputTokens + stats.month.totalOutputTokens).toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs">
-                      <span className="text-gray-600">请求数</span>
-                      <span className="font-medium">{stats.month.requestCount}</span>
-                    </div>
-                  </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.requests')}</span>
+                  <span className="text-xs font-medium text-zinc-700">{stats.today.requestCount}</span>
                 </div>
               </div>
             </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+
+            {/* This week */}
+            <div className="bg-zinc-50/80 rounded-lg p-3">
+              <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-2">{t('settings.weekLabel')}</div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.cost')}</span>
+                  <span className="text-sm font-bold text-zinc-900 font-mono">${stats.week.totalCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.tokens')}</span>
+                  <span className="text-xs font-medium text-zinc-700">
+                    {(stats.week.totalInputTokens + stats.week.totalOutputTokens).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.requests')}</span>
+                  <span className="text-xs font-medium text-zinc-700">{stats.week.requestCount}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* This month */}
+            <div className="bg-zinc-50/80 rounded-lg p-3">
+              <div className="text-[10px] font-medium text-zinc-400 uppercase tracking-wider mb-2">{t('settings.monthLabel')}</div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.cost')}</span>
+                  <span className="text-sm font-bold text-zinc-900 font-mono">${stats.month.totalCost.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.tokens')}</span>
+                  <span className="text-xs font-medium text-zinc-700">
+                    {(stats.month.totalInputTokens + stats.month.totalOutputTokens).toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-zinc-500">{t('settings.requests')}</span>
+                  <span className="text-xs font-medium text-zinc-700">{stats.month.requestCount}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
