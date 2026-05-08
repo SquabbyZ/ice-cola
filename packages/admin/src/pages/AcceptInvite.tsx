@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Button } from '../components/ui/button';
+import { Spinner } from '../components/ui/spinner';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -99,7 +100,7 @@ const AcceptInvite: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <p className="text-gray-500">{t('acceptInvite.verifying')}</p>
+        <Spinner className="size-8" />
       </div>
     );
   }
@@ -205,6 +206,7 @@ const AcceptInvite: React.FC = () => {
               )}
             </div>
             <Button type="submit" className="w-full" disabled={isRegistering}>
+              {isRegistering && <Spinner className="mr-2" />}
               {isRegistering ? t('acceptInvite.accepting') : t('acceptInvite.acceptInvite')}
             </Button>
           </form>

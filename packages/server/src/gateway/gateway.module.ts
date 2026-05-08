@@ -5,11 +5,15 @@ import { HttpModule } from '@nestjs/axios';
 import { GatewayGateway } from './gateway.gateway';
 import { GatewayService } from './gateway.service';
 import { DatabaseModule } from '../database/database.module';
+import { AiModelsModule } from '../ai-models/ai-models.module';
 
 @Module({
   imports: [
     DatabaseModule,
-    HttpModule,
+    HttpModule.register({
+      proxy: false,
+    }),
+    AiModelsModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

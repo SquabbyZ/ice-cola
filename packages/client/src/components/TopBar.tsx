@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Activity, Settings, Bell, User, LogOut, ChevronDown, UserCircle } from 'lucide-react';
+import { Settings, Bell, LogOut, ChevronDown, UserCircle, Zap } from 'lucide-react';
 import { useGatewayStore } from '@/stores/gateway';
 import { useTeamStore } from '@/stores/team';
 import { useAuthStore } from '@/stores/authStore';
@@ -26,6 +26,7 @@ const TopBar: React.FC = () => {
   const { user, logout } = useAuthStore();
 
   const usagePercentage = totalQuota > 0 ? (usedQuota / totalQuota) * 100 : 0;
+  const isOnline = isRunning && isConnected;
 
   const handleLogout = async () => {
     await logout();
@@ -37,117 +38,173 @@ const TopBar: React.FC = () => {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-3 md:px-6">
-      {/* Left: Logo + App Name - 响应式 */}
-      <div className="flex items-center gap-2 md:gap-4 min-w-0">
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Activity className="w-5 h-5 text-white" />
+    <header className="h-14 bg-white/80 backdrop-blur-xl border-b border-zinc-200/60 flex items-center justify-between px-4 lg:px-6">
+      {/* Left: Logo */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="relative w-8 h-8">
+            <svg viewBox="0 0 32 32" className="w-full h-full" fill="none">
+              <defs>
+                <linearGradient id="clawGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="hsl(220 15% 55%)"/>
+                  <stop offset="100%" stopColor="hsl(220 12% 40%)"/>
+                </linearGradient>
+              </defs>
+
+              {/* 恐龙爪痕 - 三个爪印 */}
+              {/* 大爪 - 中间 */}
+              <path
+                d="M 11 8
+                   L 11 20
+                   C 11 22 12 23 14 23
+                   L 14 21
+                   C 13 21 12.5 20 12.5 19
+                   L 12.5 11
+                   C 12.5 10 12 9 11 9"
+                fill="url(#clawGrad)"
+              />
+
+              {/* 小爪 - 上 */}
+              <path
+                d="M 18 5
+                   L 18 13
+                   C 18 14.5 18.8 15.5 20 15.5
+                   L 20 14
+                   C 19.3 14 19 13.5 19 13
+                   L 19 7.5
+                   C 19 6.5 18.5 6 18 6"
+                fill="url(#clawGrad)"
+              />
+
+              {/* 小爪 - 下 */}
+              <path
+                d="M 22 12
+                   L 22 22
+                   C 22 23.5 22.8 24.5 24 24.5
+                   L 24 23
+                   C 23.3 23 23 22.5 23 22
+                   L 23 14.5
+                   C 23 13.5 22.5 13 22 13"
+                fill="url(#clawGrad)"
+              />
+
+              {/* 高光 */}
+              <circle cx="12" cy="10" r="0.8" fill="hsl(0 0% 100% / 0.3)"/>
+            </svg>
           </div>
           <div className="hidden sm:block">
-            <h1 className="text-base md:text-lg font-semibold text-gray-900 leading-tight">
-              加冰可乐
+            <h1 className="text-sm font-semibold text-zinc-900 tracking-tight leading-none">
+              IceCola
             </h1>
-            <p className="text-xs text-gray-500 -mt-0.5 hidden md:block">
-              AI 办公助手
+            <p className="text-[10px] text-zinc-500 mt-0.5">
+              AI Copilot
             </p>
           </div>
         </div>
-
-        <span className="text-primary font-semibold text-base md:text-lg hidden lg:block">
-          加冰可乐
-        </span>
       </div>
 
-      {/* Center: Search - 小屏隐藏 */}
-      <div className="flex-1 max-w-2xl mx-4 md:mx-8 min-w-0 hidden md:block">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="搜索工作区..."
-            className="w-full h-9 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
-        </div>
-      </div>
-
-      {/* Right: Status + Actions - 响应式 */}
-      <div className="flex items-center gap-3 md:gap-6">
-        {/* Gateway Status - Icon only with Tooltip */}
-        <TooltipProvider>
+      {/* Right: Actions */}
+      <div className="flex items-center gap-2">
+        {/* Gateway Status */}
+        <TooltipProvider delayDuration={300}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex items-center cursor-pointer">
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-zinc-50/80 hover:bg-zinc-100/80 transition-colors cursor-default">
                 <div
-                  className={`w-3 h-3 rounded-full ${
-                    isRunning && isConnected
-                      ? 'bg-green-500 animate-pulse'
+                  className={`w-2 h-2 rounded-full ${
+                    isOnline
+                      ? 'bg-gradient-mint animate-pulse shadow-sm shadow-[hsl(165,55%,45%)/50%]'
                       : 'bg-red-500'
                   }`}
                 />
+                <span className="text-[11px] font-medium text-zinc-600 hidden sm:block">
+                  {isOnline ? '在线' : '离线'}
+                </span>
               </div>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>{isRunning && isConnected ? '网关运行中' : '网关离线'}</p>
+            <TooltipContent side="bottom" className="text-xs">
+              <p>{isOnline ? '网关运行中' : '网关离线'}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
-        {/* Quota - 小屏隐藏 */}
-        <div className="flex items-center gap-2 hidden md:flex">
-          <span className="text-sm text-gray-600">额度</span>
-          <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+        {/* Quota indicator */}
+        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-50/80">
+          <span className="text-[11px] text-zinc-500 font-medium">额度</span>
+          <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${usagePercentage}%` }}
+              className="h-full bg-gradient-to-r from-[hsl(350,85%,65%)] to-[hsl(165,55%,45%)] rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
             />
           </div>
+          <span className="text-[11px] font-mono text-zinc-600">
+            {Math.round(usagePercentage)}%
+          </span>
         </div>
 
-        {/* Action Icons - 响应式 */}
-        <div className="flex items-center gap-1 md:gap-2">
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <Settings className="w-4 h-4 text-gray-600" />
-          </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8 hidden sm:flex">
-            <Bell className="w-4 h-4 text-gray-600" />
+        {/* Action Buttons */}
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+          >
+            <Bell className="w-4 h-4" />
           </Button>
 
           {/* User Menu */}
           <DropdownMenu>
-            <DropdownMenuTrigger>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
-                className="h-8 px-2 gap-2 rounded-full hover:bg-gray-100"
+                className="h-8 gap-2 rounded-xl px-2 hover:bg-zinc-100"
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-white" />
+                <div className="w-7 h-7 rounded-lg bg-gradient-watermelon flex items-center justify-center shadow-sm">
+                  <UserCircle className="w-4 h-4 text-white" />
                 </div>
-                <span className="hidden md:block text-sm font-medium text-gray-700">
-                  {user?.name || user?.email || '用户'}
+                <span className="hidden lg:block text-sm font-medium text-zinc-700 max-w-[120px] truncate">
+                  {user?.name || user?.email?.split('@')[0] || '用户'}
                 </span>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <div className="px-3 py-2">
-                <p className="text-sm font-medium text-gray-900">
+            <DropdownMenuContent align="end" className="w-64 p-2 rounded-xl shadow-lg shadow-zinc-200/50 border border-zinc-100/50">
+              <div className="px-3 py-2.5 mb-1">
+                <p className="text-sm font-semibold text-zinc-900">
                   {user?.name || '未设置姓名'}
                 </p>
-                <p className="text-xs text-gray-500">{user?.email}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">{user?.email}</p>
                 {user?.team && (
-                  <p className="text-xs text-primary mt-1">
-                    {user.team.name} · {user.team.role}
-                  </p>
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-md bg-gradient-mint text-white text-[10px] font-medium">
+                      {user.team.name}
+                    </span>
+                    <span className="text-[10px] text-zinc-400">{user.team.role}</span>
+                  </div>
                 )}
               </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={goToProfile} className="cursor-pointer">
-                <UserCircle className="w-4 h-4 mr-2" />
-                个人中心
+              <DropdownMenuSeparator className="my-1.5 bg-zinc-100" />
+              <DropdownMenuItem
+                onClick={goToProfile}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50"
+              >
+                <UserCircle className="w-4 h-4 text-zinc-400" />
+                <span className="text-sm text-zinc-700">个人中心</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 cursor-pointer">
-                <LogOut className="w-4 h-4 mr-2" />
-                退出登录
+              <DropdownMenuItem
+                onClick={() => navigate('/settings')}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50"
+              >
+                <Settings className="w-4 h-4 text-zinc-400" />
+                <span className="text-sm text-zinc-700">设置</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1.5 bg-zinc-100" />
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-red-50 focus:bg-red-50 group"
+              >
+                <LogOut className="w-4 h-4 text-zinc-400 group-hover:text-red-600" />
+                <span className="text-sm text-red-600 font-medium">退出登录</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

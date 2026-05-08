@@ -135,8 +135,6 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     const jitter = Math.random() * 1000;
     const delay = exponentialDelay + jitter;
 
-    console.log(`🔄 Scheduling reconnect attempt ${reconnectAttemptsRef.current} in ${Math.round(delay)}ms (exponential backoff)`);
-
     reconnectTimeoutRef.current = setTimeout(() => {
       connect().catch(() => {
         // 连接失败会通过 onclose 触发下一次重连
@@ -149,8 +147,7 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     let unlistenReady: (() => void) | undefined;
     let unlistenFailed: (() => void) | undefined;
 
-    onGatewayReady((port) => {
-      console.log('🔔 Gateway process ready on port:', port);
+    onGatewayReady(() => {
       updateStatus(true, false); // 运行但未连接
       reconnectAttemptsRef.current = 0;
 
@@ -165,7 +162,6 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     });
 
     onGatewayStartFailed(() => {
-      console.error('🔔 Gateway process failed');
       updateStatus(false, false);
       gatewayClient.disconnect();
     }).then((fn) => {
@@ -182,7 +178,6 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
   useEffect(() => {
     const unsubscribe = gatewayClient.onStateChange((state) => {
       if (state === 'disconnected' && !isManualDisconnectRef.current) {
-        console.log('🔔 Gateway state changed to disconnected, scheduling reconnect');
         scheduleReconnect();
       }
     });
@@ -197,7 +192,6 @@ export function useGateway(options: UseGatewayOptions = {}): UseGatewayReturn {
     const checkInterval = setInterval(() => {
       const wasConnected = gatewayClient.isConnected();
       if (!wasConnected && !isManualDisconnectRef.current && isRunning) {
-        console.log('⚠️ Periodic check detected disconnection');
         scheduleReconnect();
       }
     }, 2000); // 从 5 秒缩短到 2 秒

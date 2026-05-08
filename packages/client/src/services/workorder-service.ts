@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface Workorder {
   id: string;
@@ -31,7 +31,7 @@ export interface WorkorderHistory {
 
 class WorkorderService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem('accessToken');
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 

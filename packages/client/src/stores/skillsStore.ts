@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { SkillService } from '@/services/skill-service';
+
+const skillService = new SkillService();
 
 export interface Skill {
   id: string;
@@ -46,8 +49,8 @@ export interface SkillState {
   loadPersonalSkills: () => Promise<void>;
   loadTeamSkills: (teamId: string) => Promise<void>;
   loadMarketplaceSkills: (teamId: string) => Promise<void>;
-  createSkill: (teamId: string, data: Partial<Skill>) => Promise<void>;
-  updateSkill: (skillId: string, data: Partial<Skill>) => Promise<void>;
+  createSkill: (teamId: string, data: Partial<Skill>) => Promise<Skill>;
+  updateSkill: (skillId: string, data: Partial<Skill>) => Promise<Skill>;
   deleteSkill: (skillId: string) => Promise<void>;
   getVersions: (skillId: string) => Promise<SkillVersion[]>;
   revertToVersion: (skillId: string, versionId: string) => Promise<void>;
@@ -61,44 +64,6 @@ export interface SkillState {
   setError: (error: string | null) => void;
 }
 
-const MOCK_SKILLS: Skill[] = [
-  {
-    id: 'skill-001',
-    name: '代码审查助手',
-    description: '专业的代码审查技能，帮助你发现潜在问题和优化建议',
-    version: '1.0.0',
-    icon: '🔍',
-    category: '开发',
-    tags: ['code', 'review', 'programming'],
-    content: '# Code Review Skill\n\nThis skill helps with code review...',
-    configSchema: { severity: { type: 'string', default: 'medium' } },
-    config: { severity: 'medium' },
-    status: 'personal',
-    authorId: 'user-001',
-    ratings: 4.8,
-    installs: 234,
-    createdAt: '2026-04-20T10:00:00Z',
-    updatedAt: '2026-04-20T10:00:00Z',
-  },
-  {
-    id: 'skill-002',
-    name: '翻译助手',
-    description: '支持多语言翻译，帮助你打破语言障碍',
-    version: '1.2.0',
-    icon: '🌐',
-    category: '工具',
-    tags: ['translate', 'language'],
-    content: '# Translation Skill\n\nMulti-language translation...',
-    status: 'team',
-    authorId: 'user-002',
-    teamId: 'team-001',
-    ratings: 4.5,
-    installs: 567,
-    createdAt: '2026-04-15T10:00:00Z',
-    updatedAt: '2026-04-18T10:00:00Z',
-  },
-];
-
 export const useSkillsStore = create<SkillState>((set, get) => ({
   skills: [],
   personalSkills: [],
@@ -109,11 +74,11 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadSkills: async (_teamId) => {
+  loadSkills: async (teamId) => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ skills: MOCK_SKILLS, isLoading: false });
+      const skills = await skillService.getAllSkills(teamId);
+      set({ skills, isLoading: false });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to load skills', isLoading: false });
     }
@@ -122,18 +87,18 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   loadPersonalSkills: async () => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ personalSkills: MOCK_SKILLS.filter(s => s.status === 'personal'), isLoading: false });
+      const skills = await skillService.getAllSkills('personal');
+      set({ personalSkills: skills.filter(s => s.status === 'personal'), isLoading: false });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to load personal skills', isLoading: false });
     }
   },
 
-  loadTeamSkills: async (_teamId) => {
+  loadTeamSkills: async (teamId) => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ teamSkills: MOCK_SKILLS.filter(s => ['team', 'team_pending', 'marketplace_pending', 'marketplace'].includes(s.status)), isLoading: false });
+      const skills = await skillService.getAllSkills(teamId);
+      set({ teamSkills: skills.filter(s => ['team', 'team_pending', 'marketplace_pending', 'marketplace'].includes(s.status)), isLoading: false });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to load team skills', isLoading: false });
     }
@@ -142,34 +107,18 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   loadMarketplaceSkills: async (_teamId) => {
     set({ isLoading: true, error: null });
     try {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      set({ marketplaceSkills: MOCK_SKILLS.filter(s => ['team', 'marketplace'].includes(s.status)), isLoading: false });
+      const skills = await skillService.getMarketplaceSkills();
+      set({ marketplaceSkills: skills, isLoading: false });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to load marketplace skills', isLoading: false });
     }
   },
 
-  createSkill: async (_teamId, data) => {
+  createSkill: async (teamId, data) => {
     try {
-      const newSkill: Skill = {
-        id: `skill-${Date.now()}`,
-        name: data.name || '',
-        description: data.description || '',
-        version: data.version || '1.0.0',
-        icon: data.icon || '🛠️',
-        category: data.category || '工具',
-        tags: data.tags || [],
-        content: data.content || '',
-        configSchema: data.configSchema,
-        config: data.config,
-        status: 'personal',
-        authorId: 'user-001',
-        ratings: 0,
-        installs: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      const newSkill = await skillService.createSkill(teamId, data.authorId || '', data);
       set(state => ({ personalSkills: [newSkill, ...state.personalSkills] }));
+      return newSkill;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to create skill' });
       throw err;
@@ -178,11 +127,11 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
 
   updateSkill: async (skillId, data) => {
     try {
+      const updated = await skillService.updateSkill(skillId, data);
       set(state => ({
-        personalSkills: state.personalSkills.map(s =>
-          s.id === skillId ? { ...s, ...data, updatedAt: new Date().toISOString() } : s
-        ),
+        personalSkills: state.personalSkills.map(s => s.id === skillId ? updated : s),
       }));
+      return updated;
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to update skill' });
       throw err;
@@ -191,6 +140,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
 
   deleteSkill: async (skillId) => {
     try {
+      await skillService.deleteSkill(skillId);
       set(state => ({
         personalSkills: state.personalSkills.filter(s => s.id !== skillId),
       }));
@@ -200,8 +150,9 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  getVersions: async (_skillId) => {
-    return [];
+  getVersions: async (skillId) => {
+    const skill = await skillService.getSkill(skillId);
+    return skill ? [] : [];
   },
 
   revertToVersion: async (skillId, versionId) => {
@@ -209,34 +160,30 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   },
 
   requestPublishToTeam: async (skillId) => {
+    const skill = await skillService.updateSkill(skillId, { status: 'team_pending' });
     set(state => ({
-      personalSkills: state.personalSkills.map(s =>
-        s.id === skillId ? { ...s, status: 'team_pending' } : s
-      ),
+      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
     }));
   },
 
   approveTeamPublish: async (skillId) => {
+    const skill = await skillService.updateSkill(skillId, { status: 'team' });
     set(state => ({
-      personalSkills: state.personalSkills.map(s =>
-        s.id === skillId ? { ...s, status: 'team' } : s
-      ),
+      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
     }));
   },
 
   rejectTeamPublish: async (skillId, _comment) => {
+    const skill = await skillService.updateSkill(skillId, { status: 'personal' });
     set(state => ({
-      personalSkills: state.personalSkills.map(s =>
-        s.id === skillId ? { ...s, status: 'personal' } : s
-      ),
+      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
     }));
   },
 
   requestPublishToMarketplace: async (skillId) => {
+    const skill = await skillService.updateSkill(skillId, { status: 'marketplace_pending' });
     set(state => ({
-      personalSkills: state.personalSkills.map(s =>
-        s.id === skillId ? { ...s, status: 'marketplace_pending' } : s
-      ),
+      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
     }));
   },
 

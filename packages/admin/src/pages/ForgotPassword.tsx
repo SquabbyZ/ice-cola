@@ -9,6 +9,8 @@ import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
+import { RefreshCw as RefreshCwIcon } from 'lucide-react';
+import { Spinner } from '../components/ui/spinner';
 import api from '../services/api';
 
 const emailSchema = z.object({
@@ -47,6 +49,7 @@ const ForgotPassword: React.FC = () => {
   const [captchaImage, setCaptchaImage] = useState('');
   const [showCaptchaDialog, setShowCaptchaDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const emailForm = useForm<EmailForm>({
     resolver: zodResolver(emailSchema),
@@ -79,6 +82,7 @@ const ForgotPassword: React.FC = () => {
 
   const handleCaptchaVerify = async (answer: string[]) => {
     setIsLoading(true);
+    setErrorMessage('');
     try {
       const response = await api.post('/admin/auth/send-code', {
         email,
@@ -90,8 +94,7 @@ const ForgotPassword: React.FC = () => {
         setStep('code');
       }
     } catch (error: any) {
-      const message = error.response?.data?.message || t('forgotPassword.verificationFailed');
-      alert(message);
+      setErrorMessage(error.response?.data?.message || t('forgotPassword.verificationFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -99,16 +102,19 @@ const ForgotPassword: React.FC = () => {
 
   const handleCodeSubmit = async (data: CodeForm) => {
     setIsLoading(true);
+    setErrorMessage('');
     try {
-      await api.post('/admin/auth/reset-password', {
+      const response = await api.post('/admin/auth/verify-code', {
         email,
         code: data.code,
-        newPassword: passwordForm.getValues('password'),
       });
-      setStep('password');
+      if (response.data.success) {
+        setStep('password');
+      } else {
+        setErrorMessage(response.data.message || t('forgotPassword.invalidCode'));
+      }
     } catch (error: any) {
-      const message = error.response?.data?.message || t('forgotPassword.invalidCode');
-      codeForm.setError('code', { message });
+      setErrorMessage(error.response?.data?.message || t('forgotPassword.invalidCode'));
     } finally {
       setIsLoading(false);
     }
@@ -116,17 +122,16 @@ const ForgotPassword: React.FC = () => {
 
   const handlePasswordSubmit = async (data: PasswordForm) => {
     setIsLoading(true);
+    setErrorMessage('');
     try {
       await api.post('/admin/auth/reset-password', {
         email,
         code: codeForm.getValues('code'),
         newPassword: data.password,
       });
-      alert(t('forgotPassword.resetSuccess'));
       navigate('/login');
     } catch (error: any) {
-      const message = error.response?.data?.message || t('forgotPassword.resetFailed');
-      alert(message);
+      setErrorMessage(error.response?.data?.message || t('forgotPassword.resetFailed'));
     } finally {
       setIsLoading(false);
     }
@@ -147,6 +152,11 @@ const ForgotPassword: React.FC = () => {
         <CardContent>
           {step === 'email' && (
             <form onSubmit={emailForm.handleSubmit(handleEmailSubmit)} className="space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded bg-red-50 border border-red-200 text-red-600 text-sm">
+                  {errorMessage}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="email">{t('forgotPassword.emailLabel')}</Label>
                 <Input
@@ -165,6 +175,11 @@ const ForgotPassword: React.FC = () => {
 
           {step === 'code' && (
             <form onSubmit={codeForm.handleSubmit(handleCodeSubmit)} className="space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded bg-red-50 border border-red-200 text-red-600 text-sm">
+                  {errorMessage}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="code">{t('forgotPassword.codeLabel')}</Label>
                 <Input
@@ -179,6 +194,7 @@ const ForgotPassword: React.FC = () => {
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading && <Spinner className="mr-2" />}
                 {isLoading ? t('forgotPassword.verifying') : t('forgotPassword.verify')}
               </Button>
               <Button type="button" variant="outline" className="w-full" onClick={loadCaptcha}>
@@ -189,6 +205,11 @@ const ForgotPassword: React.FC = () => {
 
           {step === 'password' && (
             <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-4">
+              {errorMessage && (
+                <div className="p-3 rounded bg-red-50 border border-red-200 text-red-600 text-sm">
+                  {errorMessage}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="password">{t('forgotPassword.newPassword')}</Label>
                 <Input
@@ -214,6 +235,7 @@ const ForgotPassword: React.FC = () => {
                 )}
               </div>
               <Button type="submit" className="w-full" disabled={isLoading}>
+                {isLoading && <Spinner className="mr-2" />}
                 {isLoading ? t('forgotPassword.resetting') : t('forgotPassword.resetPassword')}
               </Button>
             </form>
@@ -228,8 +250,13 @@ const ForgotPassword: React.FC = () => {
             <DialogDescription>{t('captcha.instruction')}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col items-center gap-4">
-            <img src={captchaImage} alt={t('captcha.title')} className="rounded-md" />
-            <CaptchaInput onVerify={handleCaptchaVerify} disabled={isLoading} />
+            <CaptchaInput
+              captchaToken={captchaToken}
+              captchaImage={captchaImage}
+              onVerify={handleCaptchaVerify}
+              onRefresh={loadCaptcha}
+              disabled={isLoading}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -238,12 +265,19 @@ const ForgotPassword: React.FC = () => {
 };
 
 const CaptchaInput: React.FC<{
+  captchaToken: string;
+  captchaImage: string;
   onVerify: (answer: string[]) => void;
+  onRefresh: () => void;
   disabled: boolean;
-}> = ({ onVerify, disabled }) => {
+}> = ({ captchaToken, captchaImage, onVerify, onRefresh, disabled }) => {
   const { t } = useTranslation();
   const [answer, setAnswer] = useState<string[]>([]);
   const chars = '天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏';
+
+  React.useEffect(() => {
+    setAnswer([]);
+  }, [captchaToken]);
 
   const handleCharClick = (char: string) => {
     if (answer.length < 4) {
@@ -261,6 +295,12 @@ const CaptchaInput: React.FC<{
 
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-4">
+        <img src={captchaImage} alt={t('captcha.title')} className="rounded-md" />
+        <Button type="button" variant="ghost" size="sm" onClick={onRefresh} disabled={disabled}>
+          <RefreshCwIcon className="h-4 w-4" />
+        </Button>
+      </div>
       <div className="flex flex-wrap justify-center gap-2 mb-4">
         {chars.split('').map((char) => (
           <button
@@ -268,7 +308,11 @@ const CaptchaInput: React.FC<{
             type="button"
             onClick={() => handleCharClick(char)}
             disabled={disabled || answer.length >= 4}
-            className="w-10 h-10 text-lg font-bold bg-amber-100 hover:bg-amber-200 rounded"
+            className={`w-10 h-10 text-lg font-bold rounded ${
+              answer.includes(char)
+                ? 'bg-green-200 hover:bg-green-200'
+                : 'bg-amber-100 hover:bg-amber-200'
+            }`}
           >
             {char}
           </button>

@@ -1,23 +1,15 @@
 /**
  * Extension Service - 扩展商店服务层
- * 
+ *
  * 提供扩展浏览、安装、卸载等功能的API调用封装
  */
 
-import { GatewayRpcService } from './gateway-rpc';
+import { getServiceContainer } from './service-container';
 import type { Extension } from '@/stores/extensions';
 
-export interface ExtensionResponse {
-  ok: boolean;
-  extensions?: Extension[];
-  message?: string;
-}
-
 export class ExtensionService {
-  private rpc: GatewayRpcService;
-
-  constructor(rpc: GatewayRpcService) {
-    this.rpc = rpc;
+  private getClient() {
+    return getServiceContainer().gatewayClient;
   }
 
   /**
@@ -25,11 +17,11 @@ export class ExtensionService {
    */
   async getAllExtensions(): Promise<Extension[]> {
     try {
-      const result = await this.rpc.send('extensions.list', {});
-      if (result.ok && result.payload?.extensions) {
-        return result.payload.extensions;
+      const result = await this.getClient().send('extensions.list', {});
+      if (result && Array.isArray(result)) {
+        return result;
       }
-      throw new Error('Failed to fetch extensions');
+      return [];
     } catch (error) {
       console.error('Error fetching extensions:', error);
       throw error;
@@ -41,11 +33,11 @@ export class ExtensionService {
    */
   async getInstalledExtensions(userId: string): Promise<Extension[]> {
     try {
-      const result = await this.rpc.send('extensions.installed', { userId });
-      if (result.ok && result.payload?.extensions) {
-        return result.payload.extensions;
+      const result = await this.getClient().send('extensions.installed', { userId });
+      if (result && Array.isArray(result)) {
+        return result;
       }
-      throw new Error('Failed to fetch installed extensions');
+      return [];
     } catch (error) {
       console.error('Error fetching installed extensions:', error);
       throw error;
@@ -57,14 +49,7 @@ export class ExtensionService {
    */
   async installExtension(extensionId: string, userId: string, config?: any): Promise<void> {
     try {
-      const result = await this.rpc.send('extensions.install', {
-        extensionId,
-        userId,
-        config,
-      });
-      if (!result.ok) {
-        throw new Error(result.payload?.message || 'Failed to install extension');
-      }
+      await this.getClient().send('extensions.install', { extensionId, userId, config });
     } catch (error) {
       console.error('Error installing extension:', error);
       throw error;
@@ -76,13 +61,7 @@ export class ExtensionService {
    */
   async uninstallExtension(extensionId: string, userId: string): Promise<void> {
     try {
-      const result = await this.rpc.send('extensions.uninstall', {
-        extensionId,
-        userId,
-      });
-      if (!result.ok) {
-        throw new Error(result.payload?.message || 'Failed to uninstall extension');
-      }
+      await this.getClient().send('extensions.uninstall', { extensionId, userId });
     } catch (error) {
       console.error('Error uninstalling extension:', error);
       throw error;
@@ -94,13 +73,7 @@ export class ExtensionService {
    */
   async enableExtension(extensionId: string, userId: string): Promise<void> {
     try {
-      const result = await this.rpc.send('extensions.enable', {
-        extensionId,
-        userId,
-      });
-      if (!result.ok) {
-        throw new Error(result.payload?.message || 'Failed to enable extension');
-      }
+      await this.getClient().send('extensions.enable', { extensionId, userId });
     } catch (error) {
       console.error('Error enabling extension:', error);
       throw error;
@@ -112,13 +85,7 @@ export class ExtensionService {
    */
   async disableExtension(extensionId: string, userId: string): Promise<void> {
     try {
-      const result = await this.rpc.send('extensions.disable', {
-        extensionId,
-        userId,
-      });
-      if (!result.ok) {
-        throw new Error(result.payload?.message || 'Failed to disable extension');
-      }
+      await this.getClient().send('extensions.disable', { extensionId, userId });
     } catch (error) {
       console.error('Error disabling extension:', error);
       throw error;
@@ -128,33 +95,12 @@ export class ExtensionService {
   /**
    * 更新扩展配置
    */
-  async updateExtensionConfig(
-    extensionId: string,
-    userId: string,
-    config: any
-  ): Promise<void> {
+  async updateExtensionConfig(extensionId: string, userId: string, config: any): Promise<void> {
     try {
-      const result = await this.rpc.send('extensions.updateConfig', {
-        extensionId,
-        userId,
-        config,
-      });
-      if (!result.ok) {
-        throw new Error(result.payload?.message || 'Failed to update extension config');
-      }
+      await this.getClient().send('extensions.updateConfig', { extensionId, userId, config });
     } catch (error) {
       console.error('Error updating extension config:', error);
       throw error;
     }
   }
-}
-
-// 导出单例实例（可选）
-let extensionServiceInstance: ExtensionService | null = null;
-
-export function getExtensionService(rpc: GatewayRpcService): ExtensionService {
-  if (!extensionServiceInstance) {
-    extensionServiceInstance = new ExtensionService(rpc);
-  }
-  return extensionServiceInstance;
 }

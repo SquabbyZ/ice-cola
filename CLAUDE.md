@@ -126,12 +126,57 @@ reports/[功能名称]_E2E_TEST_REPORT_YYYYMMDD.md
 ## 技术栈
 
 - **前端**: React 18 + TypeScript + Vite
-- **后端**: NestJS + TypeORM + PostgreSQL
+- **后端**: NestJS + TypeORM + PostgreSQL (Docker)
 - **状态管理**: TanStack Query + Zustand
 - **表单**: React Hook Form + Zod
 - **UI**: shadcn/ui + Tailwind CSS
 - **测试**: Playwright MCP + Vitest
 - **国际化**: i18next
+
+## 数据库
+
+项目使用 Docker 部署 PostgreSQL 数据库。
+
+### 数据库连接
+
+- **主机**: localhost (或容器网络中的服务名)
+- **端口**: 5432
+- **默认数据库**: icecola
+- **默认用户**: postgres
+- **默认密码**: postgres
+
+### Docker 命令
+
+```bash
+# 查看数据库容器状态
+docker ps | grep postgres
+
+# 启动 PostgreSQL 容器
+docker start <container_name>
+
+# 停止 PostgreSQL 容器
+docker stop <container_name>
+
+# 进入 PostgreSQL 命令行
+docker exec -it <container_name> psql -U postgres -d icecola
+
+# 查看数据库列表
+docker exec -it <container_name> psql -U postgres -c "\l"
+```
+
+### 环境变量
+
+数据库连接通过 `DATABASE_URL` 环境变量配置：
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/icecola
+```
+
+或使用 Docker 容器网络：
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@172.19.0.3:5432/icecola
+```
 
 ## 目录结构
 
@@ -150,7 +195,10 @@ ice-cola/
 ## 常用命令
 
 ```bash
-# 启动开发服务器
+# 确保 Docker 数据库运行中
+docker ps | grep postgres
+
+# 启动开发服务器 (先确保数据库已启动)
 pnpm dev
 
 # 运行构建
@@ -162,6 +210,12 @@ pnpm test
 # 运行 E2E 测试 (Playwright)
 pnpm playwright test
 ```
+
+### 开发服务端口
+
+- **Admin 前端**: http://localhost:1992
+- **Client 前端**: http://localhost:1420
+- **Server 后端**: http://localhost:3000
 
 ## 注意事项
 

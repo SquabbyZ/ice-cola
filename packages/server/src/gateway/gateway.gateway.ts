@@ -109,6 +109,13 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'auth.login':
           result = await this.gatewayService.login(params);
+          // Store teamId on client for quota checks and usage tracking
+          if (result?.user?.team?.id) {
+            const clientInfo = this.clients.get(ws);
+            if (clientInfo) {
+              clientInfo.teamId = result.user.team.id;
+            }
+          }
           break;
         case 'auth.refresh':
           result = await this.gatewayService.refresh(params);
@@ -152,7 +159,19 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.getHermesSessions(params);
           break;
         case 'hermes.send':
-          result = await this.gatewayService.sendHermesMessage(params);
+          {
+            const clientInfo = this.clients.get(ws);
+            result = await this.gatewayService.sendHermesMessage(
+              { ...params, teamId: clientInfo?.teamId },
+              ws,
+            );
+          }
+          break;
+        case 'hermes.abort':
+          result = this.gatewayService.abortHermesMessage(params, ws);
+          break;
+        case 'hermes.agentStatus':
+          result = await this.gatewayService.getHermesAgentStatus();
           break;
         case 'usage.status':
           result = await this.gatewayService.getUsageStatus(params);
@@ -213,6 +232,24 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'extensions.updateConfig':
           result = await this.gatewayService.updateExtensionConfig(params);
+          break;
+        case 'skills.list':
+          result = await this.gatewayService.listSkills(params);
+          break;
+        case 'skills.get':
+          result = await this.gatewayService.getSkill(params);
+          break;
+        case 'skills.create':
+          result = await this.gatewayService.createSkill(params);
+          break;
+        case 'skills.update':
+          result = await this.gatewayService.updateSkill(params);
+          break;
+        case 'marketplace_skills.list':
+          result = await this.gatewayService.listMarketplaceSkills(params);
+          break;
+        case 'skills.delete':
+          result = await this.gatewayService.deleteSkill(params);
           break;
         default:
           this.logger.warn(`Unknown method: ${method}`);

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface Conversation {
   id: string;
@@ -45,7 +45,7 @@ export interface ConversationDetailResponse {
 
 class ConversationService {
   private getAuthHeaders() {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem('accessToken');
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
@@ -133,6 +133,40 @@ class ConversationService {
       }
     );
     return response.data.data;
+  }
+
+  /**
+   * 更新消息内容
+   */
+  async updateMessage(
+    teamId: string,
+    conversationId: string,
+    messageId: string,
+    data: { content: string }
+  ): Promise<void> {
+    await axios.put(
+      `${API_BASE}/teams/${teamId}/conversations/${conversationId}/messages/${messageId}`,
+      data,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+  }
+
+  /**
+   * 删除消息
+   */
+  async deleteMessage(
+    teamId: string,
+    conversationId: string,
+    messageId: string
+  ): Promise<void> {
+    await axios.delete(
+      `${API_BASE}/teams/${teamId}/conversations/${conversationId}/messages/${messageId}`,
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
   }
 }
 

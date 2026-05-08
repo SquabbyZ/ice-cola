@@ -154,3 +154,16 @@ export const useExpertStore = create<ExpertState>((set, get) => ({
     error: null,
   }),
 }));
+
+// Marketplace skill interface
+export interface MarketplaceSkill {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  tags: string[];
+  install_count: number;
+  rating: number;
+  icon?: string;
+  source_id: string;
+}

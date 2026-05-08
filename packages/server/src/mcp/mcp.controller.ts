@@ -116,4 +116,78 @@ export class McpController {
     const result = await this.mcpService.getConnectionStatus(req.user.id, serverId);
     return { success: true, data: result };
   }
+
+  // ==================== Conversation MCP Servers ====================
+
+  @Get('conversation/:conversationId/servers')
+  async getConversationMCPServers(@Param('conversationId') conversationId: string) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const result = await db.getConversationMCPServers(conversationId);
+    return { success: true, data: result };
+  }
+
+  @Post('conversation/:conversationId/servers')
+  async setConversationMCPServers(
+    @Param('conversationId') conversationId: string,
+    @Body() body: { serverIds: string[] },
+  ) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const result = await db.setConversationMCPServers(conversationId, body.serverIds);
+    return { success: true, data: result };
+  }
+
+  @Delete('conversation/:conversationId/servers')
+  async clearConversationMCPServers(@Param('conversationId') conversationId: string) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const result = await db.clearConversationMCPServers(conversationId);
+    return { success: true, data: result };
+  }
+
+  @Post('conversation/:conversationId/servers/:serverId')
+  async addConversationMCPServer(
+    @Param('conversationId') conversationId: string,
+    @Param('serverId') serverId: string,
+    @Body() body: { serverName: string; serverType?: string; config?: Record<string, any> },
+  ) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const result = await db.addConversationMCPServer({
+      conversationId,
+      serverId,
+      serverName: body.serverName,
+      serverType: body.serverType || 'stdio',
+      config: body.config,
+    });
+    return { success: true, data: result };
+  }
+
+  @Delete('conversation/:conversationId/servers/:serverId')
+  async removeConversationMCPServer(
+    @Param('conversationId') conversationId: string,
+    @Param('serverId') serverId: string,
+  ) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const result = await db.removeConversationMCPServer(conversationId, serverId);
+    return { success: true, data: result };
+  }
+
+  @Get('conversation/:conversationId/mcp-config')
+  async getConversationMCPConfig(@Param('conversationId') conversationId: string) {
+    const { DatabaseService } = await import('../database/database.service');
+    const db = new DatabaseService(null as any);
+    const servers = await db.getConversationMCPServers(conversationId);
+
+    // Transform to MCP server configs for hermes-agent
+    const mcpServers = servers.map((s: any) => ({
+      name: s.name,
+      type: s.server_type || 'stdio',
+      config: s.config || {},
+    }));
+
+    return { success: true, data: { servers, mcpServers } };
+  }
 }

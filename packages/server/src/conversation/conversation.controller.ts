@@ -8,6 +8,7 @@ import {
   Body,
   Query,
   UseGuards,
+  Req,
 } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -21,8 +22,10 @@ export class ConversationController {
   async create(
     @Param('teamId') teamId: string,
     @Body() body: { title: string },
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.create(teamId, body.title);
+    const userId = req.user?.sub || '';
+    const result = await this.conversationService.create(teamId, body.title, userId);
     return { success: true, data: result };
   }
 
@@ -70,6 +73,27 @@ export class ConversationController {
     @Param('conversationId') conversationId: string,
   ) {
     await this.conversationService.delete(teamId, conversationId);
+    return { success: true, data: null };
+  }
+
+  @Put(':conversationId/messages/:messageId')
+  async updateMessage(
+    @Param('teamId') teamId: string,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+    @Body() body: { content: string },
+  ) {
+    const result = await this.conversationService.updateMessage(teamId, conversationId, messageId, body);
+    return { success: true, data: result };
+  }
+
+  @Delete(':conversationId/messages/:messageId')
+  async deleteMessage(
+    @Param('teamId') teamId: string,
+    @Param('conversationId') conversationId: string,
+    @Param('messageId') messageId: string,
+  ) {
+    await this.conversationService.deleteMessage(teamId, conversationId, messageId);
     return { success: true, data: null };
   }
 }

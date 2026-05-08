@@ -82,22 +82,58 @@ function transformServer(server: any): MCPServer {
     id: server.id,
     name: server.name,
     description: server.description || '',
-    version: server.version,
-    author: server.author || 'Unknown',
-    category: server.category,
-    icon: server.icon || '🌐',
+    version: server.version || '1.0.0',
+    author: server.author || server.author_name || 'Unknown',
+    category: server.category || 'tool',
+    icon: server.icon || getDefaultIcon(server.name),
     color: server.color,
-    rating: parseFloat(server.ratings) || 0,
-    installs: server.installs || 0,
+    rating: parseFloat(server.ratings || server.rating || 0),
+    installs: parseInt(server.installs || server.install_count || 0),
     connected: false,
     enabled: server.enabled ?? true,
-    tags: server.tags || [],
+    tags: parseTags(server.tags),
     homepage: server.homepage,
     repository: server.repository,
     updatedAt: server.updated_at || server.created_at || new Date().toISOString(),
-    configSchema: server.config_schema ? JSON.parse(server.config_schema) : server.configSchema,
+    configSchema: server.config_schema ? (typeof server.config_schema === 'string' ? JSON.parse(server.config_schema) : server.config_schema) : server.configSchema,
     instructions: server.instructions,
   };
+}
+
+// Parse tags from various formats
+function parseTags(tags: any): string[] {
+  if (!tags) return [];
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string') {
+    try {
+      const parsed = JSON.parse(tags);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return tags.split(',').map((t: string) => t.trim());
+    }
+  }
+  return [];
+}
+
+// Get default icon based on server name
+function getDefaultIcon(name: string): string {
+  const nameLower = (name || '').toLowerCase();
+  const iconMap: Record<string, string> = {
+    'figma': '🎨', 'notion': '📝', 'github': '🐙', 'gitlab': '🦊',
+    'slack': '💬', 'discord': '🎮', 'jira': '📋', 'asana': '✅',
+    'stripe': '💳', 'shopify': '🛒', 'postgres': '🐘', 'mysql': '🐬',
+    'mongodb': '🍃', 'redis': '🔴', 'sqlite': '🗃️', 'aws': '☁️',
+    'azure': '⛅', 'docker': '🐳', 'kubernetes': '☸️', 'youtube': '📺',
+    'gmail': '📧', 'calendar': '📅', 'excel': '📊', 'playwright': '🎭',
+    'browser': '🌐', 'filesystem': '📁', 'memory': '🧠', 'ollama': '🦙',
+    'deepseek': '🔮', 'gemini': '✨', 'supabase': '🔥', 'firebase': '🔥',
+    'tavily': '🔍', 'brave': '🦁', 'web': '🌐', 'git': '💻',
+    'database': '🗄️', 'sql': '🗄️', 'api': '🔌',
+  };
+  for (const [key, emoji] of Object.entries(iconMap)) {
+    if (nameLower.includes(key)) return emoji;
+  }
+  return '🔌';
 }
 
 export const useMCPStore = create<MCPState>((set, get) => ({

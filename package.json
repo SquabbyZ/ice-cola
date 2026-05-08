@@ -9,5 +9,8 @@
     "build": "pnpm -r build",
     "dev": "pnpm -r dev",
     "test": "pnpm -r test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1"
   }
 }

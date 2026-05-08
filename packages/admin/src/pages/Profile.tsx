@@ -5,7 +5,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from '../components/ui/button';
+import { Spinner } from '../components/ui/spinner';
 import { Input } from '../components/ui/input';
+import { PasswordInput } from '../components/ui/password-input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { useUpdateProfile, useChangePassword } from '../hooks/useProfile';
@@ -120,7 +122,7 @@ const Profile: React.FC = () => {
             <div className="space-y-2">
               <Label>{t('profile.role')}</Label>
               <Input
-                value={user?.role || ''}
+                value={user?.role ? t(`users.role${user.role.charAt(0)}${user.role.slice(1).toLowerCase()}`) : ''}
                 disabled
                 className="bg-gray-50"
               />
@@ -129,6 +131,7 @@ const Profile: React.FC = () => {
               <p className="text-sm text-green-600">{profileSuccess}</p>
             )}
             <Button type="submit" disabled={updateProfile.isPending}>
+              {updateProfile.isPending && <Spinner className="mr-2" />}
               {updateProfile.isPending ? t('profile.saving') : t('profile.saveProfile')}
             </Button>
           </form>
@@ -144,9 +147,8 @@ const Profile: React.FC = () => {
           <form onSubmit={passwordForm.handleSubmit(handlePasswordChange)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="currentPassword">{t('profile.currentPassword')}</Label>
-              <Input
+              <PasswordInput
                 id="currentPassword"
-                type="password"
                 placeholder={t('profile.currentPasswordPlaceholder')}
                 {...passwordForm.register('currentPassword')}
               />
@@ -156,9 +158,8 @@ const Profile: React.FC = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">{t('profile.newPassword')}</Label>
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 placeholder={t('profile.newPasswordPlaceholder')}
                 {...passwordForm.register('newPassword')}
               />
@@ -168,9 +169,8 @@ const Profile: React.FC = () => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">{t('profile.confirmPassword')}</Label>
-              <Input
+              <PasswordInput
                 id="confirmPassword"
-                type="password"
                 placeholder={t('profile.confirmPasswordPlaceholder')}
                 {...passwordForm.register('confirmPassword')}
               />
@@ -179,6 +179,7 @@ const Profile: React.FC = () => {
               )}
             </div>
             <Button type="submit" disabled={changePassword.isPending}>
+              {changePassword.isPending && <Spinner className="mr-2" />}
               {changePassword.isPending ? t('profile.saving') : t('profile.changePasswordBtn')}
             </Button>
           </form>

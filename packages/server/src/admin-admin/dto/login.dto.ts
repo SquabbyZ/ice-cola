@@ -38,6 +38,14 @@ export class SendCodeDto {
   captchaAnswer: string[];
 }
 
+export class VerifyCodeDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsString()
+  code: string;
+}
+
 export class ResetPasswordDto {
   @IsEmail({}, { message: '请输入有效的邮箱地址' })
   email: string;

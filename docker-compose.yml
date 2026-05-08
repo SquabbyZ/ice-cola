@@ -44,11 +44,15 @@ services:
     ports:
       - "3000:3000"  # NestJS HTTP API
       - "3001:3001"  # WebSocket Gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/icecola?schema=public
       - HERMES_ENDPOINT=http://localhost:9119
+      - HERMES_AGENT_URL=http://host.docker.internal:8642
       - JWT_SECRET=icecola-prod-secret-change-this
+      - AI_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
       - JWT_EXPIRES_IN=7d
       - WS_PORT=3001
       - RESEND_FROM_EMAIL=onboarding@resend.dev
@@ -63,7 +67,7 @@ services:
     image: postgres:16-alpine
     container_name: ice-cola-postgres
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres

@@ -1,10 +1,11 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../database/database.service';
 import { AppError } from '../common/interfaces/errors';
 import { CaptchaService } from '../commons/captcha.service';
+import { EmailService } from '../commons/email.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import {
@@ -41,8 +42,8 @@ export class AdminService {
     private db: DatabaseService,
     private jwtService: JwtService,
     private configService: ConfigService,
-    @Inject(forwardRef(() => CaptchaService))
     private captchaService: CaptchaService,
+    private emailService: EmailService,
   ) {}
 
   // ========== User Find Methods ==========
@@ -296,6 +297,41 @@ export class AdminService {
     return result;
   }
 
+  async transferOwner(newOwnerId: string): Promise<{ newOwner: AdminUser; oldOwner: AdminUser }> {
+    const newOwner = await this.findAdminById(newOwnerId);
+    if (!newOwner) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+    if (newOwner.role === AdminRole.OWNER) {
+      throw new AppError('ALREADY_OWNER', '该用户已是所有者', 400);
+    }
+
+    // Find the current owner first (by role, should be only one)
+    const currentOwner = await this.db.queryOne<AdminUser>(
+      'SELECT * FROM admin_users WHERE role = $1',
+      [AdminRole.OWNER]
+    );
+    if (!currentOwner) {
+      throw new AppError('NO_OWNER', '未找到当前所有者', 400);
+    }
+
+    // Set new owner as OWNER
+    const updatedNewOwner = await this.db.queryOne<AdminUser>(
+      `UPDATE admin_users SET role = $1, "updatedAt" = NOW() WHERE id = $2
+       RETURNING id, email, name, role, verified, "createdAt", "updatedAt"`,
+      [AdminRole.OWNER, newOwnerId]
+    );
+
+    // Demote the old owner to ADMIN (use specific ID, not role)
+    const updatedOldOwner = await this.db.queryOne<AdminUser>(
+      `UPDATE admin_users SET role = $1, "updatedAt" = NOW() WHERE id = $2
+       RETURNING id, email, name, role, verified, "createdAt", "updatedAt"`,
+      [AdminRole.ADMIN, currentOwner.id]
+    );
+
+    return { newOwner: updatedNewOwner, oldOwner: updatedOldOwner };
+  }
+
   async getStats(): Promise<{
     totalUsers: number;
     pendingInvitations: number;
@@ -365,12 +401,16 @@ export class AdminService {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store or update the code
+    // Delete any existing codes for this email and type
     await this.db.query(
-      `INSERT INTO client_verification_codes (id, email, code, type, expires_at, error_count, created_at)
-       VALUES ($1, $2, $3, $4, $5, 0, NOW())
-       ON CONFLICT (email) WHERE type = $4
-       DO UPDATE SET code = $3, expires_at = $5, error_count = 0, created_at = NOW()`,
+      `DELETE FROM client_verification_codes WHERE email = $1 AND type = $2`,
+      [email, type]
+    );
+
+    // Insert new code
+    await this.db.query(
+      `INSERT INTO client_verification_codes (id, email, code, type, expires_at, attempts, "createdAt")
+       VALUES ($1, $2, $3, $4, $5, 0, NOW())`,
       [this.generateUUID(), email, code, type, expiresAt]
     );
 
@@ -381,7 +421,7 @@ export class AdminService {
     const record = await this.db.queryOne<{
       code: string;
       expires_at: Date;
-      error_count: number;
+      attempts: number;
     }>(
       `SELECT * FROM client_verification_codes
        WHERE email = $1 AND type = $2 AND expires_at > NOW()`,
@@ -395,7 +435,7 @@ export class AdminService {
     if (record.code !== code) {
       // Increment error count
       await this.db.query(
-        `UPDATE client_verification_codes SET error_count = error_count + 1 WHERE id = (
+        `UPDATE client_verification_codes SET attempts = attempts + 1 WHERE id = (
           SELECT id FROM client_verification_codes WHERE email = $1 AND type = $2
         )`,
         [email, type]
@@ -425,9 +465,7 @@ export class AdminService {
 
     const code = await this.createVerificationCode(email, 'reset_password');
 
-    // TODO: In production, send email with code
-    // For now, we'll just log it
-    console.log(`Reset code for ${email}: ${code}`);
+    await this.emailService.sendVerificationCode(email, code);
   }
 
   async resetPassword(

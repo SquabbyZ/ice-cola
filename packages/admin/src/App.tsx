@@ -11,6 +11,9 @@ import AcceptInvite from './pages/AcceptInvite';
 import ForgotPassword from './pages/ForgotPassword';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import AiSettings from './pages/ai/ApiKeys';
+import Marketplace from './pages/Marketplace';
+import ApprovalCenter from './pages/ApprovalCenter';
 
 const App: React.FC = () => {
   return (
@@ -47,7 +50,7 @@ const App: React.FC = () => {
           <Route
             path="settings"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['OWNER', 'ADMIN']}>
                 <Settings />
               </ProtectedRoute>
             }
@@ -57,6 +60,30 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="ai/settings"
+            element={
+              <ProtectedRoute>
+                <AiSettings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="marketplace"
+            element={
+              <ProtectedRoute>
+                <Marketplace />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="approval-center"
+            element={
+              <ProtectedRoute>
+                <ApprovalCenter />
               </ProtectedRoute>
             }
           />

@@ -280,6 +280,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async updateMessage(messageId: string, conversationId: string, data: { content: string }) {
+    return this.queryOne(
+      'UPDATE messages SET content = $1 WHERE id = $2 AND "conversationId" = $3 RETURNING *',
+      [data.content, messageId, conversationId]
+    );
+  }
+
+  async deleteMessage(messageId: string, conversationId: string) {
+    return this.query(
+      'DELETE FROM messages WHERE id = $1 AND "conversationId" = $2',
+      [messageId, conversationId]
+    );
+  }
+
   // Usage stats methods
   async getUsageStats(period: 'day' | 'week' | 'month') {
     const now = new Date();
@@ -862,6 +876,97 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return this.queryOne(
       `UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2 RETURNING *`,
       [passwordHash, userId]
+    );
+  }
+
+  // Conversation MCP Servers methods
+  async addConversationMCPServer(data: {
+    conversationId: string;
+    serverId: string;
+    serverName: string;
+    serverType?: string;
+    config?: Record<string, any>;
+    enabled?: boolean;
+  }) {
+    const id = this.generateUUID();
+    return this.queryOne(
+      `INSERT INTO conversation_mcp_servers (id, conversation_id, server_id, server_name, server_type, config, enabled, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       ON CONFLICT (conversation_id, server_id) DO UPDATE SET
+         enabled = COALESCE($7, conversation_mcp_servers.enabled),
+         config = COALESCE($6, conversation_mcp_servers.config),
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        id,
+        data.conversationId,
+        data.serverId,
+        data.serverName,
+        data.serverType || 'stdio',
+        data.config ? JSON.stringify(data.config) : null,
+        data.enabled ?? true,
+      ]
+    );
+  }
+
+  async removeConversationMCPServer(conversationId: string, serverId: string) {
+    return this.queryOne(
+      `DELETE FROM conversation_mcp_servers WHERE conversation_id = $1 AND server_id = $2 RETURNING *`,
+      [conversationId, serverId]
+    );
+  }
+
+  async getConversationMCPServers(conversationId: string) {
+    return this.query(
+      `SELECT cms.*, ms.name, ms.description, ms.version, ms.author, ms.category,
+              ms.icon, ms.color, ms.config_schema, ms.instructions
+       FROM conversation_mcp_servers cms
+       INNER JOIN mcp_servers ms ON cms.server_id = ms.id
+       WHERE cms.conversation_id = $1 AND cms.enabled = true
+       ORDER BY cms.created_at ASC`,
+      [conversationId]
+    );
+  }
+
+  async setConversationMCPServers(conversationId: string, serverIds: string[]) {
+    await this.query(
+      `UPDATE conversation_mcp_servers SET enabled = false, updated_at = NOW() WHERE conversation_id = $1`,
+      [conversationId]
+    );
+    if (serverIds.length > 0) {
+      await this.query(
+        `UPDATE conversation_mcp_servers SET enabled = true, updated_at = NOW()
+         WHERE conversation_id = $1 AND server_id = ANY($2)`,
+        [conversationId, serverIds]
+      );
+    }
+    return this.getConversationMCPServers(conversationId);
+  }
+
+  async clearConversationMCPServers(conversationId: string) {
+    return this.query(
+      `DELETE FROM conversation_mcp_servers WHERE conversation_id = $1 RETURNING *`,
+      [conversationId]
+    );
+  }
+
+  async getMCPConnectionConfig(userId: string, serverId: string) {
+    return this.queryOne(
+      `SELECT umc.*, ms.name, ms.description, ms.category, ms.icon, ms.config_schema, ms.instructions
+       FROM user_mcp_connections umc
+       INNER JOIN mcp_servers ms ON umc.server_id = ms.id
+       WHERE umc.user_id = $1 AND umc.server_id = $2 AND umc.status = 'connected'`,
+      [userId, serverId]
+    );
+  }
+
+  async getUserConnectedMCPConfig(userId: string) {
+    return this.query(
+      `SELECT umc.*, ms.name, ms.description, ms.category, ms.icon, ms.config_schema, ms.instructions
+       FROM user_mcp_connections umc
+       INNER JOIN mcp_servers ms ON umc.server_id = ms.id
+       WHERE umc.user_id = $1 AND umc.status = 'connected'`,
+      [userId]
     );
   }
 

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CommonModule } from './commons/common.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { DatabaseModule } from './database/database.module';
@@ -14,6 +15,8 @@ import { SkillsModule } from './skills/skills.module';
 import { WorkordersModule } from './workorders/workorders.module';
 import { TeamsModule } from './teams/teams.module';
 import { McpModule } from './mcp/mcp.module';
+import { AiModelsModule } from './ai-models/ai-models.module';
+import { MarketplaceModule } from './marketplace/marketplace.module';
 
 @Module({
   imports: [
@@ -46,6 +49,9 @@ import { McpModule } from './mcp/mcp.module';
     WorkordersModule,
     TeamsModule,
     McpModule,
+    AiModelsModule,
+    MarketplaceModule,
+    CommonModule,
   ],
 })
 export class AppModule {}

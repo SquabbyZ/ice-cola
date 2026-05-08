@@ -176,4 +176,35 @@ export class ConversationService {
 
     return { success: true };
   }
+
+  async updateMessage(
+    teamId: string,
+    conversationId: string,
+    messageId: string,
+    data: { content: string },
+  ) {
+    const conversation = await this.db.findConversationById(conversationId, teamId);
+
+    if (!conversation) {
+      throw new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404);
+    }
+
+    const message = await this.db.updateMessage(messageId, conversationId, data);
+    return message;
+  }
+
+  async deleteMessage(
+    teamId: string,
+    conversationId: string,
+    messageId: string,
+  ) {
+    const conversation = await this.db.findConversationById(conversationId, teamId);
+
+    if (!conversation) {
+      throw new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404);
+    }
+
+    await this.db.deleteMessage(messageId, conversationId);
+    return { success: true };
+  }
 }

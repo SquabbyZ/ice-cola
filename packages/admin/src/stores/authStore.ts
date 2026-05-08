@@ -14,15 +14,21 @@ interface AuthState {
   logout: () => void;
 }
 
+const storedToken = localStorage.getItem('adminToken');
+const storedUser = localStorage.getItem('adminUser');
+const parsedUser = storedUser ? JSON.parse(storedUser) : null;
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: null,
-  token: localStorage.getItem('adminToken'),
+  user: parsedUser,
+  token: storedToken,
   setAuth: (user, token) => {
     localStorage.setItem('adminToken', token);
+    localStorage.setItem('adminUser', JSON.stringify(user));
     set({ user, token });
   },
   logout: () => {
     localStorage.removeItem('adminToken');
+    localStorage.removeItem('adminUser');
     set({ user: null, token: null });
   },
 }));

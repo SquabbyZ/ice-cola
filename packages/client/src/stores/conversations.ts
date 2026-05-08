@@ -6,13 +6,16 @@ interface ConversationState {
   currentConversationId: string | null;
   isLoading: boolean;
   error: string | null;
-  
+  searchQuery: string;
+
   // Actions
   setConversations: (conversations: Conversation[]) => void;
   setCurrentConversationId: (id: string | null) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
-  
+  setSearchQuery: (query: string) => void;
+  filteredConversations: () => Conversation[];
+
   // Async actions
   loadConversations: (teamId: string) => Promise<void>;
   createConversation: (teamId: string, title: string) => Promise<Conversation>;
@@ -20,16 +23,24 @@ interface ConversationState {
   renameConversation: (teamId: string, conversationId: string, title: string) => Promise<void>;
 }
 
-export const useConversationStore = create<ConversationState>((set) => ({
+export const useConversationStore = create<ConversationState>((set, get) => ({
   conversations: [],
   currentConversationId: null,
   isLoading: false,
   error: null,
-  
+  searchQuery: '',
+
   setConversations: (conversations) => set({ conversations }),
   setCurrentConversationId: (id) => set({ currentConversationId: id }),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
+  setSearchQuery: (query) => set({ searchQuery: query }),
+  filteredConversations: () => {
+    const { conversations, searchQuery } = get();
+    if (!searchQuery.trim()) return conversations;
+    const q = searchQuery.toLowerCase();
+    return conversations.filter(c => (c.title || '未命名对话').toLowerCase().includes(q));
+  },
   
   loadConversations: async (teamId: string) => {
     set({ isLoading: true, error: null });
@@ -38,7 +49,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
       set({ conversations: result.conversations });
     } catch (error: any) {
       set({ error: error.message || '加载对话列表失败' });
-      console.error('Failed to load conversations:', error);
     } finally {
       set({ isLoading: false });
     }
@@ -56,7 +66,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
       return conversation;
     } catch (error: any) {
       set({ error: error.message || '创建对话失败' });
-      console.error('Failed to create conversation:', error);
       throw error;
     } finally {
       set({ isLoading: false });
@@ -76,7 +85,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
       }));
     } catch (error: any) {
       set({ error: error.message || '删除对话失败' });
-      console.error('Failed to delete conversation:', error);
       throw error;
     } finally {
       set({ isLoading: false });
@@ -95,7 +103,6 @@ export const useConversationStore = create<ConversationState>((set) => ({
       }));
     } catch (error: any) {
       set({ error: error.message || '重命名对话失败' });
-      console.error('Failed to rename conversation:', error);
       throw error;
     } finally {
       set({ isLoading: false });

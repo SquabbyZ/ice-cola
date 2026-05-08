@@ -4,49 +4,66 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    /* Background - warm off-white */
+    --background: 40 20% 98%;
+    --foreground: 220 25% 10%;
 
+    /* Card - pure white surface */
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 220 25% 10%;
 
+    /* Popover */
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 220 25% 10%;
 
-    --primary: 245 58% 51%;
+    /* Primary - Electric Blue accent (no purple) */
+    --primary: 217 91% 60%;
     --primary-foreground: 210 40% 98%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222 47% 11%;
+    /* Secondary - Zinc neutral */
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 25% 10%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215 16% 47%;
+    /* Muted */
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 8% 46%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222 47% 11%;
+    /* Accent - subtle zinc tint */
+    --accent: 220 14% 96%;
+    --accent-foreground: 220 25% 10%;
 
-    --destructive: 0 84% 60%;
+    /* Destructive - Rose */
+    --destructive: 350 89% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 245 58% 51%;
+    /* Border - Zinc-200 */
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 217 91% 60%;
 
-    --radius: 0.75rem;
+    /* Radius - larger for premium feel */
+    --radius: 1rem;
+
+    /* Premium shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+    --shadow: 0 4px 12px -4px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+    --shadow-lg: 0 20px 40px -15px rgb(0 0 0 / 0.08);
+    --shadow-xl: 0 32px 64px -20px rgb(0 0 0 / 0.1);
   }
 
   .dark {
-    --background: 222 47% 11%;
+    --background: 222 47% 8%;
     --foreground: 210 40% 98%;
 
     --card: 217 33% 17%;
     --card-foreground: 210 40% 98%;
 
-    --popover: 222 47% 11%;
+    --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 245 58% 51%;
-    --primary-foreground: 210 40% 98%;
+    /* Primary - Electric Blue in dark */
+    --primary: 217 91% 65%;
+    --primary-foreground: 222 47% 8%;
 
     --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
@@ -57,12 +74,17 @@
     --accent: 217 33% 17%;
     --accent-foreground: 210 40% 98%;
 
-    --destructive: 0 63% 31%;
+    --destructive: 350 89% 60%;
     --destructive-foreground: 210 40% 98%;
 
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 245 58% 51%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 217 91% 65%;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+    --shadow: 0 4px 12px -4px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 20px 40px -15px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 32px 64px -20px rgb(0 0 0 / 0.5);
   }
 }
 

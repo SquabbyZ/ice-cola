@@ -1,11 +1,10 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { ClientAuthController } from './client-auth.controller';
 import { AuthService } from './auth.service';
 import { ClientAuthService } from './client-auth.service';
-import { CaptchaService } from '../commons/captcha.service';
 import { EmailService } from '../commons/email.service';
 import { JwtStrategy } from './jwt.strategy';
 import { AdminModule } from '../admin-admin/admin.module';
@@ -22,13 +21,12 @@ import { AdminModule } from '../admin-admin/admin.module';
       }),
       inject: [ConfigService],
     }),
-    AdminModule,
+    forwardRef(() => AdminModule),
   ],
   controllers: [AuthController, ClientAuthController],
   providers: [
     AuthService,
     ClientAuthService,
-    CaptchaService,
     EmailService,
     JwtStrategy,
   ],

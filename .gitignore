@@ -103,3 +103,4 @@ packages/server/test/
 packages/admin/screenshots/
 packages/client/tests
 packages/client/test-results
+reports/

@@ -5,17 +5,17 @@ import Sidebar from './Sidebar';
 
 const Layout: React.FC = () => {
   return (
-    <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
-      {/* 顶部状态栏 */}
+    <div className="flex flex-col h-[100dvh] bg-zinc-50/30">
+      {/* Top Status Bar */}
       <TopBar />
-      
-      {/* 主体内容区 */}
+
+      {/* Main Content Area */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* 侧边栏 */}
+        {/* Sidebar */}
         <Sidebar />
-        
-        {/* 主内容区域 */}
-        <main className="flex-1 min-h-0 overflow-auto">
+
+        {/* Main Content */}
+        <main className="flex-1 min-h-0 overflow-auto bg-zinc-50/20">
           <Outlet />
         </main>
       </div>

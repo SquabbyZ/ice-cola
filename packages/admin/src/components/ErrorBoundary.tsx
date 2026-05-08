@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from 'react';
+import { withTranslation, WithTranslation } from 'react-i18next';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from './ui/button';
 
@@ -12,8 +13,8 @@ interface State {
   error: Error | null;
 }
 
-export class ErrorBoundary extends Component<Props, State> {
-  constructor(props: Props) {
+class ErrorBoundaryBase extends Component<Props & WithTranslation, State> {
+  constructor(props: Props & WithTranslation) {
     super(props);
     this.state = { hasError: false, error: null };
   }
@@ -32,6 +33,8 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   render(): ReactNode {
+    const { t } = this.props;
+
     if (this.state.hasError) {
       if (this.props.fallback) {
         return this.props.fallback;
@@ -41,14 +44,14 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="flex flex-col items-center justify-center min-h-[400px] p-8">
           <div className="flex items-center gap-2 text-red-600 mb-4">
             <AlertTriangle className="h-6 w-6" />
-            <h2 className="text-xl font-semibold">Something went wrong</h2>
+            <h2 className="text-xl font-semibold">{t('error.somethingWentWrong')}</h2>
           </div>
           <p className="text-gray-600 mb-6 text-center max-w-md">
-            {this.state.error?.message || 'An unexpected error occurred'}
+            {this.state.error?.message || t('error.unexpectedError')}
           </p>
           <Button onClick={this.handleReload} className="flex items-center gap-2">
             <RefreshCw className="h-4 w-4" />
-            Reload Page
+            {t('error.reloadPage')}
           </Button>
         </div>
       );
@@ -57,3 +60,5 @@ export class ErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+
+export const ErrorBoundary = withTranslation()(ErrorBoundaryBase);

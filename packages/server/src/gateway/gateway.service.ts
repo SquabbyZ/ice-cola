@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { HttpService } from '@nestjs/axios';
+import { AiModelsService } from '../ai-models/ai-models.service';
 import { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -45,18 +46,24 @@ interface ConnectResult {
 export class GatewayService {
   private gatewayInstance: any = null;
   private readonly logger = new Logger(GatewayService.name);
+  private activeStreams: Map<string, { ws: WebSocket; stream: any }> = new Map();
+  private hermesAgentStatus: { healthy: boolean; lastChecked: number } = { healthy: false, lastChecked: 0 };
+  private readonly HERMES_AGENT_URL = process.env.HERMES_AGENT_URL || 'http://localhost:8642';
+  private readonly HERMES_HEALTH_TTL_MS = 30000;
 
   constructor(
     private db: DatabaseService,
     private jwtService: JwtService,
     private configService: ConfigService,
     private httpService: HttpService,
+    private aiModelsService: AiModelsService,
   ) {
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
     this.logger.log(`ConfigService available: ${!!this.configService}`);
     this.logger.log(`HttpService available: ${!!this.httpService}`);
+    this.logger.log(`AiModelsService available: ${!!this.aiModelsService}`);
   }
 
   setGatewayInstance(gatewayInstance: any): void {
@@ -388,14 +395,588 @@ export class GatewayService {
     };
   }
 
-  async sendHermesMessage(params: { sessionId: string; message: string }) {
-    this.logger.log(`Sending message to Hermes: ${params.message.substring(0, 50)}...`);
-    
-    const messageId = this.generateUUID();
-    const hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://localhost:9119');
-    
+  private async checkHermesAgentHealth(): Promise<boolean> {
+    const now = Date.now();
+    if (now - this.hermesAgentStatus.lastChecked < this.HERMES_HEALTH_TTL_MS) {
+      return this.hermesAgentStatus.healthy;
+    }
     try {
-      // Call Hermes Agent API
+      await firstValueFrom(
+        this.httpService.get(`${this.HERMES_AGENT_URL}/health`, { timeout: 2000 }),
+      );
+      this.hermesAgentStatus = { healthy: true, lastChecked: now };
+      return true;
+    } catch {
+      this.hermesAgentStatus = { healthy: false, lastChecked: now };
+      return false;
+    }
+  }
+
+  private async sendHermesAgentMessage(
+    params: { sessionId: string; message: string; teamId?: string; conversationId?: string; expertId?: string; attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }> },
+    senderWs?: WebSocket,
+  ) {
+    const messageId = this.generateUUID();
+    this.logger.log(`Routing to hermes-agent at ${this.HERMES_AGENT_URL}`);
+
+    // Resolve system prompt from expert if provided
+    let systemPrompt: string | undefined;
+    if (params.expertId) {
+      try {
+        const expert = await this.db.findExpertById(params.expertId);
+        if (expert?.systemprompt || expert?.systemPrompt) {
+          systemPrompt = expert.systemprompt || expert.systemPrompt;
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
+      }
+    }
+
+    // Build messages array with conversation history
+    const messages: Array<{ role: string; content: any }> = [];
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+    if (params.conversationId) {
+      try {
+        const history = await this.db.findMessagesByConversationId(params.conversationId);
+        const recentHistory = history.slice(-20);
+        for (const msg of recentHistory) {
+          if (msg.role === 'user' || msg.role === 'assistant') {
+            messages.push({ role: msg.role, content: msg.content });
+          }
+        }
+      } catch (err) {
+        this.logger.warn('Failed to load conversation history:', err);
+      }
+    }
+
+    // Build user message with optional attachments (multimodal)
+    if (params.attachments && params.attachments.length > 0) {
+      const contentParts: any[] = [{ type: 'text', text: params.message }];
+      for (const att of params.attachments) {
+        if (att.type === 'image' && att.data) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: `data:${att.mimeType};base64,${att.data}` },
+          });
+        } else if (att.data) {
+          contentParts[0].text += `\n\n[Attached file: ${att.name}]\n${att.data}`;
+        }
+      }
+      messages.push({ role: 'user', content: contentParts });
+    } else {
+      messages.push({ role: 'user', content: params.message });
+    }
+
+    const requestBody: Record<string, any> = {
+      model: 'hermes-agent',
+      messages,
+      stream: true,
+    };
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.HERMES_AGENT_URL}/v1/chat/completions`, requestBody, {
+          headers: { 'Content-Type': 'application/json' },
+          responseType: 'stream',
+          timeout: 300000,
+        }),
+      );
+
+      const stream = response.data;
+      let fullResponse = '';
+      let deltaCount = 0;
+      let totalTokens = 0;
+      let aborted = false;
+      let settled = false;
+      let errored = false;
+      let lineBuffer = '';
+      let activeToolCallId: string | undefined;
+
+      if (senderWs) {
+        this.activeStreams.set(messageId, { ws: senderWs, stream });
+      }
+
+      const cleanup = () => {
+        this.activeStreams.delete(messageId);
+      };
+
+      return new Promise((resolve, reject) => {
+        const finalize = (data: { ok: boolean; messageId: string; aborted?: boolean; error?: string }) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(data);
+        };
+        stream.on('data', (chunk: Buffer) => {
+          if (aborted || settled) return;
+
+          lineBuffer += chunk.toString();
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.substring(6).trim();
+              if (dataStr === '[DONE]') {
+                this.sendStreamEvent('hermes.final', {
+                  messageId,
+                  content: fullResponse,
+                  totalTokens,
+                }, senderWs);
+                finalize({ ok: true, messageId });
+                return;
+              }
+
+              try {
+                const data = JSON.parse(dataStr);
+                const delta = data.choices?.[0]?.delta?.content || '';
+                if (delta) {
+                  fullResponse += delta;
+                  deltaCount++;
+                  this.sendStreamEvent('hermes.delta', {
+                    messageId,
+                    delta,
+                    sequenceNumber: deltaCount,
+                  }, senderWs);
+                }
+
+                // Handle tool calls in delta — track active toolCallId across chunks
+                const toolCalls = data.choices?.[0]?.delta?.tool_calls;
+                if (toolCalls && Array.isArray(toolCalls)) {
+                  for (const tc of toolCalls) {
+                    if (tc.id) {
+                      activeToolCallId = tc.id;
+                    }
+                    this.sendStreamEvent('hermes.tool', {
+                      messageId,
+                      toolCallId: tc.id || activeToolCallId,
+                      toolName: tc.function?.name,
+                      input: tc.function?.arguments,
+                      status: 'running',
+                    }, senderWs);
+                  }
+                }
+
+                if (data.usage) {
+                  totalTokens = data.usage.total_tokens || 0;
+                }
+              } catch (e) {
+                // Not JSON, skip
+              }
+            }
+          }
+        });
+
+        stream.on('end', () => {
+          if (settled) return;
+          if (aborted) {
+            finalize({ ok: true, messageId, aborted: true });
+            return;
+          }
+          if (errored) return;
+          this.logger.log('hermes-agent stream ended');
+          if (!fullResponse) {
+            this.sendStreamEvent('hermes.error', {
+              messageId,
+              error: 'No response from hermes-agent',
+            }, senderWs);
+            finalize({ ok: false, messageId, error: 'No response' });
+          } else {
+            this.sendStreamEvent('hermes.final', {
+              messageId,
+              content: fullResponse,
+              totalTokens,
+            }, senderWs);
+            finalize({ ok: true, messageId });
+          }
+        });
+
+        stream.on('error', (error: Error) => {
+          if (settled) return;
+          errored = true;
+          cleanup();
+          if (aborted) {
+            resolve({ ok: true, messageId, aborted: true });
+            return;
+          }
+          this.logger.error('hermes-agent stream error:', error);
+          this.sendStreamEvent('hermes.error', {
+            messageId,
+            error: error.message,
+          }, senderWs);
+          reject(error);
+        });
+      });
+
+    } catch (error) {
+      this.logger.error('Failed to call hermes-agent API:', error);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: error instanceof Error ? error.message : 'hermes-agent call failed',
+      }, senderWs);
+      return { ok: false, messageId, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  }
+
+  async getHermesAgentStatus() {
+    const healthy = await this.checkHermesAgentHealth();
+    return {
+      ok: true,
+      hermesAgent: {
+        available: healthy,
+        endpoint: this.HERMES_AGENT_URL,
+        lastChecked: this.hermesAgentStatus.lastChecked,
+      },
+    };
+  }
+
+  async sendHermesMessage(params: { sessionId: string; message: string; teamId?: string; conversationId?: string; expertId?: string; attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }> }, senderWs?: WebSocket) {
+    this.logger.log(`Sending message to Hermes: ${params.message.substring(0, 50)}...`);
+
+    // Route through hermes-agent if available (unlocks all tools)
+    const hermesHealthy = await this.checkHermesAgentHealth();
+    if (hermesHealthy) {
+      return this.sendHermesAgentMessage(params, senderWs);
+    }
+
+    const messageId = this.generateUUID();
+    const teamId = params.teamId;
+
+    // Try to resolve default model from DB config
+    let defaultModel: any = null;
+    try {
+      defaultModel = await this.aiModelsService.findDefaultModelByUseCase('general');
+    } catch (err) {
+      this.logger.warn('Failed to query default model, falling back to hermes-agent');
+    }
+
+    if (!defaultModel) {
+      // No configured default model — fall back to legacy hermes-agent
+      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+    }
+
+    // Resolve provider, API key, and endpoint
+    const providerId = defaultModel.provider_id;
+    const modelCode = defaultModel.model_code; // e.g. "gpt-4o"
+
+    const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerId);
+    if (!apiKeyRecord) {
+      this.logger.warn(`No active API key for provider ${defaultModel.provider_name}, falling back to hermes-agent`);
+      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+    }
+
+    const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
+    if (!decryptedKey) {
+      this.logger.warn(`Failed to decrypt API key for provider ${defaultModel.provider_name}, falling back to hermes-agent`);
+      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+    }
+
+    const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerId);
+    const baseUrl = endpoint?.base_url || this.configService.get<string>('HERMES_ENDPOINT', 'http://localhost:9119');
+
+    // Quota check before making API call
+    if (teamId) {
+      const quotaError = await this.checkQuota(teamId);
+      if (quotaError) {
+        this.sendStreamEvent('hermes.error', {
+          messageId,
+          error: quotaError,
+        }, senderWs);
+        return { ok: false, messageId, error: quotaError };
+      }
+    }
+
+    // Build request headers and body
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${decryptedKey}`,
+    };
+    if (endpoint?.headers) {
+      const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
+      Object.assign(headers, extraHeaders);
+    }
+
+    // Build model params from config
+    // Load conversation history for context if conversationId is provided
+    const messages: Array<{ role: string; content: string }> = [];
+
+    // Inject expert system prompt if provided
+    if (params.expertId) {
+      try {
+        const expert = await this.db.findExpertById(params.expertId);
+        const prompt = expert?.systemprompt || expert?.systemPrompt;
+        if (prompt) {
+          messages.push({ role: 'system', content: prompt });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
+      }
+    }
+
+    if (params.conversationId) {
+      try {
+        const history = await this.db.findMessagesByConversationId(params.conversationId);
+        // Use last 20 messages for context (avoid token limit issues)
+        const recentHistory = history.slice(-20);
+        for (const msg of recentHistory) {
+          if (msg.role === 'user' || msg.role === 'assistant') {
+            messages.push({ role: msg.role, content: msg.content });
+          }
+        }
+      } catch (err) {
+        this.logger.warn('Failed to load conversation history:', err);
+      }
+    }
+    messages.push({ role: 'user', content: params.message });
+
+    const requestBody: Record<string, any> = {
+      model: modelCode,
+      messages,
+      stream: true,
+    };
+    if (defaultModel.temperature !== null && defaultModel.temperature !== undefined) {
+      requestBody.temperature = defaultModel.temperature;
+    }
+    if (defaultModel.max_tokens !== null && defaultModel.max_tokens !== undefined) {
+      requestBody.max_tokens = defaultModel.max_tokens;
+    }
+    if (defaultModel.top_p !== null && defaultModel.top_p !== undefined) {
+      requestBody.top_p = defaultModel.top_p;
+    }
+
+    const timeout = endpoint?.timeout_ms || 60000;
+
+    try {
+      const startTime = Date.now();
+      const response = await firstValueFrom(
+        this.httpService.post(`${baseUrl}/v1/chat/completions`, requestBody, {
+          headers,
+          responseType: 'stream',
+          timeout,
+        })
+      );
+
+      this.logger.log(`Provider API (${defaultModel.provider_name}/${modelCode}) connected, starting stream...`);
+
+      this.logger.log(`Provider API (${defaultModel.provider_name}/${modelCode}) response status: ${response.status}`);
+
+      const stream = response.data;
+      let fullResponse = '';
+      let deltaCount = 0;
+      let totalTokens = 0;
+      let aborted = false;
+      let lineBuffer = '';
+      let errorBody = '';
+
+      // Register stream for abort support
+      if (senderWs) {
+        this.activeStreams.set(messageId, { ws: senderWs, stream });
+      }
+
+      const cleanup = () => {
+        this.activeStreams.delete(messageId);
+      };
+
+      return new Promise((resolve, reject) => {
+        const settle = (result: any) => {
+          cleanup();
+          resolve(result);
+        };
+
+        stream.on('data', (chunk: Buffer) => {
+          if (aborted) return;
+
+          // Accumulate raw data for error diagnosis when no SSE data parsed
+          const chunkStr = chunk.toString();
+
+          // Line buffer for proper SSE parsing (handles chunks split mid-line)
+          lineBuffer += chunkStr;
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop() || '';
+
+          let parsedAny = false;
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const dataStr = line.substring(6).trim();
+              if (dataStr === '[DONE]') {
+                // Stream complete
+                this.sendStreamEvent('hermes.final', {
+                  messageId,
+                  content: fullResponse,
+                  totalTokens,
+                }, senderWs);
+
+                // Record usage
+                this.recordProviderUsage(apiKeyRecord.id, providerId, defaultModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
+                  this.logger.warn('Failed to record usage:', err);
+                });
+
+                settle({ ok: true, messageId });
+                return;
+              }
+
+              try {
+                const data = JSON.parse(dataStr);
+
+                // Check for API-level error in the SSE stream
+                if (data.error) {
+                  const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
+                  this.logger.error(`${defaultModel.provider_name} API error in stream: ${errMsg}`);
+                  this.sendStreamEvent('hermes.error', {
+                    messageId,
+                    error: `${defaultModel.provider_name} error: ${errMsg}`,
+                  }, senderWs);
+                  settle({ ok: false, messageId, error: errMsg });
+                  return;
+                }
+
+                const delta = data.choices?.[0]?.delta?.content || '';
+                if (delta) {
+                  fullResponse += delta;
+                  deltaCount++;
+                  parsedAny = true;
+
+                  this.sendStreamEvent('hermes.delta', {
+                    messageId,
+                    delta,
+                    sequenceNumber: deltaCount,
+                  }, senderWs);
+                }
+
+                if (data.usage) {
+                  totalTokens = data.usage.total_tokens || 0;
+                }
+              } catch (e) {
+                // Not JSON, skip
+              }
+            }
+          }
+
+          // Collect raw content for error diagnosis when no SSE data parsed
+          if (!parsedAny) {
+            errorBody += chunkStr;
+          }
+        });
+
+        stream.on('end', () => {
+          if (aborted) {
+            settle({ ok: true, messageId, aborted: true });
+            return;
+          }
+
+          // Process any remaining line buffer
+          if (lineBuffer.trim()) {
+            if (lineBuffer.startsWith('data: ')) {
+              const dataStr = lineBuffer.substring(6).trim();
+              if (dataStr !== '[DONE]') {
+                try {
+                  const data = JSON.parse(dataStr);
+                  const delta = data.choices?.[0]?.delta?.content || '';
+                  if (delta) {
+                    fullResponse += delta;
+                    deltaCount++;
+                    this.sendStreamEvent('hermes.delta', {
+                      messageId,
+                      delta,
+                      sequenceNumber: deltaCount,
+                    }, senderWs);
+                  }
+                } catch (e) { /* skip */ }
+              }
+            }
+          }
+
+          if (!fullResponse) {
+            const errorDetail = errorBody.trim().substring(0, 500);
+            this.logger.error(`Provider stream ended with no response from ${defaultModel.provider_name}/${modelCode}. Raw response: ${errorDetail || '(empty)'}`);
+            this.sendStreamEvent('hermes.error', {
+              messageId,
+              error: `${defaultModel.provider_name} returned no response. ${errorDetail ? 'Details: ' + errorDetail : 'The API stream closed without sending any data.'}`,
+            }, senderWs);
+            settle({ ok: false, messageId, error: 'No response' });
+          } else {
+            // Ensure final event sent (if [DONE] wasn't received)
+            this.logger.log(`Provider stream ended, ${deltaCount} chunks, ${fullResponse.length} chars`);
+            this.sendStreamEvent('hermes.final', {
+              messageId,
+              content: fullResponse,
+              totalTokens,
+            }, senderWs);
+
+            this.recordProviderUsage(apiKeyRecord.id, providerId, defaultModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
+              this.logger.warn('Failed to record usage:', err);
+            });
+
+            settle({ ok: true, messageId });
+          }
+        });
+
+        stream.on('error', (error: Error) => {
+          if (aborted) {
+            settle({ ok: true, messageId, aborted: true });
+            return;
+          }
+
+          this.logger.error('Provider stream error:', error);
+          this.sendStreamEvent('hermes.error', {
+            messageId,
+            error: error.message,
+          }, senderWs);
+          cleanup();
+          reject(error);
+        });
+      });
+
+    } catch (error) {
+      this.logger.error(`Failed to call ${defaultModel.provider_name} API:`, error);
+
+      // Fall back to hermes-agent if provider call fails
+      this.logger.log('Falling back to hermes-agent after provider failure');
+      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+    }
+  }
+
+  abortHermesMessage(params: { messageId: string }, requestingWs: WebSocket) {
+    const { messageId } = params;
+    const entry = this.activeStreams.get(messageId);
+    if (!entry) {
+      this.logger.warn(`No active stream found for messageId: ${messageId}`);
+      return { ok: false, error: 'No active stream' };
+    }
+
+    if (entry.ws !== requestingWs) {
+      this.logger.warn(`Unauthorized abort attempt for messageId: ${messageId}`);
+      return { ok: false, error: 'Unauthorized' };
+    }
+
+    this.logger.log(`Aborting stream for messageId: ${messageId}`);
+
+    // Destroy the stream to abort the HTTP request
+    if (entry.stream && typeof entry.stream.destroy === 'function') {
+      entry.stream.destroy();
+    }
+
+    this.activeStreams.delete(messageId);
+
+    // Notify the client that the stream was aborted
+    this.sendStreamEvent('hermes.final', {
+      messageId,
+      content: '',
+      aborted: true,
+    }, entry.ws);
+
+    return { ok: true, messageId };
+  }
+
+  private async sendLegacyHermesMessage(params: { sessionId: string; message: string }, senderWs?: WebSocket, messageId?: string) {
+    messageId = messageId || this.generateUUID();
+    const hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://localhost:9119');
+
+    this.logger.log(`Using legacy hermes-agent at ${hermesEndpoint}`);
+
+    try {
       const response = await firstValueFrom(
         this.httpService.post(`${hermesEndpoint}/v1/responses`, {
           model: 'hermes-agent',
@@ -409,68 +990,81 @@ export class GatewayService {
         })
       );
 
-      this.logger.log('Hermes API connected, starting stream...');
+      this.logger.log(`Legacy hermes response status: ${response.status}`);
 
-      // Process streaming response
       const stream = response.data;
       let fullResponse = '';
       let deltaCount = 0;
+      let lineBuffer = '';
+      let errorBody = '';
 
       return new Promise((resolve, reject) => {
         stream.on('data', (chunk: Buffer) => {
-          const lines = chunk.toString().split('\n');
-          
+          const chunkStr = chunk.toString();
+
+          // Line buffer for proper SSE parsing
+          lineBuffer += chunkStr;
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop() || '';
+
+          let parsedAny = false;
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               try {
                 const data = JSON.parse(line.substring(6));
-                
-                // Handle different event types
+
                 if (data.type === 'response.output_text.delta') {
                   const delta = data.delta || '';
                   fullResponse += delta;
                   deltaCount++;
-                  
-                  // Send delta event to client
+                  parsedAny = true;
+
                   this.sendStreamEvent('hermes.delta', {
                     messageId,
                     delta,
                     sequenceNumber: deltaCount,
-                  });
-                  
+                  }, senderWs);
+
                 } else if (data.type === 'response.completed') {
-                  // Send final event
                   this.sendStreamEvent('hermes.final', {
                     messageId,
                     content: fullResponse,
                     totalTokens: data.response?.usage?.total_tokens || 0,
-                  });
-                  
-                  resolve({
-                    ok: true,
-                    messageId,
-                  });
+                  }, senderWs);
+
+                  resolve({ ok: true, messageId });
                 }
               } catch (e) {
                 this.logger.warn(`Failed to parse SSE line: ${line}`);
               }
             }
           }
+
+          if (!parsedAny) {
+            errorBody += chunkStr;
+          }
         });
 
         stream.on('end', () => {
-          this.logger.log('Hermes stream ended');
+          // Process remaining line buffer
+          if (lineBuffer.trim() && lineBuffer.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(lineBuffer.substring(6));
+              if (data.type === 'response.output_text.delta') {
+                fullResponse += data.delta || '';
+              }
+            } catch (e) { /* skip */ }
+          }
+
+          this.logger.log(`Legacy hermes stream ended, ${deltaCount} chunks`);
           if (!fullResponse) {
-            // If no response received, send error
+            const errorDetail = errorBody.trim().substring(0, 500);
+            this.logger.error(`Legacy hermes returned no response. Raw: ${errorDetail || '(empty)'}`);
             this.sendStreamEvent('hermes.error', {
               messageId,
-              error: 'No response from Hermes Agent',
-            });
-            resolve({
-              ok: false,
-              messageId,
-              error: 'No response',
-            });
+              error: `No response from legacy Hermes. ${errorDetail ? 'Details: ' + errorDetail : ''}`,
+            }, senderWs);
+            resolve({ ok: false, messageId, error: 'No response' });
           }
         });
 
@@ -479,46 +1073,126 @@ export class GatewayService {
           this.sendStreamEvent('hermes.error', {
             messageId,
             error: error.message,
-          });
+          }, senderWs);
           reject(error);
         });
       });
 
-    } catch (error) {
-      this.logger.error('Failed to call Hermes API:', error);
-      
-      // Send error event
+    } catch (error: any) {
+      // Extract meaningful error message from various error types
+      let errorMessage = 'Unknown error';
+      if (error?.errors && Array.isArray(error.errors)) {
+        // AggregateError (Node.js 15+) — extract inner errors
+        const innerErrors = error.errors.map((e: any) => e.message || e.code || String(e)).join('; ');
+        errorMessage = `Connection failed: ${innerErrors || 'AggregateError'}`;
+        this.logger.error('Failed to call Hermes API (AggregateError):', innerErrors);
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+        this.logger.error('Failed to call Hermes API:', error.message);
+      } else {
+        errorMessage = String(error);
+        this.logger.error('Failed to call Hermes API (unknown):', error);
+      }
+
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: error.message,
-      });
-      
-      return {
-        ok: false,
-        messageId,
-        error: error.message,
-      };
+        error: errorMessage,
+      }, senderWs);
+
+      return { ok: false, messageId, error: errorMessage };
     }
   }
 
-  private sendStreamEvent(eventType: string, data: any): void {
+  private async checkQuota(teamId: string): Promise<string | null> {
+    try {
+      const quota = await this.aiModelsService.findTeamQuotaByTeamId(teamId);
+      if (!quota) return null; // No quota configured, allow
+
+      const dailyReqLimit = quota.daily_request_limit ?? 1000;
+      const monthlyReqLimit = quota.monthly_request_limit ?? 50000;
+      const dailyTokenLimit = quota.daily_token_limit ?? 1000000;
+      const monthlyTokenLimit = quota.monthly_token_limit ?? 10000000;
+
+      const requestsToday = quota.requests_today ?? 0;
+      const requestsThisMonth = quota.requests_this_month ?? 0;
+      const tokensToday = quota.used_today ?? 0;
+      const tokensThisMonth = quota.used_this_month ?? 0;
+
+      if (requestsToday >= dailyReqLimit) {
+        return `Daily request limit reached (${requestsToday}/${dailyReqLimit})`;
+      }
+      if (requestsThisMonth >= monthlyReqLimit) {
+        return `Monthly request limit reached (${requestsThisMonth}/${monthlyReqLimit})`;
+      }
+      if (tokensToday >= dailyTokenLimit) {
+        return `Daily token limit reached (${tokensToday}/${dailyTokenLimit})`;
+      }
+      if (tokensThisMonth >= monthlyTokenLimit) {
+        return `Monthly token limit reached (${tokensThisMonth}/${monthlyTokenLimit})`;
+      }
+
+      return null;
+    } catch (err) {
+      this.logger.warn('Failed to check quota, allowing request:', err);
+      return null;
+    }
+  }
+
+  private async recordProviderUsage(
+    apiKeyId: string,
+    providerId: string,
+    modelId: string,
+    totalTokens: number,
+    latencyMs: number,
+    teamId?: string,
+  ) {
+    // Update API key last used timestamp
+    await this.aiModelsService.updateApiKeyLastUsed(apiKeyId);
+
+    if (!teamId) return;
+
+    // Log usage
+    await this.aiModelsService.createUsageLog({
+      teamId,
+      modelId,
+      providerId,
+      totalTokens,
+      latencyMs,
+      status: 'success',
+    });
+
+    // Increment quota counters
+    await this.aiModelsService.incrementTeamQuotaUsage(teamId, totalTokens, true).catch(err => {
+      this.logger.warn('Failed to increment quota usage:', err);
+    });
+  }
+
+  private sendStreamEvent(eventType: string, data: any, targetWs?: WebSocket): void {
     if (!this.gatewayInstance) {
       this.logger.warn('Gateway instance not set, cannot send stream event');
       return;
     }
 
-    // Send event to all connected clients
+    // Send event to target client only (or all if no target specified)
     const eventMessage = {
       type: 'evt',
       event: eventType,
       data: data,
     };
 
-    this.gatewayInstance.clients?.forEach((clientInfo: any, ws: WebSocket) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(eventMessage));
+    if (targetWs) {
+      // Send to specific client
+      if (targetWs.readyState === WebSocket.OPEN) {
+        targetWs.send(JSON.stringify(eventMessage));
       }
-    });
+    } else {
+      // Broadcast to all clients (fallback)
+      this.gatewayInstance.clients?.forEach((clientInfo: any, ws: WebSocket) => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(eventMessage));
+        }
+      });
+    }
   }
 
   async getUsageStatus(params: { period?: 'day' | 'week' | 'month' } = {}) {
@@ -896,27 +1570,84 @@ export class GatewayService {
     return [];
   }
 
-  async getInstalledExtensions(params: any): Promise<any> {
-    return [];
+  async getInstalledExtensions(params: { userId: string }): Promise<any[]> {
+    return this.db.findUserInstalledExtensions(params.userId);
   }
 
-  async installExtension(params: any): Promise<any> {
-    throw new Error('Not implemented');
+  async installExtension(params: { extensionId: string; userId: string; config?: any }): Promise<any> {
+    return this.db.installExtension(params.userId, params.extensionId, params.config);
   }
 
-  async uninstallExtension(params: any): Promise<any> {
-    throw new Error('Not implemented');
+  async uninstallExtension(params: { extensionId: string; userId: string }): Promise<any> {
+    return this.db.uninstallExtension(params.userId, params.extensionId);
   }
 
-  async enableExtension(params: any): Promise<any> {
-    throw new Error('Not implemented');
+  async enableExtension(params: { extensionId: string; userId: string }): Promise<any> {
+    return this.db.enableUserExtension(params.userId, params.extensionId);
   }
 
-  async disableExtension(params: any): Promise<any> {
-    throw new Error('Not implemented');
+  async disableExtension(params: { extensionId: string; userId: string }): Promise<any> {
+    return this.db.disableUserExtension(params.userId, params.extensionId);
   }
 
-  async updateExtensionConfig(params: any): Promise<any> {
-    throw new Error('Not implemented');
+  async updateExtensionConfig(params: { extensionId: string; userId: string; config: any }): Promise<any> {
+    return this.db.updateUserExtensionConfig(params.userId, params.extensionId, params.config);
+  }
+
+  // ===== Skills Methods =====
+
+  async listSkills(params: { teamId: string; status?: string }): Promise<any[]> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.findAll(params.teamId, params.status);
+  }
+
+  async getSkill(params: { id: string }): Promise<any> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.findOne(params.id);
+  }
+
+  async createSkill(params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[] }): Promise<any> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const { CreateSkillDto } = await import('../skills/dto/create-skill.dto');
+    const service = new SkillsService(this.db);
+    const dto = new CreateSkillDto();
+    dto.name = params.name;
+    dto.description = params.description;
+    dto.content = params.content;
+    dto.icon = params.icon;
+    dto.category = params.category;
+    dto.tags = params.tags;
+    return service.create(params.teamId, params.authorId, dto);
+  }
+
+  async updateSkill(params: { id: string; name?: string; description?: string; content?: string; icon?: string; category?: string; tags?: string[] }): Promise<any> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const { UpdateSkillDto } = await import('../skills/dto/update-skill.dto');
+    const service = new SkillsService(this.db);
+    const dto = new UpdateSkillDto();
+    Object.assign(dto, params);
+    return service.update(params.id, dto);
+  }
+
+  async deleteSkill(params: { id: string }): Promise<void> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.delete(params.id);
+  }
+
+  // ===== Marketplace Skills Methods =====
+
+  async listMarketplaceSkills(params: { teamId: string }): Promise<any[]> {
+    const result = await this.db.query(
+      `SELECT mi.*, mc.name as category_name, mc.slug as category_slug
+       FROM marketplace_items mi
+       LEFT JOIN marketplace_categories mc ON mi.category_id = mc.id
+       WHERE mi.type = 'skill' AND mi.status = 'approved'
+       ORDER BY mi.install_count DESC, mi.rating DESC
+       LIMIT 100`
+    );
+    return result;
   }
 }

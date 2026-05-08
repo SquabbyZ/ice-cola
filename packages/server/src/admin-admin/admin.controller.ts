@@ -4,6 +4,7 @@ import {
   LoginDto,
   RegisterDto,
   SendCodeDto,
+  VerifyCodeDto,
   ResetPasswordDto,
 } from './dto/login.dto';
 import {
@@ -12,6 +13,9 @@ import {
   RevokeInvitationDto,
 } from './dto/invite.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { TeamRole } from '../quota/quota.service';
 
 @Controller('admin/auth')
 export class AdminController {
@@ -45,6 +49,16 @@ export class AdminController {
     };
   }
 
+  @Post('verify-code')
+  async verifyCode(@Body() dto: VerifyCodeDto) {
+    const isValid = await this.adminService.verifyCode(dto.email, dto.code, 'reset_password');
+    return {
+      success: isValid,
+      data: null,
+      message: isValid ? '验证码正确' : '验证码无效或已过期',
+    };
+  }
+
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto) {
     await this.adminService.resetPassword(dto.email, dto.code, dto.newPassword);
@@ -56,7 +70,8 @@ export class AdminController {
   }
 
   @Post('invitations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async createInvitation(@Body() dto: CreateInvitationDto) {
     // Note: In a real app, you'd get the current user from JWT
     const result = await this.adminService.createInvitation(
@@ -71,7 +86,8 @@ export class AdminController {
   }
 
   @Get('invitations')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async getInvitations() {
     const result = await this.adminService.getInvitations();
     return {
@@ -103,7 +119,8 @@ export class AdminController {
   }
 
   @Get('invitations/:token')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async getInvitationByToken(@Param('token') token: string) {
     const result = await this.adminService.getInvitationByToken(token);
     return {
@@ -113,7 +130,8 @@ export class AdminController {
   }
 
   @Delete('invitations/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async revokeInvitation(@Param('id') id: string) {
     await this.adminService.revokeInvitation(id);
     return {
@@ -144,7 +162,6 @@ export class AdminController {
   }
 
   @Get('users')
-  @UseGuards(JwtAuthGuard)
   async getUsers() {
     const result = await this.adminService.getUsers();
     return {
@@ -155,6 +172,7 @@ export class AdminController {
 
   @Delete('users/:id')
   @UseGuards(JwtAuthGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async removeUser(@Param('id') id: string) {
     await this.adminService.removeUser(id);
     return {
@@ -179,13 +197,28 @@ export class AdminController {
   // ========== Update User Role ==========
 
   @Put('users/:id/role')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async updateUserRole(@Param('id') id: string, @Body() body: { role: string }) {
     const result = await this.adminService.updateUserRole(id, body.role);
     return {
       success: true,
       data: result,
       message: '角色已更新',
+    };
+  }
+
+  // ========== Transfer Ownership ==========
+
+  @Put('users/:id/transfer-owner')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER)
+  async transferOwner(@Param('id') id: string) {
+    const result = await this.adminService.transferOwner(id);
+    return {
+      success: true,
+      data: result,
+      message: '所有权已移交',
     };
   }
 

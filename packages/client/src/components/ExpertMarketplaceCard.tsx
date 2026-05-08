@@ -2,6 +2,14 @@ import React, { useState } from 'react';
 import { CheckCircle2, Download, Star, Users, Tag, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import type { Expert } from '@/stores/expertMarketplaceStore';
 
 interface ExpertMarketplaceCardProps {
@@ -10,7 +18,28 @@ interface ExpertMarketplaceCardProps {
   onUninstall: (id: string) => void;
 }
 
-const categoryLabels: Record<string, string> = {
+// Simple i18n-like constants (client uses hardcoded strings, keep consistent)
+const LABELS = {
+  added: '已添加',
+  adding: '添加中...',
+  add: '添加',
+  remove: '移除',
+  viewDetail: '查看详情',
+  category: '分类',
+  description: '描述',
+  stats: '统计',
+  rating: '评分',
+  usage: '使用量',
+  tags: '标签',
+  version: '版本',
+  author: '作者',
+  lastUpdate: '最后更新',
+  close: '关闭',
+  addExpert: '添加此专家',
+  removeExpert: '移除',
+} as const;
+
+const CATEGORY_LABELS: Record<string, string> = {
   coding: '编程',
   writing: '写作',
   analysis: '分析',
@@ -72,7 +101,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
           <div className="absolute top-4 right-4 z-10">
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-semibold rounded-full shadow-lg shadow-emerald-500/25">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              已添加
+              {LABELS.added}
             </div>
           </div>
         )}
@@ -108,7 +137,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
               variant="secondary"
               className="bg-gradient-to-r from-indigo-50 to-violet-50 text-indigo-700 border border-indigo-200/50 text-xs"
             >
-              {categoryLabels[expert.category] || expert.category}
+              {CATEGORY_LABELS[expert.category] || expert.category}
             </Badge>
           </div>
 
@@ -167,7 +196,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
               >
                 <Download className="w-4 h-4" />
                 <span className="font-semibold">
-                  {isInstalling ? '添加中...' : '添加'}
+                  {isInstalling ? LABELS.adding : LABELS.add}
                 </span>
               </Button>
             ) : (
@@ -178,7 +207,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
                 onClick={() => onUninstall(expert.id)}
               >
                 <X className="w-4 h-4" />
-                <span className="font-medium">移除</span>
+                <span className="font-medium">{LABELS.remove}</span>
               </Button>
             )}
 
@@ -187,7 +216,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
               variant="ghost"
               className="h-10 px-3 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
               onClick={() => setShowDetail(true)}
-              title="查看详情"
+              title={LABELS.viewDetail}
             >
               <Tag className="w-4 h-4" />
             </Button>
@@ -195,146 +224,135 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
         </div>
       </div>
 
-      {/* 详情对话框 */}
-      {showDetail && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-            {/* 对话框头部 */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-indigo-50 to-violet-50 flex-shrink-0">
-              <div className="flex items-center gap-3">
-                <div
-                  className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                  style={{
-                    background: expert.color
-                      ? `${expert.color}20`
-                      : '#fef3c7',
-                  }}
-                >
-                  {expert.icon}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900">{expert.name}</h3>
-                  <p className="text-xs text-gray-500">专家详情</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowDetail(false)}
-                className="p-2 rounded-lg hover:bg-white/50 transition-colors"
+      {/* 详情对话框 - 使用 Dialog 组件 */}
+      <Dialog open={showDetail} onOpenChange={setShowDetail}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
+                style={{
+                  background: expert.color
+                    ? `${expert.color}20`
+                    : '#fef3c7',
+                }}
               >
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
+                {expert.icon}
+              </div>
+              <div>
+                <DialogTitle>{expert.name}</DialogTitle>
+                <DialogDescription>专家详情</DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* 分类 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.category}</h4>
+              <Badge
+                variant="secondary"
+                className="bg-indigo-50 text-indigo-700 border border-indigo-200"
+              >
+                {CATEGORY_LABELS[expert.category] || expert.category}
+              </Badge>
             </div>
 
-            {/* 对话框内容 - 可滚动 */}
-            <div className="px-6 py-5 space-y-4 overflow-y-auto flex-1">
-              {/* 分类 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">分类</h4>
-                <Badge
-                  variant="secondary"
-                  className="bg-indigo-50 text-indigo-700 border border-indigo-200"
-                >
-                  {categoryLabels[expert.category] || expert.category}
-                </Badge>
-              </div>
+            {/* 描述 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.description}</h4>
+              <p className="text-sm text-gray-600 leading-relaxed">
+                {expert.description}
+              </p>
+            </div>
 
-              {/* 描述 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">描述</h4>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  {expert.description}
-                </p>
-              </div>
-
-              {/* 统计信息 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">统计</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Star className="w-4 h-4 text-yellow-500" />
-                      <span className="text-xs text-gray-500">评分</span>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">{expert.rating}</p>
+            {/* 统计信息 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.stats}</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Star className="w-4 h-4 text-yellow-500" />
+                    <span className="text-xs text-gray-500">{LABELS.rating}</span>
                   </div>
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <Users className="w-4 h-4 text-blue-500" />
-                      <span className="text-xs text-gray-500">使用量</span>
-                    </div>
-                    <p className="text-lg font-bold text-gray-900">{formatUses(expert.uses)}</p>
+                  <p className="text-lg font-bold text-gray-900">{expert.rating}</p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-3">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <Users className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs text-gray-500">{LABELS.usage}</span>
                   </div>
+                  <p className="text-lg font-bold text-gray-900">{formatUses(expert.uses)}</p>
                 </div>
-              </div>
-
-              {/* 标签 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">标签</h4>
-                <div className="flex flex-wrap gap-2">
-                  {expert.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg border border-indigo-200"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* 版本信息 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">版本</h4>
-                <p className="text-sm text-gray-600 font-mono">v{expert.version}</p>
-              </div>
-
-              {/* 作者 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">作者</h4>
-                <p className="text-sm text-gray-600">{expert.author}</p>
-              </div>
-
-              {/* 更新时间 */}
-              <div>
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">最后更新</h4>
-                <p className="text-sm text-gray-600">
-                  {new Date(expert.updatedAt).toLocaleDateString('zh-CN', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric',
-                  })}
-                </p>
               </div>
             </div>
 
-            {/* 对话框底部 */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3 flex-shrink-0 rounded-b-2xl">
-              <Button variant="outline" onClick={() => setShowDetail(false)}>
-                关闭
-              </Button>
-              {!expert.isInstalled ? (
-                <Button
-                  onClick={handleInstall}
-                  disabled={isInstalling}
-                  className="bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600"
-                >
-                  {isInstalling ? '添加中...' : '添加此专家'}
-                </Button>
-              ) : (
-                <Button
-                  variant="destructive"
-                  onClick={() => {
-                    onUninstall(expert.id);
-                    setShowDetail(false);
-                  }}
-                >
-                  移除
-                </Button>
-              )}
+            {/* 标签 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.tags}</h4>
+              <div className="flex flex-wrap gap-2">
+                {expert.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-3 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg border border-indigo-200"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* 版本信息 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.version}</h4>
+              <p className="text-sm text-gray-600 font-mono">v{expert.version}</p>
+            </div>
+
+            {/* 作者 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.author}</h4>
+              <p className="text-sm text-gray-600">{expert.author}</p>
+            </div>
+
+            {/* 更新时间 */}
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">{LABELS.lastUpdate}</h4>
+              <p className="text-sm text-gray-600">
+                {new Date(expert.updatedAt).toLocaleDateString('zh-CN', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })}
+              </p>
             </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowDetail(false)}>
+              {LABELS.close}
+            </Button>
+            {!expert.isInstalled ? (
+              <Button
+                onClick={handleInstall}
+                disabled={isInstalling}
+                className="bg-gradient-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600"
+              >
+                {isInstalling ? LABELS.adding : LABELS.addExpert}
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  onUninstall(expert.id);
+                  setShowDetail(false);
+                }}
+              >
+                {LABELS.removeExpert}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

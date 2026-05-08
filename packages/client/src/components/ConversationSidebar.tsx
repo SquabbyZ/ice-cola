@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MessageSquare, Plus, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, Edit2, Check, X, ChevronLeft, ChevronRight, Sparkles, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useConversationStore } from '@/stores/conversations';
@@ -23,7 +23,9 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   isCollapsed = false,
   onToggleCollapse,
 }) => {
-  const { conversations, isLoading, deleteConversation, renameConversation } = useConversationStore();
+  const { conversations, isLoading, deleteConversation, renameConversation,
+    searchQuery, setSearchQuery, filteredConversations } = useConversationStore();
+  const displayConversations = filteredConversations();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -56,8 +58,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     setDeletingId(pendingDeleteId);
     try {
       await deleteConversation(teamId, pendingDeleteId);
-    } catch (error) {
-      console.error('Failed to delete conversation:', error);
+    } catch {
+      // delete failed
     } finally {
       setDeletingId(null);
       setPendingDeleteId(null);
@@ -79,8 +81,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     try {
       await renameConversation(teamId, conversationId, editingTitle.trim());
       setEditingId(null);
-    } catch (error) {
-      console.error('Failed to rename conversation:', error);
+    } catch {
+      // rename failed
     }
   };
 
@@ -190,6 +192,32 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         )}
       </div>
 
+      {/* Search Input */}
+      {!isCollapsed && (
+        <div className="px-3 py-2">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="搜索对话..."
+              className="w-full pl-9 pr-8 py-2 text-sm bg-slate-100/60 border border-slate-200/40 rounded-xl
+                focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300
+                placeholder:text-slate-400 transition-all duration-200"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-200/60 rounded-md transition-colors"
+              >
+                <X className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Conversation List with Custom Scrollbar */}
       <div className="flex-1 overflow-y-auto 
         scrollbar-thin scrollbar-thumb-slate-300/60 scrollbar-track-transparent 
@@ -204,7 +232,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               </div>
             ))}
           </div>
-        ) : conversations.length === 0 ? (
+        ) : displayConversations.length === 0 ? (
           <div className={`p-6 text-center ${isCollapsed ? 'hidden' : ''}`}>
             <div className="w-20 h-20 mx-auto mb-4 rounded-3xl 
               bg-gradient-to-br from-slate-100 via-white to-slate-50 
@@ -213,12 +241,12 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
               shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
               <MessageSquare className="w-9 h-9 text-slate-300" />
             </div>
-            <p className="text-sm font-semibold text-slate-600">暂无对话</p>
-            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">点击“新建对话”开始聊天</p>
+            <p className="text-sm font-semibold text-slate-600">{searchQuery ? '无匹配结果' : '暂无对话'}</p>
+            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{searchQuery ? '尝试其他关键词' : '点击"新建对话"开始聊天'}</p>
           </div>
         ) : (
           <div className="p-2.5 space-y-2">
-            {conversations.map((conv, index) => {
+            {displayConversations.map((conv, index) => {
               const isActive = conv.id === currentConversationId;
               const isEditing = editingId === conv.id;
               const isDeleting = deletingId === conv.id;
@@ -283,7 +311,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             }`}
                           />
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 pr-14">
                           {isEditing ? (
                             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-200">
                               <input
@@ -386,7 +414,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse"></div>
               <p className="text-xs font-semibold text-slate-500">
-                {conversations.length} 个对话
+                {searchQuery ? `${displayConversations.length} / ${conversations.length}` : conversations.length} 个对话
               </p>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">

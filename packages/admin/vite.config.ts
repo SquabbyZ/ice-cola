@@ -25,6 +25,22 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      '/client': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/marketplace/items': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/marketplace/categories': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/marketplace/sync': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
   envPrefix: ['VITE_'],
