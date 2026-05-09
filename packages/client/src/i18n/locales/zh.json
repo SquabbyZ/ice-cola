@@ -176,7 +176,25 @@
       "marketplace": "市场专家",
       "installed": "已添加",
       "myExperts": "我的专家"
-    }
+    },
+    "selectExpert": "选择专家",
+    "defaultAssistant": "通用助手",
+    "defaultAssistantDesc": "默认AI助手，无特殊角色",
+    "expertSelector": "专家选择",
+    "expertSelectorHint": "专家可自定义AI助手的角色和行为",
+    "viewDetail": "查看详情",
+    "rating": "评分",
+    "usage": "使用量",
+    "tags": "标签",
+    "version": "版本",
+    "author": "作者",
+    "lastUpdate": "最后更新",
+    "category": "分类",
+    "install": "添加",
+    "remove": "移除",
+    "addExpert": "添加此专家",
+    "removeExpert": "移除专家",
+    "preview": "预览"
   },
   "skills": {
     "title": "技能市场",
@@ -268,7 +286,23 @@
     "reasonTooShort": "拒绝理由至少需要10个字",
     "typeSkill": "技能",
     "typeMCP": "MCP",
-    "typeExtension": "插件"
+    "typeExtension": "插件",
+    "table": {
+      "type": "类型",
+      "name": "名称",
+      "applicant": "申请人",
+      "approver": "审批人",
+      "approvers": "审批人",
+      "result": "结果",
+      "comment": "备注",
+      "time": "时间"
+    },
+    "empty": {
+      "noPending": "暂无待审批工单",
+      "noPendingDesc": "所有工单已处理完毕，稍后再来看看吧",
+      "noHistory": "暂无审批历史",
+      "noHistoryDesc": "审批记录将显示在这里"
+    }
   },
   "settings": {
     "title": "设置",

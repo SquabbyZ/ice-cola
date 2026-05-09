@@ -173,7 +173,25 @@
       "marketplace": "Marketplace",
       "installed": "Installed",
       "myExperts": "My Experts"
-    }
+    },
+    "selectExpert": "Select Expert",
+    "defaultAssistant": "General Assistant",
+    "defaultAssistantDesc": "Default AI assistant, no special role",
+    "expertSelector": "Expert Selector",
+    "expertSelectorHint": "Experts customize AI assistant roles and behavior",
+    "viewDetail": "View Details",
+    "rating": "Rating",
+    "usage": "Usage",
+    "tags": "Tags",
+    "version": "Version",
+    "author": "Author",
+    "lastUpdate": "Last Updated",
+    "category": "Category",
+    "install": "Install",
+    "remove": "Remove",
+    "addExpert": "Add This Expert",
+    "removeExpert": "Remove Expert",
+    "preview": "Preview"
   },
   "skills": {
     "title": "Skills",
@@ -265,7 +283,23 @@
     "reasonTooShort": "Reject reason must be at least 10 characters",
     "typeSkill": "Skill",
     "typeMCP": "MCP",
-    "typeExtension": "Extension"
+    "typeExtension": "Extension",
+    "table": {
+      "type": "Type",
+      "name": "Name",
+      "applicant": "Applicant",
+      "approver": "Approver",
+      "approvers": "Approvers",
+      "result": "Result",
+      "comment": "Comment",
+      "time": "Time"
+    },
+    "empty": {
+      "noPending": "No pending workorders",
+      "noPendingDesc": "All caught up! Check back later.",
+      "noHistory": "No approval history",
+      "noHistoryDesc": "History will appear here once processed."
+    }
   },
   "settings": {
     "title": "Settings",

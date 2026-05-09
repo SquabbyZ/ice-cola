@@ -4,11 +4,11 @@
 
 @layer base {
   :root {
-    /* Graphite Gray Theme */
-    --primary: 220 15% 45%;        /* 石墨蓝灰 */
+    /* Graphite Gray Theme - Shadcn UI Integration */
+    --primary: 220 10% 35%;        /* 石墨灰 - 主色 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 12% 35%;      /* 深石墨 */
+    --secondary: 220 8% 25%;      /* 深石墨 */
     --secondary-foreground: 0 0% 100%;
 
     /* Zinc-based neutral palette */
@@ -24,15 +24,15 @@
     --muted: 240 5% 96%;
     --muted-foreground: 240 4% 46%;
 
-    --accent: 240 5% 96%;
+    --accent: 240 5% 94%;
     --accent-foreground: 240 6% 10%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 5% 90%;
+    --border: 240 5% 88%;
     --input: 240 5% 90%;
-    --ring: 220 15% 45%;
+    --ring: 220 10% 35%;
 
     --radius: 1rem;
   }
@@ -415,6 +415,46 @@
     50% {
       opacity: 0.8;
       transform: scale(0.98);
+    }
+  }
+
+  /* Fade in animation for modals/overlays */
+  .animate-fade-in {
+    animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* Scale in animation for modals */
+  .animate-scale-in {
+    animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  /* Slide in from right for drawer */
+  .animate-slide-in-right {
+    animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+    }
+    to {
+      transform: translateX(0);
     }
   }
 
