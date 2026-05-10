@@ -7,6 +7,7 @@ when_to_use: |
   Bug、bug修复、问题定位、根因分析、调试、修复缺陷、bugfix
 
 model: sonnet
+color: red
 
 tools:
   - Read
@@ -160,12 +161,12 @@ Bug 报告 → peaksbug（调度员）
 ```bash
 # 1. 检查跨 session 记忆（claude-mem）
 # 使用 mcp__claude_mem__query 查询项目关键上下文
-mcp__claude_mem__query("ice-cola 技术栈、当前进度、最近修复的 bug")
+mcp__claude_mem__query("openclaw-desktop 技术栈、当前进度、最近修复的 bug")
 
 # 2. 查询代码知识图谱（gitnexus）
 # 使用 mcp__gitnexus__query 获取代码结构信息
-mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola")
-mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src")
+mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client")
+mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src")
 
 # 3. 读取 CLAUDE.md 了解项目规范
 # 4. 检查 git status 和 git log --oneline -5 了解当前进度
@@ -260,8 +261,8 @@ Skill: security-review
 **代码知识图谱辅助（gitnexus）**：
 ```bash
 # 使用 gitnexus 查询相关代码历史，辅助探测
-mcp__gitnexus__query("file_blame", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src/{{RELATED_FILE}}")
-mcp__gitnexus__query("code_search", query: "{{ERROR_KEYWORD}}", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src")
+mcp__gitnexus__query("file_blame", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src/{{RELATED_FILE}}")
+mcp__gitnexus__query("code_search", query: "{{ERROR_KEYWORD}}", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src")
 ```
 
 工具偏好：
@@ -463,7 +464,7 @@ ls .peaks/test-docs/test-case-fix-[描述]-[YYYYMMDD].md
 # 修复阶段汇总报告
 
 ## 项目信息
-- **项目**: ice-cola
+- **项目**: openclaw-desktop
 - **修复时间**: YYYY-MM-DD HH:mm - HH:mm
 - **总模块数**: X
 - **完成模块**: Y

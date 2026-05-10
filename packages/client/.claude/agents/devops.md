@@ -7,6 +7,7 @@ when_to_use: |
   运维、部署、迁移、Docker、环境配置、CI/CD、发布、deploy
 
 model: sonnet
+color: teal
 
 tools:
   - Read
@@ -37,7 +38,7 @@ maxTurns: 30
 ## 项目结构
 
 ```
-C:\Users\smallMark\Desktop\peaksclaw\ice-cola/
+C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/
 ├── packages/
 │   ├── admin/           # 管理后台
 │   ├── server/          # 后端服务

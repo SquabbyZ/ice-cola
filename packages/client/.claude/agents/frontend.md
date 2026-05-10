@@ -7,6 +7,7 @@ when_to_use: |
   前端、页面、组件、样式、交互、UI实现、前端开发、React、Vue、Next.js、浏览器测试
 
 model: sonnet
+color: cyan
 
 tools:
   - Read
@@ -69,7 +70,7 @@ hooks:
 
 ## 项目结构（自动检测）
 
-根据 `C:\Users\smallMark\Desktop\peaksclaw\ice-cola` 下的目录结构自动识别：
+根据 `C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client` 下的目录结构自动识别：
 
 - `src/` — 源码目录
 - `pages/` 或 `app/` — 页面目录
@@ -201,12 +202,9 @@ hooks:
 
   - react: ^18.2.0
   - zustand: ^4.4.7
-  - @tanstack/react-query: ^5.100.8
-  - react-hook-form: ^7.49.3
-  - @hookform/resolvers: ^3.3.4
   - tailwindcss: ^3.4.1
   - react-router-dom: ^6.21.1
-  - axios: ^1.6.0
+  - axios: ^1.6.5
 
 > 此列表由初始化脚本自动生成，基于 package.json 的 dependencies 和 devDependencies。
 > 开发时请优先使用项目已有的依赖库。

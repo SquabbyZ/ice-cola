@@ -1,2 +1,8 @@
 packages:
   - 'packages/*'
+allowBuilds:
+  '@askjo/camofox-browser': false
+  '@nestjs/core': false
+  agent-browser: false
+  better-sqlite3: false
+  esbuild: false

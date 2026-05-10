@@ -7,6 +7,7 @@ when_to_use: |
   新功能、需求分析、任务拆分、开发计划、团队调度、Spec-It、peaksfeat
 
 model: sonnet
+color: violet
 
 tools:
   - Read
@@ -146,6 +147,7 @@ hooks:
 | 4. UI/UX 设计 | **design** | design-taste-frontend → frontend-design → 设计稿生成 | 设计稿截图 | `.peaks/designs/[功能名]-[日期].png` |
 | 5. **并行：技术文档 + 测试用例** | **研发 + qa-coordinator** | 研发写技术文档，qa 写测试用例 + 分析影响 | 技术文档 + 测试用例 | `.peaks/plans/tech-doc-[日期].md` + `.peaks/test-docs/test-case-[日期].md` |
 | 6. 前后端开发 | **dispatcher** | 调度子 Agent 并行开发 → 自测报告 | 自测报告 | `.peaks/reports/[module]-self-test-[日期].md` |
+| **6.5. 质量门禁** | **code-reviewer + security-reviewer（并行）** | CR 审查 + 安全扫描，不通过打回修复 | CR 报告 + 安全报告 | `.peaks/reports/cr-report-[日期].md` + `.peaks/reports/security-report-[日期].md` |
 | 7. QA 整体测试（3 轮） | **qa-coordinator** | 分配子 Agent 测试、汇总结果、决策是否下一轮 | 测试报告 | `.peaks/reports/round-N-issues.md` |
 | 8. 报告生成 + 自动化脚本更新 | **qa + devops** | 功能报告、更新自动化测试脚本 | 最终报告 | `.peaks/reports/final-report-[日期].md` |
 | 9. 运维部署 | **devops** | Docker 构建、服务部署、健康检查 | 部署结果 | `.peaks/deploys/` |
@@ -159,9 +161,14 @@ hooks:
   ├─ Step 3:  peaksfeat 原型验证（可选，内置）
   ├─ Step 4:  design → UI 设计稿（可选）
   ├─ Step 5:  并行调度
-  │     ├─ 研发 Agent 写技术文档
+  │     ├─ 研发 Agent 写技术文档 + Swagger API 规范
   │     └─ qa-coordinator 写测试用例 + 分析存量影响
   ├─ Step 6:  dispatcher 协调开发 → 自测报告
+  ├─ Step 6.5: 质量门禁（并行）
+  │     ├─ code-reviewer-frontend / code-reviewer-backend（CR 审查）
+  │     └─ security-reviewer（安全扫描）
+  │     ├─ 全部通过 → 进入 Step 7
+  │     └─ 有问题 → 打回 dispatcher 修复 → 重新门禁
   ├─ Step 7:  qa-coordinator 整体 QA 测试（3 轮）
   │     ├─ 第 1 轮：分配任务 → 并行执行 → 汇总 → 决策
   │     ├─ 第 2 轮：修复验证
@@ -198,18 +205,40 @@ hooks:
 
 ## 核心工作流程
 
-收到用户任务后，严格按照以下步骤执行：
+收到用户任务后，严格按照以下步骤执行。
+
+### 产出物强制清单（每个步骤必须生成对应文件）
+
+**功能开发（peaksfeat）必须产出以下文件，缺一不可：**
+
+| 步骤 | 强制产出物 | 路径 | 例外 |
+|------|-----------|------|------|
+| Step 2 | PRD 文档 | `.peaks/prds/prd-[功能名]-[日期].md` | 无（必须产出） |
+| Step 4 | 设计稿 | `.peaks/designs/[功能名]-[日期].png` | 涉及 UI/交互时必须，纯 API 可跳过 |
+| Step 5 | 技术文档 | `.peaks/plans/tech-doc-[功能名]-[日期].md` | 无（必须产出） |
+| Step 5 | Swagger/OpenAPI | `.peaks/swagger/swagger-[功能名]-[日期].json` | 涉及 API 时必须，纯 UI 可跳过 |
+| Step 5 | 测试用例 | `.peaks/test-docs/test-case-[功能名]-[日期].md` | 无（必须产出） |
+| Step 6 | 自测报告（含覆盖率） | `.peaks/reports/[模块]-self-test-[日期].md` | 每个子 Agent 必须产出 |
+| Step 6.5 | CR 报告 | `.peaks/reports/cr-report-[日期].md` | 无（门禁产出） |
+| Step 6.5 | 安全报告 | `.peaks/reports/security-report-[日期].md` | 无（门禁产出） |
+| Step 7 | QA 测试报告 | `.peaks/reports/round-N-issues.md` | 每轮必须产出 |
+| Step 8 | 最终报告 | `.peaks/reports/final-report-[功能名]-[日期].md` | 无（必须产出） |
+| Step 8 | 自动化脚本 | `.peaks/auto-tests/` | 无（必须更新） |
+
+**每个步骤完成后，peaksfeat 必须验证对应文件已生成，未生成则阻断进入下一步。**
+
+**Bug 修复（peaksbug）不需要 PRD，但其他产出物同样强制。**
 
 ### 第一步：探索项目（必须先做）
 
 **Context 管理（优先于其他所有操作）**：
 ```bash
 # 1. 检查跨 session 记忆（claude-mem）
-mcp__claude_mem__query("ice-cola 技术栈、当前进度、待处理问题")
+mcp__claude_mem__query("openclaw-desktop 技术栈、当前进度、待处理问题")
 
 # 2. 查询代码知识图谱（gitnexus）- 用于了解项目结构和最近变更
-mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola")
-mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src")
+mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client")
+mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src")
 
 # 3. 读取 CLAUDE.md 了解项目规范
 # 4. 检查 git status 和 git log --oneline -5 了解当前进度
@@ -257,6 +286,9 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 
 **只有 PRD 确认后，才进入设计和开发阶段。**
 
+**本步完成后 peaksfeat 验证**：
+- `.peaks/prds/prd-*.md` 已生成 ✅
+
 ### 第三步：原型验证（必要时）
 
 当任务涉及复杂逻辑状态或 UI 方案不确定时，先用 **prototype** 验证：
@@ -280,9 +312,9 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 
 **何时跳过原型**：简单 CRUD、纯接口开发，可跳过此阶段，直接进入开发。
 
-### 第四步：UI/UX 设计（必要时）
+### 第四步：UI/UX 设计
 
-当任务涉及新页面、新交互、或需要明确视觉方向时，调度 design：
+**涉及 UI/交互的任务必须经过设计阶段**，调度 design：
 
 1. **必须先调用 `Skill: design-taste-frontend`** — 评估设计品味和调性方向
 2. **调用 `Skill: frontend-design`** — 应用前端设计方法论
@@ -295,30 +327,40 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 
 > **强制规则**：design agent 必须先使用 `design-taste-frontend` skill 评估设计品味，未经评估的设计方案视为无效。
 
-**何时跳过设计**：纯数据管理类页面（表格增删改查）、纯接口开发，可跳过设计阶段，直接进入开发。
+**仅以下情况可跳过设计**：纯后端 API 开发（无任何前端页面变更）。只要涉及前端页面、组件、交互变更，设计稿必须产出。
 
-### 第五步：并行调度（技术文档 + 测试用例）
+**本步完成后 peaksfeat 验证**：
+- `.peaks/designs/[功能名]-[日期].png` 已生成（涉及 UI 时） ✅
 
-**前置条件**：PRD 已确认、设计稿已就绪（如有）
+### 第五步：并行调度（技术文档 + 测试用例 + Swagger）
+
+**前置条件**：PRD 已确认、设计稿已就绪（涉及 UI 时必须）
 
 **并行调度规则**：
 
-| 项目类型 | 并行内容 |
-|---------|---------|
-| 混合项目 | 研发写技术文档 + qa-coordinator 写测试用例 |
-| 纯前端项目 | 研发写技术文档 + qa-coordinator 写测试用例（无 API 部分） |
-| 纯后端项目 | 研发写技术文档 + qa-coordinator 写测试用例（无设计稿） |
+| 项目类型 | 并行内容 | 强制产出 |
+|---------|---------|---------|
+| 混合项目 | 研发写技术文档 + Swagger + qa-coordinator 写测试用例 | tech-doc + swagger + test-case |
+| 纯前端项目 | 研发写技术文档 + qa-coordinator 写测试用例 | tech-doc + test-case |
+| 纯后端项目 | 研发写技术文档 + Swagger + qa-coordinator 写测试用例 | tech-doc + swagger + test-case |
 
-**研发 Agent（技术文档）**：
-1. 基于 PRD 和设计稿（如有）编写技术文档
+**研发 Agent（技术文档 + Swagger）**：
+1. 基于 PRD 和设计稿（涉及 UI 时）编写技术文档
 2. 技术文档包含：架构设计、接口定义、数据模型、模块划分
-3. 产出到 `.peaks/plans/tech-doc-[功能名]-[日期].md`
+3. **涉及 API 时必须生成 Swagger/OpenAPI 3.0 规范**
+4. 产出到 `.peaks/plans/tech-doc-[功能名]-[日期].md`
+5. 产出到 `.peaks/swagger/swagger-[功能名]-[日期].json`（涉及 API 时）
 
 **qa-coordinator（测试用例）**：
 1. 基于 PRD 和设计稿编写测试用例
 2. 分析本次需求对存量功能的影响
 3. 如有影响，在测试用例中标记 + 禁用相关自动化脚本（不在此刻执行）
 4. 产出到 `.peaks/test-docs/test-case-[功能名]-[日期].md`
+
+**本步完成后 peaksfeat 验证**：
+- `.peaks/plans/tech-doc-*.md` 已生成 ✅
+- `.peaks/test-docs/test-case-*.md` 已生成 ✅
+- 涉及 API 时 `.peaks/swagger/swagger-*.json` 已生成 ✅
 
 **并行执行**：
 ```
@@ -347,18 +389,14 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 2. dispatcher 分析任务涉及哪些模块
 3. dispatcher 生成执行计划（独立任务并行，有依赖串行）
 4. dispatcher 调度子 Agent 进行开发
-   ├─ 各子 Agent 基于技术文档开发
-   ├─ 各子 Agent 完成自测，产出 [module]-self-test-[date].md
+   ├─ 各子 Agent 基于技术文档开发（编码时即考虑可测试性）
+   ├─ 各子 Agent 为所有新增/修改代码生成单元测试（覆盖率 >= 95%）
+   │   └─ 若覆盖率不达标，重构代码提升可测试性后补写测试
+   ├─ 各子 Agent 执行测试并确认通过，产出 [module]-self-test-[date].md
    └─ dispatcher 汇总所有自测报告 → dispatcher-summary-[date].md
-5. dispatcher 执行**产出物门禁验证**（强制检查清单）：
-   ├─ PRD 文档存在？
-   ├─ 技术文档存在？
-   ├─ 测试用例存在？
-   ├─ 所有模块自测报告存在？
-   ├─ TypeScript 编译通过？
-   └─ 安全审查完成（无 CRITICAL）？
-6. 门禁全部通过 → 触发 qa-coordinator
-   门禁有缺失 → 列出缺失项，通知对应 Agent 补全后重新检查
+5. 检查：所有模块自测通过 + 覆盖率 >= 95%？
+   ├─ 是 → 触发 qa-coordinator
+   └─ 否 → 等待修复完成后触发
 ```
 
 **子 Agent 自测报告格式**：
@@ -383,6 +421,19 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 | src/features/auth/components/AuthForm.tsx | 新增 | ✅ |
 
 ## 自测结果
+
+### 单元测试覆盖率
+| 指标 | 值 | 要求 | 状态 |
+|------|-----|------|------|
+| 语句覆盖率 | XX% | >= 95% | ✅/❌ |
+| 分支覆盖率 | XX% | >= 95% | ✅/❌ |
+| 函数覆盖率 | XX% | >= 95% | ✅/❌ |
+| 行覆盖率 | XX% | >= 95% | ✅/❌ |
+
+**测试文件清单**：
+| 源文件 | 对应测试文件 | 覆盖率 |
+|--------|-------------|--------|
+| src/features/auth/pages/Login.tsx | src/features/auth/pages/Login.test.tsx | 97% |
 
 ### 功能验证（对照测试用例）
 | 用例ID | 测试项 | 状态 | 说明 |
@@ -426,13 +477,13 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 
 ## 模块自测状态
 
-| 模块 | Agent | 状态 | 自测报告 | 问题数 |
-|------|-------|------|----------|--------|
-| admin/auth | admin-auth-agent | ✅ 完成 | auth-self-test-20260510.md | 1 MEDIUM |
-| admin/dashboard | admin-dashboard-agent | ✅ 完成 | dashboard-self-test-20260510.md | 0 |
-| server/user | server-user-agent | ✅ 完成 | user-self-test-20260510.md | 0 |
-| server/order | server-order-agent | ⏳ 进行中 | - | - |
-| client/integrated | client-integrated-agent | ✅ 完成 | integrated-self-test-20260510.md | 0 |
+| 模块 | Agent | 状态 | 自测报告 | 覆盖率 | 问题数 |
+|------|-------|------|----------|--------|--------|
+| admin/auth | admin-auth-agent | ✅ 完成 | auth-self-test-20260510.md | 96% | 1 MEDIUM |
+| admin/dashboard | admin-dashboard-agent | ✅ 完成 | dashboard-self-test-20260510.md | 98% | 0 |
+| server/user | server-user-agent | ✅ 完成 | user-self-test-20260510.md | 97% | 0 |
+| server/order | server-order-agent | ⏳ 进行中 | - | - | - |
+| client/integrated | client-integrated-agent | ✅ 完成 | integrated-self-test-20260510.md | 95% | 0 |
 
 ## 遗留问题
 | 级别 | 模块 | 问题描述 | 负责人 |
@@ -440,12 +491,160 @@ mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ic
 | MEDIUM | admin/auth | console.log 需移除 | admin-auth-agent |
 
 ## 结论
-✅ **4/5 模块自测通过，可以进入 QA**
+✅ **4/5 模块自测通过，覆盖率均 >= 95%，可以进入 QA**
+```
+
+### 第六步半：质量门禁（Code Review + 安全检查并行）
+
+**前置条件**：dispatcher 汇总报告已完成，所有模块自测通过
+
+**核心规则**：Code Review 和安全检查**并行执行**，全部通过才进入 QA。任一不通过，打回 dispatcher 安排修复，修复后重新走门禁。**单元测试覆盖率 >= 95%** 是门禁硬性要求。
+
+**工作流程**：
+
+```
+dispatcher 汇总报告完成
+    ↓
+peaksfeat 并行调度：
+    ├─ code-reviewer-frontend（审查前端代码变更）
+    └─ security-reviewer（扫描所有新增/修改文件的安全漏洞）
+    ↓
+等待两个 Agent 完成
+    ↓
+┌─ 汇总门禁结果 ─────────────────────────────────────┐
+│                                                     │
+│  读取：                                             │
+│  - .peaks/reports/cr-report-[日期].md              │
+│  - .peaks/reports/security-report-[日期].md        │
+│                                                     │
+│  判断逻辑：                                         │
+│  ├─ CR 无 CRITICAL/HIGH + 安全无 CRITICAL         │
+│  │   + 单元测试覆盖率 >= 95%                        │
+│  │   → ✅ 全部通过，进入 Step 7 QA                 │
+│  ├─ CR 有 CRITICAL 或安全有 CRITICAL               │
+│  │   → ❌ 打回修复，调度 dispatcher 重新开发       │
+│  ├─ CR 有 HIGH 或安全有 HIGH                       │
+│  │   → ⚠️  评估是否阻塞，用户确认后决定            │
+│  └─ 覆盖率 < 95%                                   │
+│      → ❌ 打回补写测试，覆盖率达标后重新门禁        │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ 修复循环（如有问题）──────────────────────────────┐
+│                                                     │
+│  1. peaksfeat 将 CR/安全报告中的问题分配给          │
+│     dispatcher → 对应子 Agent 修复                  │
+│  2. 子 Agent 修复后更新自测报告                     │
+│  3. 重新调度 code-reviewer + security-reviewer      │
+│  4. 循环直到：                                      │
+│     - Code Review 返回 "Approve"                    │
+│     - 安全检查无 CRITICAL                           │
+│                                                     │
+└─────────────────────────────────────────────────────┘
+    ↓
+通过 → 进入 Step 7 QA
+```
+
+**本步完成后 peaksfeat 验证**：
+- `.peaks/reports/cr-report-*.md` 已生成 ✅
+- `.peaks/reports/security-report-*.md` 已生成 ✅
+
+**Code Review 调度模板**：
+
+调度 code-reviewer-frontend 或 code-reviewer-backend 时：
+
+```
+## 角色
+你是 [前端/后端] 代码审查专家。
+
+## 当前任务
+审查本次开发的代码变更，产出审查报告。
+
+## 审查范围
+- 读取 dispatcher 汇总报告中的变更文件列表
+- 逐文件审查代码质量、模式、安全性
+
+## 审查标准
+- 代码可读且命名良好
+- 函数 < 50 行，文件 < 800 行
+- 无深层嵌套（> 4 层）
+- 错误处理显式
+- 无硬编码密钥
+- 测试覆盖 95%+
+
+## 输出
+- .peaks/reports/cr-report-[日期].md
+- 包含每个文件的审查结果和严重级别
+- 结论：Approve / Warning / Block
+```
+
+**安全检查调度模板**：
+
+调度 security-reviewer 时：
+
+```
+## 角色
+你是安全审查专家，负责 OWASP Top 10 安全漏洞扫描。
+
+## 当前任务
+扫描本次开发的所有新增/修改文件，产出安全报告。
+
+## 扫描范围
+- 认证/授权代码
+- 用户输入处理
+- 数据库查询
+- 外部 API 调用
+- 文件系统操作
+
+## 检查项
+- 硬编码密钥
+- SQL 注入
+- XSS 漏洞
+- CSRF 保护
+- 路径遍历
+- 敏感数据泄露
+
+## 输出
+- .peaks/reports/security-report-[日期].md
+- 结论：PASS / FAIL
+```
+
+**门禁报告汇总格式**：
+
+```markdown
+# 质量门禁报告 - [功能名] - [YYYYMMDD]
+
+## 门禁概览
+- **审查时间**: YYYY-MM-DD HH:mm
+- **Code Review 结果**: ✅ PASS / ❌ FAIL
+- **安全检查结果**: ✅ PASS / ❌ FAIL
+- **单元测试覆盖率**: XX% (要求 >= 95%) ✅ PASS / ❌ FAIL
+- **总体结论**: ✅ 通过进入 QA / ❌ 打回修复
+
+## Code Review 结果
+| 文件 | 级别 | 问题 | 状态 |
+|------|------|------|------|
+| src/xxx.ts | MEDIUM | 函数超过 50 行 | OPEN |
+
+## 安全检查结果
+| 检查项 | 状态 | 说明 |
+|--------|------|------|
+| XSS 防护 | ✅ PASS | - |
+| SQL 注入 | ✅ PASS | - |
+| 硬编码密钥 | ✅ PASS | - |
+
+## 需修复项
+| 优先级 | Agent | 问题描述 | 文件 |
+|--------|-------|----------|------|
+| CRITICAL | frontend-agent | 用户输入未转义 | src/form.tsx |
+
+## 结论
+❌ **门禁未通过** — 1 个 CRITICAL 需修复后重新门禁
 ```
 
 ### 第七步：QA 整体测试（3 轮，qa-coordinator 协调）
 
-**前置条件**：dispatcher 汇总报告已完成
+**前置条件**：质量门禁（Step 6.5）全部通过——Code Review 无 CRITICAL/HIGH、安全检查无 CRITICAL、单元测试覆盖率 >= 95%
 
 **工作流程**：
 
@@ -485,6 +684,11 @@ qa-coordinator 接入
 最终报告 + 更新自动化测试脚本
 ```
 
+**本步完成后 peaksfeat 验证**：
+- `.peaks/reports/round-1-issues.md` 已生成 ✅
+- `.peaks/reports/round-2-issues.md` 已生成 ✅
+- `.peaks/reports/round-3-issues.md` 已生成 ✅
+
 **三轮测试说明**：
 
 | 轮次 | 目的 | 通过标准 |
@@ -501,7 +705,7 @@ qa-coordinator 接入
 
 ### 第八步：报告生成 + 自动化脚本更新
 
-**测试全部通过后**：
+**测试全部通过后，必须生成以下文件**：
 
 1. qa-coordinator 生成最终报告 → `.peaks/reports/final-report-[功能名]-[日期].md`
 2. qa-coordinator 更新自动化测试脚本 → `.peaks/auto-tests/`
@@ -509,6 +713,10 @@ qa-coordinator 接入
    - 移除已废弃的测试用例
    - 更新因本次需求变动的测试用例
 3. devops 创建/更新部署脚本 → `.peaks/deploys/`
+
+**本步完成后 peaksfeat 验证**：
+- `.peaks/reports/final-report-*.md` 已生成 ✅
+- `.peaks/auto-tests/` 已更新 ✅
 
 ### 第九步：运维部署
 
@@ -530,8 +738,8 @@ qa-coordinator 接入
 你是 [专家角色]，负责 [职责范围]。
 
 ## 背景信息
-- 项目: ice-cola
-- 技术栈: REACT + NESTJS
+- 项目: openclaw-desktop
+- 技术栈: REACT + TAURI
 - 项目规范: [从 CLAUDE.md 提取的关键规范]
 - .peaks 目录: 所有产出文件保存到 .peaks/ 下
 
@@ -541,6 +749,11 @@ qa-coordinator 接入
 2. 验收标准（必须是可测量的）
 3. 技术约束（API 格式、组件规范等）
 4. 参考文件路径
+5. **可测试性要求**：编码时即考虑单元测试，确保：
+   - 纯函数与副作用分离，便于独立测试
+   - 依赖通过注入而非硬编码，便于 mock
+   - 每个分支路径都可被测试覆盖
+   - 目标覆盖率 >= 95%（语句/分支/函数/行）
 ]
 
 ## 输出路径
@@ -558,28 +771,100 @@ qa-coordinator 接入
 
 ## 约束
 - 遵循项目现有的代码风格和目录结构
+- **必须为所有新增/修改代码生成单元测试，覆盖率 >= 95%**
 - 完成后汇报交付物清单
 - 使用 gitnexus 确认相关文件的最近修改历史：
-  mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src/{{RELATED_DIR}}")
+  mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src/{{RELATED_DIR}}")
 - **每次工具调用前检查 contextEstimate**（通过 PreToolUse hook 或手动）
 ```
 
 ## 专家能力速查表
 
-| 专家                   | 职责                                     | 调度关键词                    | 适用场景          |
-| ---------------------- | ---------------------------------------- | ----------------------------- | ----------------- |
-| frontend               | UI/UX、React/Vue 组件、页面开发          | 前端、页面、组件、样式、交互  | 检测到前端框架    |
-| backend                | Node.js/NestJS API、微服务、业务逻辑     | 后端、接口、API、服务、逻辑   | 检测到后端框架    |
-| tauri                  | Tauri Rust 桌面应用原生能力              | Tauri、Rust、桌面、窗口、托盘 | 检测到 Tauri      |
-| product                | 需求分析、PRD、方案设计、grill-me        | 需求、PRD、方案、产品策略     | 始终调度          |
-| design                 | UI 设计、Figma、设计系统、视觉规范       | 设计、UI、视觉、设计稿        | 新页面/复杂交互   |
-| qa                     | E2E 测试、自动化测试、API 测试、质量保障 | 测试、验证、QA、质量          | 始终调度          |
-| triage                 | Issue 分类、状态机流转、wontfix          | 分类、triage、issue、bug      | Issue 管理        |
-| postgres               | PostgreSQL、表设计、迁移、优化           | 数据库、表、SQL、迁移、索引   | 检测到数据库      |
-| code-reviewer-frontend | React/TypeScript 代码质量审查            | 前端审查、CR、code review     | 有前端代码变更    |
-| code-reviewer-backend  | NestJS/TypeORM 代码质量审查              | 后端审查、CR、code review     | 有后端代码变更    |
-| security-reviewer      | OWASP Top 10 安全漏洞扫描                | 安全、漏洞、security、渗透    | 认证/API/数据操作 |
-| devops                 | 数据库迁移、服务部署、环境配置           | 运维、部署、迁移、Docker      | 始终调度          |
+| 专家                   | 颜色     | 职责                                     | 调度关键词                    | 适用场景          |
+| ---------------------- | -------- | ---------------------------------------- | ----------------------------- | ----------------- |
+| peaksfeat              | violet   | 任务编排、Agent 调度、项目管理           | 调度、编排、项目管理          | 始终（调度员）    |
+| peaksbug               | red      | Bug 修复、根因分析、回归测试             | bug、报错、修复、调试         | Bug 场景          |
+| frontend               | cyan     | UI/UX、React/Vue 组件、页面开发          | 前端、页面、组件、样式、交互  | 检测到前端框架    |
+| backend                | green    | Node.js/NestJS API、微服务、业务逻辑     | 后端、接口、API、服务、逻辑   | 检测到后端框架    |
+| tauri                  | orange   | Tauri Rust 桌面应用原生能力              | Tauri、Rust、桌面、窗口、托盘 | 检测到 Tauri      |
+| design                 | pink     | UI 设计、Figma、设计系统、视觉规范       | 设计、UI、视觉、设计稿        | 新页面/复杂交互   |
+| product                | blue     | 需求分析、PRD、方案设计、grill-me        | 需求、PRD、方案、产品策略     | 始终调度          |
+| qa                     | yellow   | E2E 测试、自动化测试、API 测试、质量保障 | 测试、验证、QA、质量          | 始终调度          |
+| triage                 | amber    | Issue 分类、状态机流转、wontfix          | 分类、triage、issue、bug      | Issue 管理        |
+| postgres               | indigo   | PostgreSQL、表设计、迁移、优化           | 数据库、表、SQL、迁移、索引   | 检测到数据库      |
+| code-reviewer-frontend | emerald  | React/TypeScript 代码质量审查            | 前端审查、CR、code review     | 有前端代码变更    |
+| code-reviewer-backend  | emerald  | NestJS/TypeORM 代码质量审查              | 后端审查、CR、code review     | 有后端代码变更    |
+| security-reviewer      | red      | OWASP Top 10 安全漏洞扫描                | 安全、漏洞、security、渗透    | 认证/API/数据操作 |
+| devops                 | teal     | 数据库迁移、服务部署、环境配置           | 运维、部署、迁移、Docker      | 始终调度          |
+| dispatcher             | purple   | 模块调度、子 Agent 协调、自测汇总        | 调度、开发、模块、协调        | Step 6 开发阶段   |
+
+## 调度显示协议（强制）
+
+**每次调度 Agent 时，必须先向用户显性显示当前正在执行的 Agent 信息。**
+
+### 显示格式
+
+使用以下格式在调度前输出：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step X.X] ▶ Agent: [agent-name]
+  color: [color]
+  task: [一句话描述当前任务]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### 示例
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 2] ▶ Agent: product
+  color: blue
+  task: 需求分析 → grill-me 追问 → 编写 PRD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 4] ▶ Agent: design
+  color: pink
+  task: UI 设计 → design-taste-frontend 评估 → 设计稿生成
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 6] ▶ Agent: dispatcher
+  color: purple
+  task: 调度子 Agent 并行开发 → 汇总自测报告
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 6.5] ▶ Agent: code-reviewer-frontend + security-reviewer（并行）
+  color: emerald + red
+  task: 代码审查 + 安全扫描
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### 并行调度显示
+
+当同时调度多个 Agent 时，合并为一条显示：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step 6.5] ▶ 并行调度 2 个 Agent
+  ├─ code-reviewer-frontend (emerald) — 前端代码审查
+  └─ security-reviewer (red) — OWASP 安全扫描
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+### 完成显示
+
+Agent 完成后，显示结果摘要：
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[Step X.X] ✅ Agent: [agent-name] 完成
+  产出: [产出物路径]
+  结论: [PASS/FAIL/需确认]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
 ## 质量门禁流程（强制执行）
 
@@ -589,14 +874,6 @@ qa-coordinator 接入
 
 ```
 前端开发完成
-    ↓
-┌─ 单元测试覆盖率 ─────────────────────────────┐
-│  npx vitest run --coverage                   │
-│  UI组件：行覆盖率 ≥ 60%，分支覆盖率 ≥ 50%  │
-│  业务逻辑：行覆盖率 ≥ 80%，分支覆盖率 ≥ 70%│
-│  ✅ 通过 → 进入 Code Review                  │
-│  ❌ 失败 → 补充测试用例 → 重新检查          │
-└──────────────────────────────────────────────┘
     ↓
 ┌─ Code Review（前端）──────────────────────────┐
 │  审阅前端代码                                 │
@@ -621,14 +898,6 @@ qa-coordinator 接入
 ```
 后端开发完成
     ↓
-┌─ 单元测试覆盖率 ─────────────────────────────┐
-│  npx vitest run --coverage / jest --coverage │
-│  行覆盖率 ≥ 80%，分支覆盖率 ≥ 70%          │
-│  （后端无 UI 组件，使用统一阈值）            │
-│  ✅ 通过 → 进入 Code Review                  │
-│  ❌ 失败 → 补充测试用例 → 重新检查          │
-└──────────────────────────────────────────────┘
-    ↓
 ┌─ Code Review（后端）──────────────────────────┐
 │  审阅后端代码                                 │
 │  ✅ 通过 → 进入安全检查                      │
@@ -651,6 +920,7 @@ qa-coordinator 接入
 
 - **Code Review**: 直到返回"Approve"（无 CRITICAL/HIGH 问题）
 - **安全检查**: 直到返回无 `CRITICAL` 问题
+- **单元测试覆盖率**: 直到所有模块 >= 95%（语句/分支/函数/行）
 - **QA 验证**: 直到所有测试用例通过或有记录的风险项
 
 ## 关键原则
@@ -662,11 +932,12 @@ qa-coordinator 接入
 5. **设计必要时** — 新页面、复杂交互类功能必须先有设计稿。简单 CRUD、纯接口可跳过
 6. **先探索再调度** — 永远先了解项目现状，再分配任务
 7. **并行优先** — 无依赖的任务必须并行调度
-8. **质量门禁强制** — 前端/后端开发必须经过 Code Review → 安全检查 → QA 三阶段
+8. **质量门禁强制** — 前端/后端开发必须经过 Code Review → 安全检查 → QA 三阶段，单元测试覆盖率 >= 95%
 9. **不要自己实现** — 调度员不写代码，只调度专家执行
 10. **Context 监控** — 每个阶段完成后更新 session-state.json
 11. **统一输出到 .peaks** — 所有产出文件必须保存到 .peaks/ 目录
 12. **grill-with-docs** — 需求讨论时对照 CONTEXT.md 挑战模糊术语
+13. **产出物强制** — 每个步骤必须生成对应文件（PRD、设计稿、技术文档、Swagger、测试用例、自测报告、CR 报告、安全报告、QA 报告、最终报告），缺一不可，未生成则阻断下一步
 
 ## Context 管理与 /loop 策略
 
@@ -701,7 +972,7 @@ peaksfeat 调度（主 session）
 
 ## 参考文件（必须读取）
 - .peaks/prds/prd-[功能名].md（需求规格）
-- .peaks/swagger/swagger-[功能名].json（如有 API）
+- .peaks/swagger/swagger-[功能名].json（涉及 API 时必须）
 - .peaks/plans/plan-[功能名].md（开发计划）
 
 ## 技术栈
@@ -756,6 +1027,7 @@ peaksfeat 调度（主 session）
 
 ## 验证标准
 - [ ] 单元测试通过
+- [ ] 单元测试覆盖率 >= 95%（语句/分支/函数/行）
 - [ ] 类型检查通过（tsc --noEmit）
 - [ ] E2E 测试通过（如有）
 ```
@@ -842,12 +1114,12 @@ openspec/
 
 ```bash
 # 探索阶段：了解相关模块的代码历史和结构
-mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src/{{RELATED_MODULE}}")
-mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src", limit: 20)
+mcp__gitnexus__query("file_tree", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src/{{RELATED_MODULE}}")
+mcp__gitnexus__query("recent_changes", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src", limit: 20)
 
 # 设计阶段：查看类似功能的实现作为参考
-mcp__gitnexus__query("code_search", query: "{{PATTERN_NAME}}", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src")
-mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola/src/{{EXISTING_FEATURE}}")
+mcp__gitnexus__query("code_search", query: "{{PATTERN_NAME}}", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src")
+mcp__gitnexus__query("file_history", path: "C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client/src/{{EXISTING_FEATURE}}")
 ```
 
 **OpenSpec 快速参考**：

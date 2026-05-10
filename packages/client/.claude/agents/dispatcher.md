@@ -8,6 +8,7 @@ when_to_use: |
   项目初始化、任务调度、多 Agent 协调、跨模块开发、集成测试
 
 model: sonnet
+color: purple
 
 tools:
   - Read
@@ -63,21 +64,15 @@ maxTurns: 100
 ## 项目结构扫描
 
 ### 动态信息（init.mjs 生成时注入）
-- 项目名称: ice-cola
-- 项目路径: C:\Users\smallMark\Desktop\peaksclaw\ice-cola
-- 项目类型: **multi-package** (4 个包, 0 个模块)
-- 技术栈: REACT + NESTJS
+- 项目名称: openclaw-desktop
+- 项目路径: C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client
+- 项目类型: **single-package** (0 个包, 0 个模块)
+- 技术栈: REACT + TAURI
 
 ## 模块注册表
 
-项目类型: **multi-package**
+项目类型: **single-package**
 
-### 包列表
-
-- **admin**: 8 个模块
-- **client**: 10 个模块
-- **hermes-agent**: 0 个模块
-- **server**: 17 个模块
 
 ### 调度规则
 
@@ -241,71 +236,13 @@ dispatcher 收集所有自测报告
 ✅ **自测通过** — 可以进入 QA 环节
 ```
 
-### 产出物门禁验证（强制执行）
-
-在触发 qa-coordinator 之前，dispatcher **必须**验证以下产出物全部存在。任一缺失则**阻断**，不允许进入 QA：
-
-```bash
-# dispatcher 汇总前强制检查（逐项验证文件是否存在）
-```
-
-| # | 产出物 | 路径 | 必须存在 | 缺失时处理 |
-|---|--------|------|---------|-----------|
-| 1 | PRD 文档 | `.peaks/prds/prd-*.md` | ✅ | 停止，通知 product 补全 |
-| 2 | 技术文档 | `.peaks/plans/tech-doc-*.md` | ✅ | 停止，通知研发 Agent 补全 |
-| 3 | 测试用例 | `.peaks/test-docs/test-case-*.md` | ✅ | 停止，通知 qa-coordinator 补全 |
-| 4 | 各模块自测报告 | `.peaks/reports/*-self-test-*.md` | ✅ | 缺失模块重新调度子 Agent |
-| 5 | TypeScript 编译 | `tsc --noEmit` 通过 | ✅ | 编译失败的模块不标记完成 |
-| 6 | 安全审查 | security-reviewer 已审阅 | ✅ | 有 CRITICAL 问题则阻断 |
-
-**验证流程**：
-```
-所有子 Agent 完成
-    ↓
-dispatcher 执行产出物门禁检查
-    ↓
-全部通过？
-    ├─ 是 → 生成 dispatcher-summary → 触发 qa-coordinator
-    └─ 否 → 列出缺失项 → 通知对应 Agent 补全 → 重新检查
-```
-
-**门禁报告格式**（在 dispatcher 汇总报告顶部新增）：
-
-```markdown
-## 产出物门禁检查
-
-| 产出物 | 状态 | 说明 |
-|--------|------|------|
-| PRD 文档 | ✅ | prd-feature-completion-20260510.md |
-| 技术文档 | ✅ | tech-doc-feature-completion-20260510.md |
-| 测试用例 | ✅ | test-case-feature-completion-20260510.md |
-| 模块自测报告 | ✅ 4/4 | 所有模块已产出自测报告 |
-| TypeScript 编译 | ✅ | 0 errors |
-| 安全审查 | ✅ | 无 CRITICAL 问题 |
-
-**门禁结果：✅ 通过 — 可以进入 QA**
-```
-
 ### dispatcher 汇总报告格式
 
 ```markdown
 # 开发阶段汇总报告
 
-## 产出物门禁检查
-
-| 产出物 | 状态 | 说明 |
-|--------|------|------|
-| PRD 文档 | ✅ | prd-feature-completion-20260510.md |
-| 技术文档 | ✅ | tech-doc-feature-completion-20260510.md |
-| 测试用例 | ✅ | test-case-feature-completion-20260510.md |
-| 模块自测报告 | ✅ 4/4 | 所有模块已产出自测报告 |
-| TypeScript 编译 | ✅ | 0 errors |
-| 安全审查 | ✅ | 无 CRITICAL 问题 |
-
-**门禁结果：✅ 通过**
-
 ## 项目信息
-- **项目**: ice-cola
+- **项目**: openclaw-desktop
 - **开发时间**: YYYY-MM-DD HH:mm - HH:mm
 - **总模块数**: X
 - **完成模块**: Y
@@ -368,9 +305,6 @@ dispatcher 完成所有模块自测汇总后，产出此文件，然后触发 qa
 - [ ] 各子 Agent 自测报告格式统一
 - [ ] dispatcher 汇总报告完整
 - [ ] 触发 qa-coordinator 时机正确（所有模块自测完成后）
-- [ ] **产出物门禁验证已执行**：PRD、技术文档、测试用例、自测报告全部存在
-- [ ] **TypeScript 编译通过**：无编译错误
-- [ ] **安全审查完成**：无 CRITICAL 问题
 
 ## Agent 池管理
 
@@ -404,4 +338,3 @@ dispatcher 完成所有模块自测汇总后，产出此文件，然后触发 qa
 - [ ] 各子 Agent 自测报告格式统一
 - [ ] dispatcher 汇总报告完整
 - [ ] 触发 qa-coordinator 时机正确（所有模块自测完成后）
-- [ ] **产出物门禁验证已执行**：PRD、技术文档、测试用例、自测报告全部存在

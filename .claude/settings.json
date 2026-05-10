@@ -7,7 +7,7 @@
         "gitnexus@latest",
         "mcp",
         "--repo",
-        "C:/Users/smallMark/Desktop/peaksclaw/ice-cola"
+        "C:\\Users\\smallMark\\Desktop\\peaksclaw\\ice-cola"
       ]
     },
     "claude-mem": {
@@ -64,48 +64,6 @@
       "args": [
         "-y",
         "frontend-design@claude-plugins-official"
-      ]
-    },
-    "playwright": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@playwright/mcp",
-        "start"
-      ]
-    },
-    "chrome-devtools": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "chrome-devtools-mcp"
-      ]
-    },
-    "docker": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@alisaitteke/docker-mcp"
-      ]
-    },
-    "shadcn": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "shadcn@latest",
-        "mcp"
-      ]
-    },
-    "fetch": {
-      "command": "npx",
-      "args": [
-        "mcp-fetch-server"
-      ]
-    },
-    "websearch": {
-      "command": "npx",
-      "args": [
-        "websearch-mcp"
       ]
     }
   },

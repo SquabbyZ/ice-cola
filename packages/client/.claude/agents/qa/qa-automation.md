@@ -8,6 +8,7 @@ when_to_use: |
   执行自动化测试脚本、运行 E2E 测试、运行单元测试、运行集成测试
 
 model: sonnet
+color: amber
 
 background: true
 
@@ -69,7 +70,7 @@ find . -path "*/e2e/*" -name "*.ts" | head -20
 
 ```bash
 # 执行单元测试（如果配置了）
-cd C:\Users\smallMark\Desktop\peaksclaw\ice-cola
+cd C:\Users\smallMark\Desktop\peaksclaw\ice-cola\packages\client
 
 # 检查是否有测试脚本
 grep -E "test|spec" package.json | head -10

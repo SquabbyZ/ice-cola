@@ -117,7 +117,7 @@ await prisma.user.update({
 
 ## 项目结构（自动检测）
 
-根据 `c:\Users\smallMark\Desktop\peaks-skills` 下的目录结构自动识别：
+根据 `C:\Users\smallMark\Desktop\peaksclaw\ice-cola` 下的目录结构自动识别：
 
 - `src/` — 源码目录
 - `controllers/` 或 `http/` — 控制器目录
@@ -316,7 +316,7 @@ MONGODB_URI=mongodb://localhost:27017/dbname
 
 ### Step 1: 初始化
 ```bash
-cd c:\Users\smallMark\Desktop\peaks-skills
+cd C:\Users\smallMark\Desktop\peaksclaw\ice-cola
 npm install prisma @prisma/client
 npx prisma init
 ```
