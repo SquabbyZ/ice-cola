@@ -27,6 +27,17 @@ export interface Skill {
   updatedAt: string;
 }
 
+export interface SkillVersion {
+  id: string;
+  skillId: string;
+  version: string;
+  content: string;
+  configSchema?: Record<string, any>;
+  createdAt: string;
+  createdBy: string;
+  createdByName?: string;
+}
+
 export class SkillService {
   private getClient() {
     return getServiceContainer().gatewayClient;
@@ -81,7 +92,10 @@ export class SkillService {
    * 更新技能
    */
   async updateSkill(id: string, data: Partial<Skill>): Promise<Skill> {
-    return await this.getClient().send('skills.update', { id, ...data });
+    const { name, description, icon, category, tags, content, version, configSchema, config } = data;
+    return await this.getClient().send('skills.update', {
+      id, name, description, icon, category, tags, content, version, configSchema, config,
+    });
   }
 
   /**
@@ -105,5 +119,28 @@ export class SkillService {
       console.error('Failed to get marketplace skills:', error);
       return [];
     }
+  }
+
+  /**
+   * 获取技能版本历史
+   */
+  async getVersions(skillId: string): Promise<SkillVersion[]> {
+    try {
+      const result = await this.getClient().send('skills.getVersions', { skillId });
+      if (result && Array.isArray(result)) {
+        return result;
+      }
+      return [];
+    } catch (error) {
+      console.error('Failed to get skill versions:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 回退到指定版本
+   */
+  async revertToVersion(skillId: string, versionId: string): Promise<Skill> {
+    return await this.getClient().send('skills.revertToVersion', { skillId, versionId });
   }
 }

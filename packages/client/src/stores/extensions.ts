@@ -54,7 +54,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
   extensions: [],
   installedExtensions: [],
   searchQuery: '',
-  selectedCategory: '全部',
+  selectedCategory: 'all',
   isLoading: false,
   error: null,
   
@@ -169,7 +169,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
     
     return extensions.filter((ext) => {
       // 分类过滤
-      if (selectedCategory !== '全部' && ext.category !== selectedCategory) {
+      if (selectedCategory !== 'all' && ext.category !== selectedCategory) {
         return false;
       }
       
@@ -193,7 +193,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
     extensions: [],
     installedExtensions: [],
     searchQuery: '',
-    selectedCategory: '全部',
+    selectedCategory: 'all',
     isLoading: false,
     error: null,
   }),

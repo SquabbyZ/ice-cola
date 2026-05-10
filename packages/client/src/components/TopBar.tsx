@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Bell } from 'lucide-react';
 import { useGatewayStore } from '@/stores/gateway';
 import { useTeamStore } from '@/stores/team';
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/tooltip';
 
 const TopBar: React.FC = () => {
+  const { t } = useTranslation();
   const { isRunning, isConnected } = useGatewayStore();
   const { totalQuota, usedQuota } = useTeamStore();
 
@@ -98,19 +100,19 @@ const TopBar: React.FC = () => {
                   }`}
                 />
                 <span className="text-[11px] font-medium text-zinc-600 hidden sm:block">
-                  {isOnline ? '在线' : '离线'}
+                  {isOnline ? t('common.online') : t('common.offline')}
                 </span>
               </div>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              <p>{isOnline ? '网关运行中' : '网关离线'}</p>
+              <p>{isOnline ? t('common.gatewayRunning') : t('common.gatewayOffline')}</p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
 
         {/* Quota indicator */}
         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-50/80">
-          <span className="text-[11px] text-zinc-500 font-medium">额度</span>
+          <span className="text-[11px] text-zinc-500 font-medium">{t('common.quota')}</span>
           <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-[hsl(350,85%,65%)] to-[hsl(165,55%,45%)] rounded-full transition-all duration-500"

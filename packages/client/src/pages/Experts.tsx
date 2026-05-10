@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { filterAndSortExperts } from '@/lib/expert-filter-sort';
 import {
   Bot,
   Plus,
@@ -14,6 +15,11 @@ import {
   Zap,
   Sparkles,
   X,
+  Palette,
+  Droplets,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +36,44 @@ import {
 } from '@/stores/expertMarketplaceStore';
 import { useGateway } from '@/hooks/useGateway';
 
+const COLOR_PRESETS = [
+  { color: '#3B82F6', label: 'Blue' },
+  { color: '#8B5CF6', label: 'Violet' },
+  { color: '#EC4899', label: 'Pink' },
+  { color: '#EF4444', label: 'Red' },
+  { color: '#F97316', label: 'Orange' },
+  { color: '#EAB308', label: 'Yellow' },
+  { color: '#22C55E', label: 'Green' },
+  { color: '#14B8A6', label: 'Teal' },
+  { color: '#06B6D4', label: 'Cyan' },
+  { color: '#6366F1', label: 'Indigo' },
+  { color: '#A855F7', label: 'Purple' },
+  { color: '#F43F5E', label: 'Rose' },
+];
+
+const EMOJI_ICONS = [
+  { emoji: '🤖', label: 'Robot' },
+  { emoji: '💻', label: 'Laptop' },
+  { emoji: '🔧', label: 'Wrench' },
+  { emoji: '📝', label: 'Memo' },
+  { emoji: '📊', label: 'Chart' },
+  { emoji: '🎯', label: 'Target' },
+  { emoji: '💡', label: 'Bulb' },
+  { emoji: '⚡', label: 'Lightning' },
+  { emoji: '🔮', label: 'Crystal' },
+  { emoji: '📚', label: 'Books' },
+  { emoji: '🎨', label: 'Palette' },
+  { emoji: '🏆', label: 'Trophy' },
+  { emoji: '🚀', label: 'Rocket' },
+  { emoji: '🌟', label: 'Star' },
+  { emoji: '💼', label: 'Briefcase' },
+  { emoji: '🎮', label: 'Game' },
+  { emoji: '🎭', label: 'Masks' },
+  { emoji: '🎪', label: 'Circus' },
+  { emoji: '🌈', label: 'Rainbow' },
+  { emoji: '🔥', label: 'Fire' },
+];
+
 const Experts: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'my' | 'marketplace'>('my');
@@ -37,6 +81,8 @@ const Experts: React.FC = () => {
   const [editingExpert, setEditingExpert] = useState<ExpertPrompt | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [mySearchQuery, setMySearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'default-first'>('default-first');
 
   useGateway({ autoConnect: true });
 
@@ -139,6 +185,11 @@ const Experts: React.FC = () => {
   });
 
   const filteredMarketplaceExperts = getFilteredExperts();
+
+  const filteredMyExperts = React.useMemo(
+    () => filterAndSortExperts(prompts, mySearchQuery, sortBy),
+    [prompts, mySearchQuery, sortBy]
+  );
 
   if (myExpertsLoading && activeTab === 'my') {
     return (
@@ -287,8 +338,54 @@ const Experts: React.FC = () => {
           {/* My Experts Tab */}
           {activeTab === 'my' && (
             <>
+              {/* Search + Sort controls — visible when there are experts or a search is active */}
+              {(prompts.length > 0 || mySearchQuery) && (
+                <div className="mb-6 flex items-center gap-3">
+                  {/* Search */}
+                  <div className="relative flex-1 group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <Search className="w-4 h-4 text-zinc-400 group-focus-within:text-zinc-600 transition-colors" />
+                    </div>
+                    <input
+                      type="text"
+                      value={mySearchQuery}
+                      onChange={(e) => setMySearchQuery(e.target.value)}
+                      placeholder={t('experts.mySearchPlaceholder')}
+                      aria-label={t('experts.mySearchPlaceholder')}
+                      className="w-full pl-11 pr-4 py-3 bg-white/80 backdrop-blur-sm border border-zinc-200/60 rounded-xl text-sm focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-500/10 transition-all duration-200 placeholder:text-zinc-400 shadow-sm"
+                    />
+                    {mySearchQuery && (
+                      <button
+                        onClick={() => setMySearchQuery('')}
+                        aria-label={t('experts.clearFilter')}
+                        className="absolute inset-y-0 right-0 pr-4 flex items-center text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Sort */}
+                  <div className="relative">
+                    <button
+                      onClick={() => {
+                        const next = sortBy === 'default-first' ? 'name-asc' : sortBy === 'name-asc' ? 'name-desc' : 'default-first';
+                        setSortBy(next);
+                      }}
+                      aria-label={t(`experts.sort.${sortBy}`)}
+                      className="flex items-center gap-2 px-4 py-3 bg-white/80 backdrop-blur-sm border border-zinc-200/60 rounded-xl text-sm text-zinc-600 hover:border-zinc-400 hover:ring-4 hover:ring-zinc-500/10 transition-all duration-200 shadow-sm whitespace-nowrap"
+                    >
+                      {sortBy === 'name-asc' && <ArrowUp className="w-4 h-4" />}
+                      {sortBy === 'name-desc' && <ArrowDown className="w-4 h-4" />}
+                      {sortBy === 'default-first' && <ArrowUpDown className="w-4 h-4" />}
+                      <span className="hidden sm:inline">{t(`experts.sort.${sortBy}`)}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-4">
-                {prompts.length === 0 && !myExpertsLoading && (
+                {prompts.length === 0 && !myExpertsLoading && !mySearchQuery && (
                   <div className="bento-tile p-12 text-center animate-fade-in-up">
                     {/* Watermark */}
                     <div className="relative inline-block mb-6">
@@ -312,7 +409,30 @@ const Experts: React.FC = () => {
                     </Button>
                   </div>
                 )}
-                {prompts.map((expert, index) => (
+                {filteredMyExperts.length === 0 && prompts.length > 0 && mySearchQuery && (
+                  <div className="bento-tile p-12 text-center animate-fade-in-up">
+                    <div className="relative inline-block mb-6">
+                      <div className="absolute inset-0 flex items-center justify-center text-zinc-100/60">
+                        <Search className="w-16 h-16" />
+                      </div>
+                      <div className="relative z-10 w-14 h-14 rounded-2xl bg-zinc-100/80 flex items-center justify-center mx-auto shadow-inner">
+                        <Search className="w-7 h-7 text-zinc-400" />
+                      </div>
+                    </div>
+                    <h3 className="text-lg font-semibold text-zinc-900 mb-2">{t('experts.noMyMatch')}</h3>
+                    <p className="text-sm text-zinc-500 mb-6 max-w-md mx-auto">
+                      {t('experts.tryAdjustMy')}
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setMySearchQuery('')}
+                      className="border-zinc-200 hover:bg-zinc-50 rounded-xl px-6"
+                    >
+                      {t('experts.clearFilter')}
+                    </Button>
+                  </div>
+                )}
+                {filteredMyExperts.map((expert, index) => (
                   <div
                     key={expert.id}
                     className="bento-tile p-5 group hover-lift animate-fade-in-up"
@@ -537,29 +657,6 @@ const Experts: React.FC = () => {
             </div>
           </div>
 
-          {/* Preview Card - Sticky below header */}
-          <div className="sticky top-0 z-10 px-6 py-4 bg-zinc-50/80 backdrop-blur-sm border-b border-zinc-100/50">
-            <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">{t('experts.preview')}</p>
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-lg flex items-center justify-center text-xl shadow-sm"
-                style={{
-                  background: formData.color ? `${formData.color}20` : '#f3f4f6',
-                }}
-              >
-                {formData.icon || '🤖'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-zinc-800 truncate">
-                  {formData.name || t('experts.expertName')}
-                </p>
-                <p className="text-xs text-zinc-400 truncate">
-                  {formData.description || t('experts.expertDescription')}
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* Scrollable Form Body */}
           <div className="flex-1 overflow-y-auto px-6 py-6">
             <div className="space-y-6">
@@ -609,61 +706,116 @@ const Experts: React.FC = () => {
                 </p>
               </div>
 
-              {/* Icon & Color Row - Redesigned Layout */}
-              <div className="flex gap-4">
-                {/* Left Column - Icon Preview with Name as Background */}
-                <div className="w-28 flex-shrink-0 flex flex-col gap-3">
-                  {/* Icon Preview with Name Background */}
-                  <div
-                    className="relative h-14 rounded-xl flex items-center justify-center text-2xl shadow-md overflow-hidden"
-                    style={{
-                      background: formData.color
-                        ? `linear-gradient(135deg, ${formData.color} 0%, ${formData.color}CC 100%)`
-                        : 'linear-gradient(135deg, #3B82F6 0%, #3B82F6CC 100%)',
-                    }}
-                  >
-                    <span className="relative z-10">{formData.icon || '🤖'}</span>
-                    {/* Name as subtle watermark */}
-                    <span className="absolute inset-0 flex items-center justify-center text-[8px] font-bold text-white/20 uppercase tracking-widest overflow-hidden px-1 text-center">
-                      {formData.name || 'Expert'}
-                    </span>
-                  </div>
+              {/* Icon & Color Section - Beautified */}
+              <div className="space-y-5">
+                {/* Section Label */}
+                <label className="text-sm font-semibold text-zinc-700 tracking-tight flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-zinc-400" />
+                  {t('experts.icon')} & {t('experts.color')}
+                </label>
 
-                  {/* Square Color Picker */}
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={formData.color}
-                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                      className="w-full h-10 border border-zinc-200/60 rounded-lg cursor-pointer bg-zinc-50/80 transition-all hover:border-zinc-300 p-0.5"
-                    />
-                    <span className="text-xs text-zinc-400 font-mono w-16 text-right">
-                      {formData.color}
-                    </span>
+                {/* Color Presets */}
+                <div className="space-y-2.5">
+                  <p className="text-xs text-zinc-400 font-medium">{t('experts.color') || 'Background Color'}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {COLOR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.color}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, color: preset.color })}
+                        aria-label={preset.label}
+                        aria-pressed={formData.color === preset.color}
+                        className={cn(
+                          "group relative w-8 h-8 rounded-full transition-all duration-200 hover:scale-110",
+                          formData.color === preset.color
+                            ? "ring-2 ring-offset-2 ring-zinc-800 shadow-lg"
+                            : "hover:shadow-md"
+                        )}
+                        style={{ backgroundColor: preset.color }}
+                      >
+                        {formData.color === preset.color && (
+                          <CheckCircle2 className="w-3.5 h-3.5 text-white absolute inset-0 m-auto drop-shadow-sm" />
+                        )}
+                      </button>
+                    ))}
+                    {/* Custom color picker trigger */}
+                    <label
+                      aria-label="Custom color"
+                      className={cn(
+                        "w-8 h-8 rounded-full border-2 border-dashed border-zinc-300 flex items-center justify-center cursor-pointer transition-all hover:border-zinc-400 hover:bg-zinc-50",
+                        !COLOR_PRESETS.some(p => p.color === formData.color) && "border-solid border-zinc-400 bg-zinc-50"
+                      )}
+                    >
+                      <input
+                        type="color"
+                        value={formData.color}
+                        onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                        className="sr-only"
+                      />
+                      <Droplets className="w-3.5 h-3.5 text-zinc-400" />
+                    </label>
+                    <span className="text-xs text-zinc-400 font-mono self-center ml-1">{formData.color}</span>
                   </div>
                 </div>
 
-                {/* Right Column - Emoji Grid (equal height) */}
-                <div className="flex-1 flex flex-col">
-                  <label className="text-sm font-semibold text-zinc-700 tracking-tight mb-3">
-                    {t('experts.icon')}
-                  </label>
-                  <div className="flex-1 grid grid-cols-8 gap-2 content-start">
-                    {['🤖', '💻', '🔧', '📝', '📊', '🎯', '💡', '⚡', '🔮', '📚', '🎨', '🏆', '🚀', '🌟', '💼', '🎮', '🎭', '🎪', '🌈', '🔥'].map((emoji) => (
+                {/* Icon Grid */}
+                <div className="space-y-2.5">
+                  <p className="text-xs text-zinc-400 font-medium">{t('experts.icon') || 'Icon'}</p>
+                  <div className="grid grid-cols-10 gap-1.5">
+                    {EMOJI_ICONS.map(({ emoji, label }) => (
                       <button
                         key={emoji}
                         type="button"
                         onClick={() => setFormData({ ...formData, icon: emoji })}
+                        aria-label={label}
+                        aria-pressed={formData.icon === emoji}
                         className={cn(
-                          "w-9 h-9 rounded-lg flex items-center justify-center text-lg transition-all duration-200 hover:scale-110",
+                          "w-full aspect-square rounded-lg flex items-center justify-center text-lg transition-all duration-200",
                           formData.icon === emoji
-                            ? "bg-zinc-200 ring-2 ring-zinc-400"
-                            : "bg-zinc-50 hover:bg-zinc-100"
+                            ? "bg-zinc-100 ring-2 ring-zinc-800 shadow-sm scale-105"
+                            : "bg-zinc-50 hover:bg-zinc-100 hover:scale-105 active:scale-95"
                         )}
                       >
                         {emoji}
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Live Preview - Enhanced */}
+                <div
+                  className="relative rounded-2xl overflow-hidden p-5 transition-all duration-300"
+                  style={{
+                    background: `linear-gradient(135deg, ${formData.color}18 0%, ${formData.color}08 100%)`,
+                    border: `1px solid ${formData.color}25`,
+                  }}
+                >
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-lg transition-all duration-300"
+                      style={{
+                        background: `linear-gradient(135deg, ${formData.color} 0%, ${formData.color}BB 100%)`,
+                      }}
+                    >
+                      {formData.icon || '🤖'}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-base font-bold text-zinc-900 truncate">
+                        {formData.name || t('experts.expertName')}
+                      </p>
+                      <p className="text-sm text-zinc-500 truncate">
+                        {formData.description || t('experts.expertDescription')}
+                      </p>
+                    </div>
+                    <div
+                      className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${formData.color}15` }}
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: formData.color }}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>

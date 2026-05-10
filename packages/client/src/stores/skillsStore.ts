@@ -70,7 +70,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   teamSkills: [],
   marketplaceSkills: [],
   searchQuery: '',
-  selectedCategory: '全部',
+  selectedCategory: 'all',
   isLoading: false,
   error: null,
 
@@ -151,12 +151,23 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   },
 
   getVersions: async (skillId) => {
-    const skill = await skillService.getSkill(skillId);
-    return skill ? [] : [];
+    try {
+      return await skillService.getVersions(skillId);
+    } catch {
+      return [];
+    }
   },
 
   revertToVersion: async (skillId, versionId) => {
-    console.log('revertToVersion', skillId, versionId);
+    try {
+      const updated = await skillService.revertToVersion(skillId, versionId);
+      set(state => ({
+        personalSkills: state.personalSkills.map(s => s.id === skillId ? updated : s),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to revert version' });
+      throw err;
+    }
   },
 
   requestPublishToTeam: async (skillId) => {
@@ -193,7 +204,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   getFilteredSkills: (skills) => {
     const { searchQuery, selectedCategory } = get();
     return skills.filter(skill => {
-      if (selectedCategory !== '全部' && skill.category !== selectedCategory) return false;
+      if (selectedCategory !== 'all' && skill.category !== selectedCategory) return false;
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (

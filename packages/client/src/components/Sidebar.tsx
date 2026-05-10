@@ -254,14 +254,14 @@ const Sidebar: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50"
               >
                 <UserCircle className="w-4 h-4 text-zinc-400" />
-                <span className="text-sm text-zinc-700">个人中心</span>
+                <span className="text-sm text-zinc-700">{t('nav.profile')}</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={() => setIsSettingsOpen(true)}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-zinc-50 focus:bg-zinc-50"
               >
                 <Settings className="w-4 h-4 text-zinc-400" />
-                <span className="text-sm text-zinc-700">设置</span>
+                <span className="text-sm text-zinc-700">{t('nav.settings')}</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator className="my-1.5 bg-zinc-100" />
               <DropdownMenuItem
@@ -269,7 +269,7 @@ const Sidebar: React.FC = () => {
                 className="flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer hover:bg-red-50 focus:bg-red-50 group"
               >
                 <LogOut className="w-4 h-4 text-zinc-400 group-hover:text-red-600" />
-                <span className="text-sm text-red-600 font-medium">退出登录</span>
+                <span className="text-sm text-red-600 font-medium">{t('nav.logout')}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

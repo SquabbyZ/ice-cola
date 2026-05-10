@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -18,20 +19,28 @@ import { useGateway } from '@/hooks/useGateway';
 import { useUsageStore } from '@/stores/usage';
 import { useQuotaStore } from '@/stores/quota';
 import { useExpertStore } from '@/stores/experts';
+import { useMCPStore } from '@/stores/mcpStore';
+import { useConversationStore } from '@/stores/conversations';
 import { QuotaProgressBar } from '@/components/QuotaProgressBar';
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   useGateway({ autoConnect: true });
 
   const { stats, refreshAllStats } = useUsageStore();
   const { loadConfig, refreshStatus } = useQuotaStore();
   const { prompts: experts, loadPrompts } = useExpertStore();
+  const { servers, loadServers } = useMCPStore();
+  const { conversations, loadConversations } = useConversationStore();
 
   const [isLoading, setIsLoading] = useState(true);
 
   const activeSessions = isLoading ? 0 : stats.month.requestCount;
   const skillCount = isLoading ? 0 : experts.length;
+  const activeExperts = isLoading ? 0 : experts.length;
+  const mcpServices = isLoading ? 0 : servers.length;
+  const recentConversations = conversations.slice(0, 5);
 
   useEffect(() => {
     const loadData = async () => {
@@ -42,6 +51,8 @@ const Dashboard: React.FC = () => {
           loadConfig(),
           refreshStatus(),
           loadPrompts(),
+          loadServers(),
+          loadConversations('default'),
         ]);
       } finally {
         setIsLoading(false);
@@ -56,24 +67,28 @@ const Dashboard: React.FC = () => {
       desc: t('dashboard.workspace.docProcessingDesc'),
       icon: FileText,
       action: t('dashboard.workspace.launchTool'),
+      onClick: () => navigate('/chat', { state: { presetMessage: t('dashboard.workspace.docProcessingPreset') } }),
     },
     {
       title: t('dashboard.workspace.dataAnalysis'),
       desc: t('dashboard.workspace.dataAnalysisDesc'),
       icon: BarChart3,
       action: t('dashboard.workspace.launchTool'),
+      onClick: () => navigate('/chat'),
     },
     {
       title: t('dashboard.workspace.emailAssistant'),
       desc: t('dashboard.workspace.emailAssistantDesc'),
       icon: Mail,
       action: t('dashboard.workspace.launchTool'),
+      onClick: () => navigate('/chat'),
     },
     {
       title: t('dashboard.workspace.scheduleManagement'),
       desc: t('dashboard.workspace.scheduleManagementDesc'),
       icon: Calendar,
       action: t('dashboard.workspace.launchTool'),
+      onClick: () => navigate('/tasks'),
     },
   ];
 
@@ -185,7 +200,7 @@ const Dashboard: React.FC = () => {
                     {isLoading ? (
                       <Skeleton className="h-7 w-12 rounded" />
                     ) : (
-                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{0}</div>
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{activeExperts}</div>
                     )}
                     <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.activeExperts')}</div>
                   </div>
@@ -200,7 +215,7 @@ const Dashboard: React.FC = () => {
                     {isLoading ? (
                       <Skeleton className="h-7 w-12 rounded" />
                     ) : (
-                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{0}</div>
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{mcpServices}</div>
                     )}
                     <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.stats.mcpServices')}</div>
                   </div>
@@ -266,6 +281,7 @@ const Dashboard: React.FC = () => {
                     key={action.title}
                     className="bento-tile p-5 group cursor-pointer hover-lift animate-fade-in-up relative overflow-hidden"
                     style={{ animationDelay: `${(index + 6) * 100}ms` }}
+                    onClick={action.onClick}
                   >
                     {/* Icon watermark in top-right */}
                     <div className="absolute top-3 right-3 w-14 h-14 opacity-10 group-hover:opacity-25 group-hover:scale-125 transition-all duration-300">
@@ -318,6 +334,34 @@ const Dashboard: React.FC = () => {
                 <Skeleton className="h-5 w-32 mb-2 rounded" />
                 <Skeleton className="h-4 w-48 rounded" />
               </div>
+            </div>
+          ) : recentConversations.length > 0 ? (
+            <div className="bento-tile divide-y divide-zinc-100/50">
+              {recentConversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className="flex items-center gap-4 px-5 py-4 hover:bg-zinc-50/50 transition-colors cursor-pointer group"
+                  onClick={() => navigate(`/chat/${conv.id}`)}
+                >
+                  <div className="w-10 h-10 rounded-xl bg-zinc-100/80 flex items-center justify-center shrink-0 group-hover:bg-zinc-200/80 transition-colors">
+                    <MessageSquare className="w-5 h-5 text-zinc-400 group-hover:text-zinc-600 transition-colors" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-zinc-900 truncate">
+                      {conv.title || t('dashboard.untitledConversation')}
+                    </p>
+                    <p className="text-xs text-zinc-400 mt-0.5">
+                      {conv.lastMessageAt
+                        ? new Date(conv.lastMessageAt).toLocaleString()
+                        : new Date(conv.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="text-xs text-zinc-400 shrink-0">
+                    {conv.messageCount} {t('dashboard.messages')}
+                  </div>
+                  <ArrowUpRight className="w-4 h-4 text-zinc-300 group-hover:text-zinc-600 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all shrink-0" />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="bento-tile p-8 text-center">

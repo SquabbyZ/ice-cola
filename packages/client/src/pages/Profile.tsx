@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -23,6 +24,7 @@ import {
 } from 'lucide-react';
 
 const Profile: React.FC = () => {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
@@ -77,13 +79,13 @@ const Profile: React.FC = () => {
       setMembers(data);
     } catch (error) {
       console.error('Failed to load members:', error);
-      toast.error('加载团队成员失败');
+      toast.error(t('profile.loadMembersFailed'));
     }
   };
 
   const handleCreateTeam = async () => {
     if (!newTeamName.trim()) {
-      toast.error('请输入团队名称');
+      toast.error(t('profile.enterTeamNameError'));
       return;
     }
 
@@ -95,12 +97,12 @@ const Profile: React.FC = () => {
       setSelectedTeam(team);
       setShowCreateTeam(false);
       setNewTeamName('');
-      toast.success('团队创建成功');
+      toast.success(t('profile.createTeamSuccess'));
 
       const updatedUser = { ...user!, team: { id: team.id, name: team.name, role: 'OWNER' } };
       useAuthStore.setState({ user: updatedUser as any });
     } catch (error: any) {
-      toast.error(error.response?.data?.message || '创建团队失败');
+      toast.error(error.response?.data?.message || t('profile.createTeamFailed'));
     } finally {
       setActionLoading(false);
     }
@@ -120,9 +122,9 @@ const Profile: React.FC = () => {
       const teamId = selectedTeam.id;
       await teamService.removeMember(teamId, memberToRemove.id);
       setMembers(members.filter(m => m.id !== memberToRemove.id));
-      toast.success('已移除成员');
+      toast.success(t('profile.removeSuccess'));
     } catch (error: any) {
-      toast.error(error.response?.data?.message || '移除成员失败');
+      toast.error(error.response?.data?.message || t('profile.removeFailed'));
     } finally {
       setActionLoading(false);
       setShowRemoveMember(false);
@@ -145,12 +147,11 @@ const Profile: React.FC = () => {
       const remainingTeams = teams.filter(t => t.id !== teamId);
       setTeams(remainingTeams);
       setSelectedTeam(remainingTeams.length > 0 ? remainingTeams[0] : null);
-      toast.success('已退出团队');
-
+      toast.success(t('profile.leaveSuccess'));
       const updatedUser = { ...user!, team: null };
       useAuthStore.setState({ user: updatedUser as any });
     } catch (error: any) {
-      toast.error(error.response?.data?.message || '退出团队失败');
+      toast.error(error.response?.data?.message || t('profile.leaveFailed'));
     } finally {
       setActionLoading(false);
     }
@@ -159,11 +160,11 @@ const Profile: React.FC = () => {
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'OWNER':
-        return <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200/50"><Crown className="w-3 h-3 mr-1" /> 所有者</Badge>;
+        return <Badge className="bg-yellow-500/10 text-yellow-600 border-yellow-200/50"><Crown className="w-3 h-3 mr-1" /> {t('profile.roleOwner')}</Badge>;
       case 'ADMIN':
-        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-200/50"><Shield className="w-3 h-3 mr-1" /> 管理员</Badge>;
+        return <Badge className="bg-blue-500/10 text-blue-600 border-blue-200/50"><Shield className="w-3 h-3 mr-1" /> {t('profile.roleAdmin')}</Badge>;
       default:
-        return <Badge variant="secondary" className="bg-zinc-100/80 text-zinc-600">成员</Badge>;
+        return <Badge variant="secondary" className="bg-zinc-100/80 text-zinc-600">{t('profile.roleMember')}</Badge>;
     }
   };
 
@@ -171,19 +172,19 @@ const Profile: React.FC = () => {
     setPasswordError('');
 
     if (!currentPassword) {
-      setPasswordError('请输入当前密码');
+      setPasswordError(t('profile.enterCurrentPasswordError'));
       return;
     }
     if (!newPassword) {
-      setPasswordError('请输入新密码');
+      setPasswordError(t('profile.enterNewPasswordError'));
       return;
     }
     if (newPassword.length < 6) {
-      setPasswordError('新密码长度至少为6位');
+      setPasswordError(t('profile.passwordMinLengthError'));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError('两次输入的密码不一致');
+      setPasswordError(t('profile.passwordsNotMatchError'));
       return;
     }
 
@@ -193,13 +194,13 @@ const Profile: React.FC = () => {
         currentPassword,
         newPassword,
       });
-      toast.success('密码修改成功');
+      toast.success(t('profile.passwordChangeSuccess'));
       setShowChangePassword(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: any) {
-      const message = error.response?.data?.message || '密码修改失败';
+      const message = error.response?.data?.message || t('profile.passwordChangeFailed');
       toast.error(message);
     } finally {
       setActionLoading(false);
@@ -222,10 +223,10 @@ const Profile: React.FC = () => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl lg:text-4xl font-bold text-zinc-900 tracking-tight mb-2">
-            个人中心
+            {t('profile.title')}
           </h1>
           <p className="text-zinc-500 text-sm lg:text-base">
-            管理你的账号、团队和设置
+            {t('profile.subtitle')}
           </p>
         </div>
 
@@ -240,7 +241,7 @@ const Profile: React.FC = () => {
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-zinc-900">
-                  {user?.name || '未设置姓名'}
+                  {user?.name || t('profile.noName')}
                 </h2>
                 <p className="text-sm text-zinc-500 flex items-center gap-2">
                   <Mail className="w-4 h-4" />
@@ -255,7 +256,7 @@ const Profile: React.FC = () => {
               className="rounded-xl border-zinc-200/50 hover:bg-zinc-100"
             >
               <Key className="w-4 h-4 mr-2" />
-              修改密码
+              {t('profile.changePassword')}
             </Button>
           </div>
 
@@ -265,7 +266,7 @@ const Profile: React.FC = () => {
                 <Users className="w-5 h-5 text-zinc-500" />
               </div>
               <div className="flex-1">
-                <p className="text-sm text-zinc-500">所在团队</p>
+                <p className="text-sm text-zinc-500">{t('profile.teams')}</p>
                 <p className="font-semibold text-zinc-900">{user.team.name}</p>
               </div>
               {getRoleBadge(user.team.role)}
@@ -274,16 +275,16 @@ const Profile: React.FC = () => {
 
           {showChangePassword && (
             <div className="mt-6 pt-6 border-t border-zinc-100/50">
-              <h3 className="text-sm font-semibold text-zinc-900 mb-4">修改密码</h3>
+              <h3 className="text-sm font-semibold text-zinc-900 mb-4">{t('profile.changePassword')}</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs text-zinc-500">当前密码</label>
+                  <label className="text-xs text-zinc-500">{t('profile.currentPassword')}</label>
                   <div className="relative">
                     <Input
                       type={showPasswords.current ? 'text' : 'password'}
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="请输入当前密码"
+                      placeholder={t('profile.enterCurrentPassword')}
                       className="pr-10 bg-white border-zinc-200/50 rounded-xl h-11"
                     />
                     <button
@@ -296,13 +297,13 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs text-zinc-500">新密码</label>
+                  <label className="text-xs text-zinc-500">{t('profile.newPassword')}</label>
                   <div className="relative">
                     <Input
                       type={showPasswords.new ? 'text' : 'password'}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="至少6位"
+                      placeholder={t('profile.enterNewPasswordMin')}
                       className="pr-10 bg-white border-zinc-200/50 rounded-xl h-11"
                     />
                     <button
@@ -315,13 +316,13 @@ const Profile: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs text-zinc-500">确认新密码</label>
+                  <label className="text-xs text-zinc-500">{t('profile.confirmPassword')}</label>
                   <div className="relative">
                     <Input
                       type={showPasswords.confirm ? 'text' : 'password'}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="再次输入新密码"
+                      placeholder={t('profile.enterConfirmPassword')}
                       className="pr-10 bg-white border-zinc-200/50 rounded-xl h-11"
                       onKeyDown={(e) => e.key === 'Enter' && handleChangePassword()}
                     />
@@ -348,7 +349,7 @@ const Profile: React.FC = () => {
                   className="btn-ice rounded-xl"
                 >
                   {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-                  确认修改
+                  {t('profile.confirmModify')}
                 </Button>
                 <Button
                   variant="outline"
@@ -361,7 +362,7 @@ const Profile: React.FC = () => {
                   }}
                   className="rounded-xl border-zinc-200/50 hover:bg-zinc-100"
                 >
-                  取消
+                  {t('common.cancel')}
                 </Button>
               </div>
             </div>
@@ -376,34 +377,34 @@ const Profile: React.FC = () => {
                 <Users className="w-5 h-5 text-zinc-500" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold text-zinc-900">团队管理</h2>
-                <p className="text-sm text-zinc-500">管理你的团队成员</p>
+                <h2 className="text-lg font-semibold text-zinc-900">{t('profile.teamManagement')}</h2>
+                <p className="text-sm text-zinc-500">{t('profile.teamManagement')}</p>
               </div>
             </div>
             {!selectedTeam && !showCreateTeam && (
               <Button onClick={() => setShowCreateTeam(true)} className="btn-ice rounded-xl">
                 <Plus className="w-4 h-4 mr-2" />
-                创建团队
+                {t('profile.createTeam')}
               </Button>
             )}
           </div>
 
           {showCreateTeam ? (
             <div className="p-4 bg-zinc-50/50 rounded-xl">
-              <h3 className="text-sm font-medium text-zinc-700 mb-3">创建新团队</h3>
+              <h3 className="text-sm font-medium text-zinc-700 mb-3">{t('profile.createNewTeam')}</h3>
               <div className="flex gap-3">
                 <Input
-                  placeholder="团队名称"
+                  placeholder={t('profile.enterTeamName')}
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleCreateTeam()}
                   className="max-w-xs bg-white border-zinc-200/50 rounded-xl h-11"
                 />
                 <Button onClick={handleCreateTeam} disabled={actionLoading} className="btn-ice rounded-xl">
-                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : '创建'}
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : t('profile.create')}
                 </Button>
                 <Button variant="outline" onClick={() => setShowCreateTeam(false)} className="rounded-xl border-zinc-200/50">
-                  取消
+                  {t('common.cancel')}
                 </Button>
               </div>
             </div>
@@ -433,7 +434,7 @@ const Profile: React.FC = () => {
                 <div>
                   <h3 className="font-semibold text-zinc-900 text-lg">{selectedTeam.name}</h3>
                   <p className="text-sm text-zinc-500 mt-1">
-                    角色: {getRoleBadge(selectedTeam.role || user?.team?.role || "")}
+                    {t('profile.teamRole')}: {getRoleBadge(selectedTeam.role || user?.team?.role || "")}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -446,7 +447,7 @@ const Profile: React.FC = () => {
                         className="rounded-xl border-zinc-200/50 hover:bg-zinc-100"
                       >
                         <Plus className="w-4 h-4 mr-2" />
-                        邀请成员
+                        {t('profile.inviteMember')}
                       </Button>
                       <Button
                         variant="outline"
@@ -456,7 +457,7 @@ const Profile: React.FC = () => {
                         className="rounded-xl border-red-200/50 text-red-500 hover:bg-red-50 hover:border-red-300"
                       >
                         <LogOut className="w-4 h-4 mr-2" />
-                        退出团队
+                        {t('profile.leaveTeam')}
                       </Button>
                     </>
                   )}
@@ -477,7 +478,7 @@ const Profile: React.FC = () => {
 
               {/* Members List */}
               <div>
-                <h4 className="text-sm font-medium text-zinc-700 mb-3">团队成员 ({members.length})</h4>
+                <h4 className="text-sm font-medium text-zinc-700 mb-3">{t('profile.teamMembers', { count: members.length })}</h4>
                 <div className="space-y-3">
                   {members.map((member, index) => (
                     <div
@@ -492,7 +493,7 @@ const Profile: React.FC = () => {
                           </span>
                         </div>
                         <div>
-                          <p className="font-medium text-zinc-900">{member.name || '未命名'}</p>
+                          <p className="font-medium text-zinc-900">{member.name || t('profile.unnamed')}</p>
                           <p className="text-xs text-zinc-500">{member.email}</p>
                         </div>
                       </div>
@@ -506,7 +507,7 @@ const Profile: React.FC = () => {
                             disabled={actionLoading}
                             className="text-red-500 hover:text-red-600 hover:bg-red-50 rounded-xl"
                           >
-                            移除
+                            {t('profile.remove')}
                           </Button>
                         )}
                       </div>
@@ -520,11 +521,11 @@ const Profile: React.FC = () => {
               <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-zinc-100/80 flex items-center justify-center">
                 <AlertCircle className="w-8 h-8 text-zinc-400" />
               </div>
-              <h3 className="text-base font-semibold text-zinc-900 mb-2">你还没有加入任何团队</h3>
-              <p className="text-sm text-zinc-500 mb-4">创建团队开始协作</p>
+              <h3 className="text-base font-semibold text-zinc-900 mb-2">{t('profile.noTeam')}</h3>
+              <p className="text-sm text-zinc-500 mb-4">{t('profile.createToStart')}</p>
               <Button onClick={() => setShowCreateTeam(true)} className="btn-ice rounded-xl">
                 <Plus className="w-4 h-4 mr-2" />
-                创建团队
+                {t('profile.createTeam')}
               </Button>
             </div>
           )}
@@ -544,10 +545,10 @@ const Profile: React.FC = () => {
       <ConfirmDialog
         open={showLeaveConfirm}
         onOpenChange={setShowLeaveConfirm}
-        title="退出团队"
-        description={`确定要退出团队"${selectedTeam?.name}"吗？退出后你将不再是该团队的成员。`}
-        confirmText="退出"
-        cancelText="取消"
+        title={t('profile.leaveTeamTitle')}
+        description={t('profile.confirmLeaveTeam', { name: selectedTeam?.name })}
+        confirmText={t('profile.leaveBtn')}
+        cancelText={t('common.cancel')}
         variant="destructive"
         onConfirm={confirmLeaveTeam}
       />
@@ -555,10 +556,10 @@ const Profile: React.FC = () => {
       <ConfirmDialog
         open={showRemoveMember}
         onOpenChange={setShowRemoveMember}
-        title="移除成员"
-        description={`确定要移除成员 "${memberToRemove?.email}" 吗？`}
-        confirmText="移除"
-        cancelText="取消"
+        title={t('profile.removeMemberTitle')}
+        description={t('profile.confirmRemoveMember', { email: memberToRemove?.email })}
+        confirmText={t('profile.removeBtn')}
+        cancelText={t('common.cancel')}
         variant="destructive"
         onConfirm={confirmRemoveMember}
       />

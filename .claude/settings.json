@@ -1,0 +1,116 @@
+{
+  "mcpServers": {
+    "gitnexus": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "gitnexus@latest",
+        "mcp",
+        "--repo",
+        "C:/Users/smallMark/Desktop/peaksclaw/ice-cola"
+      ]
+    },
+    "claude-mem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@the.dot/mem"
+      ]
+    },
+    "context7": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@upstash/context7-mcp@latest"
+      ]
+    },
+    "fs": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@bunas/fs-mcp"
+      ]
+    },
+    "claude-md-management": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "claude-md-management@claude-plugins-official"
+      ]
+    },
+    "code-review": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "code-review@claude-plugins-official"
+      ]
+    },
+    "typescript-lsp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "typescript-lsp@claude-plugins-official"
+      ]
+    },
+    "superpowers": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "superpowers@claude-plugins-official"
+      ]
+    },
+    "frontend-design": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "frontend-design@claude-plugins-official"
+      ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "start"
+      ]
+    },
+    "chrome-devtools": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp"
+      ]
+    },
+    "docker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@alisaitteke/docker-mcp"
+      ]
+    },
+    "shadcn": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "shadcn@latest",
+        "mcp"
+      ]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": [
+        "mcp-fetch-server"
+      ]
+    },
+    "websearch": {
+      "command": "npx",
+      "args": [
+        "websearch-mcp"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [],
+    "deny": []
+  }
+}

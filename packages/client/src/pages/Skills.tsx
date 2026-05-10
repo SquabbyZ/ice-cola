@@ -5,8 +5,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useSkillsStore } from '@/stores/skillsStore';
+import type { SkillVersion } from '@/stores/skillsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { SkillCard } from '@/components/SkillCard';
+import { CreateSkillDialog } from '@/components/CreateSkillDialog';
+import { SkillVersionHistory } from '@/components/SkillVersionHistory';
 
 const CATEGORIES = [
   { key: 'all', labelKey: 'common.all' },
@@ -22,6 +25,9 @@ const Skills: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'marketplace' | 'team' | 'personal'>('marketplace');
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
   const [publishConfirm, setPublishConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [versionHistory, setVersionHistory] = useState<{ open: boolean; skillId: string | null; versions: SkillVersion[]; currentVersion: string }>({ open: false, skillId: null, versions: [], currentVersion: '' });
+  const [previewVersion, setPreviewVersion] = useState<SkillVersion | null>(null);
   const {
     personalSkills,
     teamSkills,
@@ -35,6 +41,9 @@ const Skills: React.FC = () => {
     loadMarketplaceSkills,
     updateSkill,
     deleteSkill,
+    createSkill,
+    getVersions,
+    revertToVersion,
     setSearchQuery,
     setSelectedCategory,
     getFilteredSkills,
@@ -138,7 +147,7 @@ const Skills: React.FC = () => {
               ))}
             </div>
             {activeTab === 'personal' && (
-              <Button className="btn-ice gap-2 px-5">
+              <Button className="btn-ice gap-2 px-5" onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="w-4 h-4" />
                 <Sparkles className="w-4 h-4" />
                 {t('skills.create')}
@@ -180,7 +189,10 @@ const Skills: React.FC = () => {
                   onPublish={(id) => {
                     setPublishConfirm({ open: true, skillId: id, skillName: skill.name });
                   }}
-                  onVersionHistory={(id) => console.log('Version history:', id)}
+                  onVersionHistory={async (id) => {
+                    const versions = await getVersions(id);
+                    setVersionHistory({ open: true, skillId: id, versions, currentVersion: skill.version });
+                  }}
                 />
               ))}
             </div>
@@ -216,6 +228,59 @@ const Skills: React.FC = () => {
           }
         }}
       />
+
+      <CreateSkillDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onSubmit={async (data) => {
+          await createSkill(teamId || 'default', {
+            ...data,
+            authorId: user?.id || '',
+            status: 'personal',
+            ratings: 0,
+            installs: 0,
+          } as any);
+          loadPersonalSkills();
+        }}
+      />
+
+      {versionHistory.open && versionHistory.skillId && (
+        <SkillVersionHistory
+          versions={versionHistory.versions}
+          currentVersion={versionHistory.currentVersion}
+          onPreview={(version) => {
+            setPreviewVersion(version);
+          }}
+          onRevert={async (versionId) => {
+            await revertToVersion(versionHistory.skillId!, versionId);
+            setVersionHistory({ open: false, skillId: null, versions: [], currentVersion: '' });
+            loadPersonalSkills();
+          }}
+          onClose={() => setVersionHistory({ open: false, skillId: null, versions: [], currentVersion: '' })}
+        />
+      )}
+
+      {previewVersion && (
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h3 className="font-bold text-zinc-900">版本预览</h3>
+                <p className="text-xs text-zinc-500">v{previewVersion.version}</p>
+              </div>
+              <button onClick={() => setPreviewVersion(null)} className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-500">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <pre className="text-sm text-zinc-700 whitespace-pre-wrap font-mono bg-zinc-50 rounded-xl p-4 border border-zinc-200/50">
+                {previewVersion.content || '(无内容)'}
+              </pre>
+            </div>
+            <div className="px-6 py-4 bg-zinc-50 flex justify-end">
+              <Button variant="outline" onClick={() => setPreviewVersion(null)}>关闭</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

@@ -28,13 +28,12 @@ export const SkillCard: React.FC<SkillCardProps> = ({
   onEdit,
   onDelete,
   onPublish,
-// onVersionHistory,
+  onVersionHistory,
   showActions = true,
 }) => {
 const [showMenu, setShowMenu] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
-  const [showVersions, setShowVersions] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -184,7 +183,7 @@ const [showMenu, setShowMenu] = useState(false);
                         }); setShowEdit(true); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
                         <Edit2 className="w-4 h-4" /> 编辑
                       </button>
-                      <button onClick={() => { setShowVersions(true); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                      <button onClick={() => { onVersionHistory?.(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
                         <Clock className="w-4 h-4" /> 版本历史
                       </button>
                       <button onClick={() => { onPublish?.(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-indigo-600">
@@ -279,11 +278,11 @@ const [showMenu, setShowMenu] = useState(false);
                   onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                 >
-                  <option value="开发">开发</option>
-                  <option value="生产力">生产力</option>
-                  <option value="工具">工具</option>
-                  <option value="写作">写作</option>
-                  <option value="分析">分析</option>
+                  <option value="development">开发</option>
+                  <option value="productivity">生产力</option>
+                  <option value="tools">工具</option>
+                  <option value="writing">写作</option>
+                  <option value="analytics">分析</option>
                 </select>
               </div>
               <div>
@@ -312,43 +311,6 @@ const [showMenu, setShowMenu] = useState(false);
                 onEdit?.(updatedSkill);
                 setShowEdit(false);
               }}>保存</Button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {showVersions && ReactDOM.createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between px-6 py-4 border-b">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br from-indigo-50 to-purple-50">{skill.icon}</div>
-                <div><h3 className="font-bold">版本历史</h3><p className="text-xs text-gray-500">{skill.name}</p></div>
-              </div>
-              <button onClick={() => setShowVersions(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-sm text-gray-500 mb-4">当前版本：v{skill.version}</p>
-              <div className="space-y-3">
-                <div className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium">v{skill.version}</span>
-                    <span className="text-xs text-gray-500">{new Date(skill.updatedAt).toLocaleDateString()}</span>
-                  </div>
-                  <p className="text-sm text-gray-600">当前版本</p>
-                </div>
-                <div className="p-4 border border-gray-200 rounded-lg bg-gray-50 opacity-60">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-gray-500">v1.0.0</span>
-                    <span className="text-xs text-gray-400">2026-04-01</span>
-                  </div>
-                  <p className="text-sm text-gray-400">初始版本</p>
-                </div>
-              </div>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 flex justify-end">
-              <Button onClick={() => setShowVersions(false)}>关闭</Button>
             </div>
           </div>
         </div>,
