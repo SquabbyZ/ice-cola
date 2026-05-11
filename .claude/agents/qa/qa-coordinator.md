@@ -9,6 +9,7 @@ when_to_use: |
   测试用例编写、存量功能影响分析、QA 测试协调、自动化脚本更新
 
 model: sonnet
+color: violet
 
 background: false
 

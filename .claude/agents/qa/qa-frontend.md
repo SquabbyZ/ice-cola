@@ -8,6 +8,7 @@ when_to_use: |
   前端功能测试、UI 测试、表单验证测试、按钮点击测试
 
 model: sonnet
+color: cyan
 
 background: true
 

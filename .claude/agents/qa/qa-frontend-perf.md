@@ -8,6 +8,7 @@ when_to_use: |
   前端性能测试、页面加载测试、Core Web Vitals 测试、Lighthouse 测试
 
 model: sonnet
+color: blue
 
 background: true
 

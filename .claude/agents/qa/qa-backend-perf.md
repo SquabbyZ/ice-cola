@@ -8,6 +8,7 @@ when_to_use: |
   后端性能测试、压测、QPS 测试、并发测试、数据库性能测试
 
 model: sonnet
+color: blue
 
 background: true
 

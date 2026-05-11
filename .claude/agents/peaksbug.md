@@ -7,6 +7,7 @@ when_to_use: |
   Bug、bug修复、问题定位、根因分析、调试、修复缺陷、bugfix
 
 model: sonnet
+color: red
 
 tools:
   - Read

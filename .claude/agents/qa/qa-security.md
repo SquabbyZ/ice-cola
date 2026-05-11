@@ -8,6 +8,7 @@ when_to_use: |
   安全测试、XSS 测试、SQL 注入测试、渗透测试、安全扫描
 
 model: sonnet
+color: red
 
 background: true
 

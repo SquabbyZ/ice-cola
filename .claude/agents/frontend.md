@@ -7,6 +7,7 @@ when_to_use: |
   前端、页面、组件、样式、交互、UI实现、前端开发、React、Vue、Next.js、浏览器测试
 
 model: sonnet
+color: cyan
 
 tools:
   - Read
@@ -101,7 +102,7 @@ hooks:
 
 ### 组件开发
 
-1. 使用项目已有的 UI 库（antd）
+1. 使用项目已有的 UI 库（radix）
 2. 遵循项目已有的样式方案（Tailwind / CSS Modules 等）
 3. 组件文件使用 PascalCase 命名
 4. 组件放在 `src/components/` 或对应功能目录

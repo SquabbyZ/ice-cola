@@ -8,6 +8,7 @@ when_to_use: |
   执行自动化测试脚本、运行 E2E 测试、运行单元测试、运行集成测试
 
 model: sonnet
+color: amber
 
 background: true
 

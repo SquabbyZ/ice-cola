@@ -8,6 +8,7 @@ when_to_use: |
   后端功能测试、API 测试、数据库测试、接口验证
 
 model: sonnet
+color: green
 
 background: true
 

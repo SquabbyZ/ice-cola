@@ -7,6 +7,7 @@ when_to_use: |
   前端审查、CR、code review、代码审查、React审查、Vue审查、frontend review
 
 model: sonnet
+color: emerald
 
 tools:
   - Read

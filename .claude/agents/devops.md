@@ -7,6 +7,7 @@ when_to_use: |
   运维、部署、迁移、Docker、环境配置、CI/CD、发布、deploy
 
 model: sonnet
+color: teal
 
 tools:
   - Read
