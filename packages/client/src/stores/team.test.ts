@@ -76,6 +76,7 @@ describe('useTeamStore', () => {
         email: 'charlie@test.com',
         role: 'member' as const,
         tokenQuota: 800,
+        tokenUsed: 0,
         isActive: false,
       };
 
@@ -95,6 +96,7 @@ describe('useTeamStore', () => {
         email: 'alice@test.com',
         role: 'admin',
         tokenQuota: 1000,
+        tokenUsed: 0,
         isActive: true,
       });
 
@@ -103,6 +105,7 @@ describe('useTeamStore', () => {
         email: 'bob@test.com',
         role: 'member',
         tokenQuota: 500,
+        tokenUsed: 0,
         isActive: false,
       });
 
@@ -137,6 +140,7 @@ describe('useTeamStore', () => {
         email: 'alice@test.com',
         role: 'admin',
         tokenQuota: 1000,
+        tokenUsed: 0,
         isActive: true,
       });
 

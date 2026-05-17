@@ -2,6 +2,12 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { GatewayService } from './gateway.service';
 
+interface GatewayClientContext {
+  userId?: string;
+  teamId?: string;
+  role?: string;
+}
+
 interface GatewayMessage {
   type: 'req' | 'resp' | 'res' | 'evt' | 'event';
   id?: string;
@@ -22,7 +28,7 @@ interface GatewayMessage {
 export class GatewayGateway implements OnModuleInit {
   private readonly logger = new Logger(GatewayGateway.name);
   private wss: WebSocketServer | null = null;
-  private clients: Map<WebSocket, { userId?: string; teamId?: string }> = new Map();
+  private clients: Map<WebSocket, GatewayClientContext> = new Map();
   private gatewayService: GatewayService | null = null;
 
   constructor() {}
@@ -103,19 +109,14 @@ export class GatewayGateway implements OnModuleInit {
       switch (method) {
         case 'connect':
           result = await this.gatewayService.connect(params, ws);
+          this.storeClientContext(ws, result);
           break;
         case 'auth.register':
           result = await this.gatewayService.register(params);
           break;
         case 'auth.login':
           result = await this.gatewayService.login(params);
-          // Store teamId on client for quota checks and usage tracking
-          if (result?.user?.team?.id) {
-            const clientInfo = this.clients.get(ws);
-            if (clientInfo) {
-              clientInfo.teamId = result.user.team.id;
-            }
-          }
+          this.storeClientContext(ws, result);
           break;
         case 'auth.refresh':
           result = await this.gatewayService.refresh(params);
@@ -234,22 +235,41 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.updateExtensionConfig(params);
           break;
         case 'skills.list':
-          result = await this.gatewayService.listSkills(params);
+          result = await this.gatewayService.listSkills({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'skills.get':
-          result = await this.gatewayService.getSkill(params);
+          result = await this.gatewayService.getSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'skills.create':
-          result = await this.gatewayService.createSkill(params);
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.createSkill({
+              ...params,
+              teamId: clientInfo.teamId,
+              authorId: clientInfo.userId,
+            });
+          }
           break;
         case 'skills.update':
-          result = await this.gatewayService.updateSkill(params);
+          result = await this.gatewayService.updateSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
+          break;
+        case 'skills.publishTeam':
+          result = await this.gatewayService.requestPublishSkillToTeam(params, this.requireClientContext(ws));
+          break;
+        case 'skills.approveTeam':
+          result = await this.gatewayService.approveTeamSkillPublish(params, this.requireClientContext(ws));
+          break;
+        case 'skills.rejectTeam':
+          result = await this.gatewayService.rejectTeamSkillPublish(params, this.requireClientContext(ws));
+          break;
+        case 'skills.publishMarketplace':
+          result = await this.gatewayService.requestPublishSkillToMarketplace(params, this.requireClientContext(ws));
           break;
         case 'marketplace_skills.list':
           result = await this.gatewayService.listMarketplaceSkills(params);
           break;
         case 'skills.delete':
-          result = await this.gatewayService.deleteSkill(params);
+          result = await this.gatewayService.deleteSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         default:
           this.logger.warn(`Unknown method: ${method}`);
@@ -268,6 +288,29 @@ export class GatewayGateway implements OnModuleInit {
         message: error instanceof Error ? error.message : 'Internal error',
       });
     }
+  }
+
+  private storeClientContext(ws: WebSocket, result: { user?: { id: string; team?: { id: string; role: string } } }): void {
+    if (!result.user) return;
+
+    const clientInfo = this.clients.get(ws);
+    if (clientInfo) {
+      clientInfo.userId = result.user.id;
+      clientInfo.teamId = result.user.team?.id;
+      clientInfo.role = result.user.team?.role;
+    }
+  }
+
+  private requireClientContext(ws: WebSocket): Required<GatewayClientContext> {
+    const clientInfo = this.clients.get(ws);
+    if (!clientInfo?.userId || !clientInfo.teamId || !clientInfo.role) {
+      throw new Error('Authentication required');
+    }
+    return {
+      userId: clientInfo.userId,
+      teamId: clientInfo.teamId,
+      role: clientInfo.role,
+    };
   }
 
   private sendResponse(ws: WebSocket, id: string | undefined, payload: any, error?: { code: number; message: string }) {

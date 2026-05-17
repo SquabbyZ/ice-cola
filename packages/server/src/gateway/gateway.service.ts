@@ -42,6 +42,13 @@ interface ConnectResult {
   token?: string;
 }
 
+interface GatewayJwtPayload {
+  sub: string;
+  teamId?: string;
+  role?: string;
+  type?: string;
+}
+
 @Injectable()
 export class GatewayService {
   private gatewayInstance: any = null;
@@ -78,23 +85,24 @@ export class GatewayService {
     let userId: string | undefined;
     let teamId: string | undefined;
 
-    // If token provided, verify it
-    if (params.auth?.token) {
-      try {
-        const payload = this.jwtService.verify(params.auth.token);
-        userId = payload.sub;
-        teamId = payload.teamId || undefined;
-        this.logger.log(`Authenticated user: ${userId}`);
-      } catch (error) {
-        this.logger.warn('Invalid token in connect params');
-      }
+    if (!params.auth?.token) {
+      throw new Error('Authentication required');
     }
 
-    // Check if scopes include required permissions
-    const scopes = params.scopes || [];
-    const hasAdmin = scopes.includes('operator.admin');
-    const hasRead = scopes.includes('operator.read');
-    const hasWrite = scopes.includes('operator.write');
+    let userRole: string | undefined;
+    try {
+      const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token);
+      if (payload.type !== 'access') {
+        throw new Error('Authentication required');
+      }
+      userId = payload.sub;
+      teamId = payload.teamId || undefined;
+      userRole = payload.role;
+      this.logger.log(`Authenticated user: ${userId}`);
+    } catch (error) {
+      this.logger.warn('Invalid token in connect params');
+      throw new Error('Authentication required');
+    }
 
     return {
       ok: true,
@@ -102,10 +110,14 @@ export class GatewayService {
       expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
       user: userId ? {
         id: userId,
-        email: 'user@example.com', // Will be fetched if needed
+        email: 'user@example.com',
         name: 'User',
+        team: teamId ? {
+          id: teamId,
+          name: 'Team',
+          role: userRole || 'MEMBER',
+        } : undefined,
       } : undefined,
-      token: hasAdmin ? await this.generateServiceToken() : undefined,
     };
   }
 
@@ -1566,49 +1578,49 @@ export class GatewayService {
 
   // ===== Additional methods for compatibility =====
 
-  async getAllExtensions(): Promise<any> {
-    return [];
+  async getAllExtensions(): Promise<unknown[]> {
+    return this.db.findAllExtensions();
   }
 
-  async getInstalledExtensions(params: { userId: string }): Promise<any[]> {
+  async getInstalledExtensions(params: { userId: string }): Promise<unknown[]> {
     return this.db.findUserInstalledExtensions(params.userId);
   }
 
-  async installExtension(params: { extensionId: string; userId: string; config?: any }): Promise<any> {
+  async installExtension(params: { extensionId: string; userId: string; config?: Record<string, unknown> }): Promise<unknown> {
     return this.db.installExtension(params.userId, params.extensionId, params.config);
   }
 
-  async uninstallExtension(params: { extensionId: string; userId: string }): Promise<any> {
+  async uninstallExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
     return this.db.uninstallExtension(params.userId, params.extensionId);
   }
 
-  async enableExtension(params: { extensionId: string; userId: string }): Promise<any> {
+  async enableExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
     return this.db.enableUserExtension(params.userId, params.extensionId);
   }
 
-  async disableExtension(params: { extensionId: string; userId: string }): Promise<any> {
+  async disableExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
     return this.db.disableUserExtension(params.userId, params.extensionId);
   }
 
-  async updateExtensionConfig(params: { extensionId: string; userId: string; config: any }): Promise<any> {
+  async updateExtensionConfig(params: { extensionId: string; userId: string; config: Record<string, unknown> }): Promise<unknown> {
     return this.db.updateUserExtensionConfig(params.userId, params.extensionId, params.config);
   }
 
   // ===== Skills Methods =====
 
-  async listSkills(params: { teamId: string; status?: string }): Promise<any[]> {
+  async listSkills(params: { teamId: string; status?: string }): Promise<unknown[]> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
     return service.findAll(params.teamId, params.status);
   }
 
-  async getSkill(params: { id: string }): Promise<any> {
+  async getSkill(params: { id: string; teamId: string }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
-    return service.findOne(params.id);
+    return service.findOne(params.id, params.teamId);
   }
 
-  async createSkill(params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[] }): Promise<any> {
+  async createSkill(params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const { CreateSkillDto } = await import('../skills/dto/create-skill.dto');
     const service = new SkillsService(this.db);
@@ -1619,27 +1631,61 @@ export class GatewayService {
     dto.icon = params.icon;
     dto.category = params.category;
     dto.tags = params.tags;
+    dto.config = params.config;
+    dto.configSchema = params.configSchema;
     return service.create(params.teamId, params.authorId, dto);
   }
 
-  async updateSkill(params: { id: string; name?: string; description?: string; content?: string; icon?: string; category?: string; tags?: string[] }): Promise<any> {
+  async updateSkill(params: { id: string; teamId: string; name?: string; description?: string; version?: string; content?: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const { UpdateSkillDto } = await import('../skills/dto/update-skill.dto');
     const service = new SkillsService(this.db);
     const dto = new UpdateSkillDto();
-    Object.assign(dto, params);
-    return service.update(params.id, dto);
+    dto.name = params.name;
+    dto.description = params.description;
+    dto.version = params.version;
+    dto.content = params.content;
+    dto.icon = params.icon;
+    dto.category = params.category;
+    dto.tags = params.tags;
+    dto.config = params.config;
+    dto.configSchema = params.configSchema;
+    return service.update(params.id, params.teamId, dto);
   }
 
-  async deleteSkill(params: { id: string }): Promise<void> {
+  async requestPublishSkillToTeam(params: { id: string; accessPolicy?: { mode: 'all' | 'users' | 'role'; userIds?: string[]; minimumRole?: 'MEMBER' | 'ADMIN' | 'OWNER' } }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
-    return service.delete(params.id);
+    return service.requestPublishToTeam(params.id, actor, params.accessPolicy);
+  }
+
+  async approveTeamSkillPublish(params: { id: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.approveTeamPublish(params.id, actor.userId, actor);
+  }
+
+  async rejectTeamSkillPublish(params: { id: string; comment?: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.rejectTeamPublish(params.id, actor.userId, params.comment || '', actor);
+  }
+
+  async requestPublishSkillToMarketplace(params: { id: string; note?: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.requestPublishToMarketplace(params.id, actor.userId, params.note, actor);
+  }
+
+  async deleteSkill(params: { id: string; teamId: string }): Promise<void> {
+    const { SkillsService } = await import('../skills/skills.service');
+    const service = new SkillsService(this.db);
+    return service.delete(params.id, params.teamId);
   }
 
   // ===== Marketplace Skills Methods =====
 
-  async listMarketplaceSkills(params: { teamId: string }): Promise<any[]> {
+  async listMarketplaceSkills(params: { teamId: string }): Promise<unknown[]> {
     const result = await this.db.query(
       `SELECT mi.*, mc.name as category_name, mc.slug as category_slug
        FROM marketplace_items mi

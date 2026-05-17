@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -16,8 +16,9 @@ interface ConfirmDialogProps {
   description: string;
   confirmText?: string;
   cancelText?: string;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   variant?: 'default' | 'destructive';
+  confirmDisabled?: boolean;
   children?: React.ReactNode;
 }
 
@@ -30,11 +31,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   cancelText = '取消',
   onConfirm,
   variant = 'default',
+  confirmDisabled = false,
   children,
 }) => {
-  const handleConfirm = () => {
-    onConfirm();
-    onOpenChange(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+
+  const handleConfirm = async () => {
+    try {
+      setIsConfirming(true);
+      await onConfirm();
+      onOpenChange(false);
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   return (
@@ -52,8 +61,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <Button
             variant={variant === 'destructive' ? 'destructive' : 'default'}
             onClick={handleConfirm}
+            disabled={confirmDisabled || isConfirming}
           >
-            {confirmText}
+            {isConfirming ? '处理中...' : confirmText}
           </Button>
         </DialogFooter>
       </DialogContent>

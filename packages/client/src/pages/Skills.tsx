@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import type { TeamSkillAccessPolicy } from '@/services/skill-service';
 import { useTranslation } from 'react-i18next';
 import { Search, Package, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,13 @@ const Skills: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'marketplace' | 'team' | 'personal'>('marketplace');
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
   const [publishConfirm, setPublishConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
+  const [teamApprovalConfirm, setTeamApprovalConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string; action: 'approve' | 'reject' | null }>({ open: false, skillId: null, skillName: '', action: null });
+  const [marketplaceConfirm, setMarketplaceConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
+  const [publishAccessMode, setPublishAccessMode] = useState<TeamSkillAccessPolicy['mode']>('all');
+  const [publishUserIds, setPublishUserIds] = useState('');
+  const [publishMinimumRole, setPublishMinimumRole] = useState<'MEMBER' | 'ADMIN' | 'OWNER'>('MEMBER');
+  const [teamRejectComment, setTeamRejectComment] = useState('');
+  const [marketplaceNote, setMarketplaceNote] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [versionHistory, setVersionHistory] = useState<{ open: boolean; skillId: string | null; versions: SkillVersion[]; currentVersion: string }>({ open: false, skillId: null, versions: [], currentVersion: '' });
   const [previewVersion, setPreviewVersion] = useState<SkillVersion | null>(null);
@@ -44,6 +52,10 @@ const Skills: React.FC = () => {
     createSkill,
     getVersions,
     revertToVersion,
+    requestPublishToTeam,
+    approveTeamPublish,
+    rejectTeamPublish,
+    requestPublishToMarketplace,
     setSearchQuery,
     setSelectedCategory,
     getFilteredSkills,
@@ -51,6 +63,7 @@ const Skills: React.FC = () => {
 
   const user = useAuthStore(state => state.user);
   const teamId = user?.team?.id;
+  const canReviewTeamSkills = user?.team?.role === 'OWNER' || user?.team?.role === 'ADMIN';
 
   useEffect(() => {
     loadPersonalSkills();
@@ -69,6 +82,17 @@ const Skills: React.FC = () => {
   };
 
   const currentSkills = getCurrentSkills();
+  const selectedPublishUserIds = publishUserIds.split(',').map(id => id.trim()).filter(Boolean);
+  const isPublishConfirmDisabled = publishAccessMode === 'users' && selectedPublishUserIds.length === 0;
+  const getPublishAccessPolicy = (): TeamSkillAccessPolicy => {
+    if (publishAccessMode === 'users') {
+      return { mode: 'users', userIds: selectedPublishUserIds };
+    }
+    if (publishAccessMode === 'role') {
+      return { mode: 'role', minimumRole: publishMinimumRole };
+    }
+    return { mode: 'all' };
+  };
   const counts = {
     marketplace: marketplaceSkills.length,
     team: teamSkills.filter(s => s.status === 'team_pending').length,
@@ -181,14 +205,29 @@ const Skills: React.FC = () => {
                 <SkillCard
                   key={skill.id}
                   skill={skill}
-                  showActions={activeTab === 'personal'}
+                  showActions={activeTab === 'personal' || activeTab === 'team'}
                   onEdit={(s) => updateSkill(s.id, s)}
                   onDelete={(id) => {
                     setDeleteConfirm({ open: true, skillId: id, skillName: skill.name });
                   }}
                   onPublish={(id) => {
+                    setPublishAccessMode('all');
+                    setPublishUserIds('');
+                    setPublishMinimumRole('MEMBER');
                     setPublishConfirm({ open: true, skillId: id, skillName: skill.name });
                   }}
+                  onApproveTeam={canReviewTeamSkills ? (id) => {
+                    setTeamRejectComment('');
+                    setTeamApprovalConfirm({ open: true, skillId: id, skillName: skill.name, action: 'approve' });
+                  } : undefined}
+                  onRejectTeam={canReviewTeamSkills ? (id) => {
+                    setTeamRejectComment('');
+                    setTeamApprovalConfirm({ open: true, skillId: id, skillName: skill.name, action: 'reject' });
+                  } : undefined}
+                  onPublishMarketplace={canReviewTeamSkills ? (id) => {
+                    setMarketplaceNote('');
+                    setMarketplaceConfirm({ open: true, skillId: id, skillName: skill.name });
+                  } : undefined}
                   onVersionHistory={async (id) => {
                     const versions = await getVersions(id);
                     setVersionHistory({ open: true, skillId: id, versions, currentVersion: skill.version });
@@ -222,12 +261,130 @@ const Skills: React.FC = () => {
         description={`${t('skills.publishDesc')} "${publishConfirm.skillName}"?`}
         confirmText={t('skills.publish')}
         cancelText={t('common.cancel')}
-        onConfirm={() => {
+        confirmDisabled={isPublishConfirmDisabled}
+        onConfirm={async () => {
           if (publishConfirm.skillId) {
-            useSkillsStore.getState().requestPublishToTeam(publishConfirm.skillId);
+            await requestPublishToTeam(publishConfirm.skillId, getPublishAccessPolicy());
           }
         }}
-      />
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="teamAccessMode"
+                checked={publishAccessMode === 'all'}
+                onChange={() => setPublishAccessMode('all')}
+                className="mt-1"
+              />
+              <span>
+                <span className="block font-medium text-zinc-900">所有团队成员可用</span>
+                <span className="text-xs text-zinc-500">团队发布通过后，当前团队所有成员都能使用。</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="teamAccessMode"
+                checked={publishAccessMode === 'users'}
+                onChange={() => setPublishAccessMode('users')}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                <span className="block font-medium text-zinc-900">指定成员可用</span>
+                <span className="text-xs text-zinc-500">输入允许使用的用户 ID，多个 ID 用英文逗号分隔。</span>
+                {publishAccessMode === 'users' && (
+                  <input
+                    type="text"
+                    value={publishUserIds}
+                    onChange={e => setPublishUserIds(e.target.value)}
+                    placeholder="user-id-1, user-id-2"
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+                  />
+                )}
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="teamAccessMode"
+                checked={publishAccessMode === 'role'}
+                onChange={() => setPublishAccessMode('role')}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                <span className="block font-medium text-zinc-900">按最小角色可用</span>
+                <span className="text-xs text-zinc-500">只有达到所选团队角色的成员才能使用。</span>
+                {publishAccessMode === 'role' && (
+                  <select
+                    value={publishMinimumRole}
+                    onChange={e => setPublishMinimumRole(e.target.value as 'MEMBER' | 'ADMIN' | 'OWNER')}
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+                  >
+                    <option value="MEMBER">MEMBER 及以上</option>
+                    <option value="ADMIN">ADMIN 及以上</option>
+                    <option value="OWNER">OWNER</option>
+                  </select>
+                )}
+              </span>
+            </label>
+          </div>
+          {isPublishConfirmDisabled && <p className="text-xs text-red-500">指定成员可用时至少需要填写一个用户 ID。</p>}
+        </div>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={teamApprovalConfirm.open}
+        onOpenChange={(open) => setTeamApprovalConfirm({ ...teamApprovalConfirm, open })}
+        title={teamApprovalConfirm.action === 'approve' ? '通过团队发布' : '拒绝团队发布'}
+        description={teamApprovalConfirm.action === 'approve'
+          ? `确认将 "${teamApprovalConfirm.skillName}" 发布到团队？`
+          : `确认拒绝 "${teamApprovalConfirm.skillName}" 的团队发布申请？`}
+        confirmText={teamApprovalConfirm.action === 'approve' ? '通过' : '拒绝'}
+        cancelText={t('common.cancel')}
+        variant={teamApprovalConfirm.action === 'reject' ? 'destructive' : 'default'}
+        onConfirm={async () => {
+          if (!teamApprovalConfirm.skillId) return;
+          if (teamApprovalConfirm.action === 'approve') {
+            await approveTeamPublish(teamApprovalConfirm.skillId);
+            return;
+          }
+          await rejectTeamPublish(teamApprovalConfirm.skillId, teamRejectComment.trim());
+        }}
+      >
+        {teamApprovalConfirm.action === 'reject' && (
+          <textarea
+            value={teamRejectComment}
+            onChange={e => setTeamRejectComment(e.target.value)}
+            rows={3}
+            placeholder="填写拒绝原因（可选）"
+            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+          />
+        )}
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={marketplaceConfirm.open}
+        onOpenChange={(open) => setMarketplaceConfirm({ ...marketplaceConfirm, open })}
+        title="提交到 Skill 市场"
+        description={`确认将团队 Skill "${marketplaceConfirm.skillName}" 提交到市场审批？`}
+        confirmText="提交审批"
+        cancelText={t('common.cancel')}
+        onConfirm={async () => {
+          if (marketplaceConfirm.skillId) {
+            await requestPublishToMarketplace(marketplaceConfirm.skillId, marketplaceNote.trim() || undefined);
+          }
+        }}
+      >
+        <textarea
+          value={marketplaceNote}
+          onChange={e => setMarketplaceNote(e.target.value)}
+          rows={3}
+          placeholder="给市场管理员的备注（可选）"
+          className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+        />
+      </ConfirmDialog>
 
       <CreateSkillDialog
         open={createDialogOpen}

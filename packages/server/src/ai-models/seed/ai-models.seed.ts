@@ -178,8 +178,9 @@ export const MODELS_SEED: ModelSeed[] = [
   { providerCode: 'kimi', name: 'Kimi Vision', modelId: 'moonshot-v1-vision', modelType: 'vision', description: 'With vision', contextWindow: 16384, inputPricePer1m: 0.12, outputPricePer1m: 0.12, sortOrder: 3, capabilities: ['chat', 'vision'] },
 
   // MiniMax
-  { providerCode: 'minimax', name: 'MiniMax Text-01', modelId: 'abab6.5s-chat', modelType: 'chat', description: 'Large language', contextWindow: 245760, inputPricePer1m: 0.01, outputPricePer1m: 0.1, sortOrder: 1, capabilities: ['chat'] },
-  { providerCode: 'minimax', name: 'MiniMax Speech-02', modelId: 'speech-02-hd', modelType: 'chat', description: 'Speech synthesis', contextWindow: 0, inputPricePer1m: 0.0, outputPricePer1m: 0.0, sortOrder: 2, capabilities: ['speech'] },
+  { providerCode: 'minimax', name: 'MiniMax 2.7', modelId: 'MiniMax-M2.7', modelType: 'chat', description: 'MiniMax coding and agentic workflow model', contextWindow: 245760, inputPricePer1m: 0.01, outputPricePer1m: 0.1, sortOrder: 1, capabilities: ['chat', 'coding'] },
+  { providerCode: 'minimax', name: 'MiniMax Text-01', modelId: 'abab6.5s-chat', modelType: 'chat', description: 'Large language', contextWindow: 245760, inputPricePer1m: 0.01, outputPricePer1m: 0.1, sortOrder: 2, capabilities: ['chat'] },
+  { providerCode: 'minimax', name: 'MiniMax Speech-02', modelId: 'speech-02-hd', modelType: 'chat', description: 'Speech synthesis', contextWindow: 0, inputPricePer1m: 0.0, outputPricePer1m: 0.0, sortOrder: 3, capabilities: ['speech'] },
 
   // Groq
   { providerCode: 'groq', name: 'Llama 4 Scout', modelId: 'llama-4-scout-groq', modelType: 'chat', description: 'Fastest Llama', contextWindow: 1000000, inputPricePer1m: 0.11, outputPricePer1m: 0.34, sortOrder: 1, capabilities: ['chat', 'vision'] },

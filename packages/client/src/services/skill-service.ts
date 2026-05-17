@@ -6,6 +6,11 @@
 
 import { getServiceContainer } from './service-container';
 
+export type TeamSkillAccessPolicy =
+  | { mode: 'all' }
+  | { mode: 'users'; userIds: string[] }
+  | { mode: 'role'; minimumRole: 'MEMBER' | 'ADMIN' | 'OWNER' };
+
 export interface Skill {
   id: string;
   name: string;
@@ -85,6 +90,8 @@ export class SkillService {
       icon: data.icon,
       category: data.category,
       tags: data.tags,
+      configSchema: data.configSchema,
+      config: data.config,
     });
   }
 
@@ -96,6 +103,22 @@ export class SkillService {
     return await this.getClient().send('skills.update', {
       id, name, description, icon, category, tags, content, version, configSchema, config,
     });
+  }
+
+  async requestPublishToTeam(id: string, accessPolicy: TeamSkillAccessPolicy = { mode: 'all' }): Promise<Skill> {
+    return await this.getClient().send('skills.publishTeam', { id, accessPolicy });
+  }
+
+  async approveTeamPublish(id: string): Promise<Skill> {
+    return await this.getClient().send('skills.approveTeam', { id });
+  }
+
+  async rejectTeamPublish(id: string, comment: string): Promise<Skill> {
+    return await this.getClient().send('skills.rejectTeam', { id, comment });
+  }
+
+  async requestPublishToMarketplace(id: string, note?: string): Promise<{ skill: Skill; marketplaceItem: unknown; submission: unknown }> {
+    return await this.getClient().send('skills.publishMarketplace', { id, note });
   }
 
   /**

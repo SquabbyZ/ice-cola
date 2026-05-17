@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { authService, AuthService } from './auth-service';
+import { authService } from './auth-service';
 
 // Mock axios
 vi.mock('axios', () => {
@@ -25,7 +25,10 @@ vi.mock('axios', () => {
 import axios from 'axios';
 
 describe('AuthService', () => {
-  const mockAxios = axios as jest.Mocked<typeof axios>;
+  const mockAxios = axios as unknown as {
+    post: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     localStorage.clear();

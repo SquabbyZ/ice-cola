@@ -54,10 +54,10 @@ export interface SkillState {
   deleteSkill: (skillId: string) => Promise<void>;
   getVersions: (skillId: string) => Promise<SkillVersion[]>;
   revertToVersion: (skillId: string, versionId: string) => Promise<void>;
-  requestPublishToTeam: (skillId: string) => Promise<void>;
+  requestPublishToTeam: (skillId: string, accessPolicy?: import('@/services/skill-service').TeamSkillAccessPolicy) => Promise<void>;
   approveTeamPublish: (skillId: string) => Promise<void>;
   rejectTeamPublish: (skillId: string, comment: string) => Promise<void>;
-  requestPublishToMarketplace: (skillId: string) => Promise<void>;
+  requestPublishToMarketplace: (skillId: string, note?: string) => Promise<void>;
   setSearchQuery: (query: string) => void;
   setSelectedCategory: (category: string) => void;
   getFilteredSkills: (skills: Skill[]) => Skill[];
@@ -170,32 +170,54 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     }
   },
 
-  requestPublishToTeam: async (skillId) => {
-    const skill = await skillService.updateSkill(skillId, { status: 'team_pending' });
-    set(state => ({
-      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
-    }));
+  requestPublishToTeam: async (skillId, accessPolicy = { mode: 'all' }) => {
+    try {
+      const skill = await skillService.requestPublishToTeam(skillId, accessPolicy);
+      set(state => ({
+        personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s).filter(s => s.status === 'personal'),
+        teamSkills: [skill, ...state.teamSkills.filter(s => s.id !== skillId)],
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to request team publish' });
+      throw err;
+    }
   },
 
   approveTeamPublish: async (skillId) => {
-    const skill = await skillService.updateSkill(skillId, { status: 'team' });
-    set(state => ({
-      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
-    }));
+    try {
+      const skill = await skillService.approveTeamPublish(skillId);
+      set(state => ({
+        teamSkills: state.teamSkills.map(s => s.id === skillId ? skill : s),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to approve team publish' });
+      throw err;
+    }
   },
 
-  rejectTeamPublish: async (skillId, _comment) => {
-    const skill = await skillService.updateSkill(skillId, { status: 'personal' });
-    set(state => ({
-      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
-    }));
+  rejectTeamPublish: async (skillId, comment) => {
+    try {
+      const skill = await skillService.rejectTeamPublish(skillId, comment);
+      set(state => ({
+        personalSkills: [skill, ...state.personalSkills.filter(s => s.id !== skillId)],
+        teamSkills: state.teamSkills.filter(s => s.id !== skillId),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to reject team publish' });
+      throw err;
+    }
   },
 
-  requestPublishToMarketplace: async (skillId) => {
-    const skill = await skillService.updateSkill(skillId, { status: 'marketplace_pending' });
-    set(state => ({
-      personalSkills: state.personalSkills.map(s => s.id === skillId ? skill : s),
-    }));
+  requestPublishToMarketplace: async (skillId, note) => {
+    try {
+      const result = await skillService.requestPublishToMarketplace(skillId, note);
+      set(state => ({
+        teamSkills: state.teamSkills.map(s => s.id === skillId ? result.skill : s),
+      }));
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : 'Failed to request marketplace publish' });
+      throw err;
+    }
   },
 
   setSearchQuery: (query) => set({ searchQuery: query }),

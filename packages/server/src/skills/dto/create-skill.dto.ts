@@ -29,9 +29,9 @@ export class CreateSkillDto {
 
   @IsObject()
   @IsOptional()
-  configSchema?: Record<string, any>;
+  configSchema?: Record<string, unknown>;
 
   @IsObject()
   @IsOptional()
-  config?: Record<string, any>;
+  config?: Record<string, unknown>;
 }

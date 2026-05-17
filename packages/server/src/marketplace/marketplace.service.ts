@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import type { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
@@ -512,7 +513,7 @@ export class MarketplaceService {
 
   async findSubmissionById(id: number) {
     const submission = await this.db.queryOne(
-      `SELECT ms.*, mi.name as item_name, mi.type as item_type
+      `SELECT ms.*, mi.name as item_name, mi.type as item_type, mi.source_id
        FROM marketplace_submissions ms
        JOIN marketplace_items mi ON ms.item_id = mi.id
        WHERE ms.id = $1`,
@@ -529,63 +530,77 @@ export class MarketplaceService {
   // ============================================================
 
   async approveSubmission(submissionId: number, approverId: string, comment?: string) {
-    const submission = await this.findSubmissionById(submissionId);
+    return this.db.transaction(async (client) => {
+      const submission = await this.findSubmissionByIdWithClient(submissionId, client);
 
-    if (submission.status !== 'pending') {
-      throw new BadRequestException('该提交已处理');
-    }
+      if (submission.status !== 'pending') {
+        throw new BadRequestException('该提交已处理');
+      }
 
-    // Create approval record
-    const approval = await this.db.queryOne(
-      `INSERT INTO marketplace_approvals (submission_id, item_id, approver_id, result, comment)
-       VALUES ($1, $2, $3, 'approved', $4)
-       RETURNING *`,
-      [submissionId, submission.item_id, approverId, comment || null],
-    );
+      const approval = await this.queryOne(
+        client,
+        `INSERT INTO marketplace_approvals (submission_id, item_id, approver_id, result, comment)
+         VALUES ($1, $2, $3, 'approved', $4)
+         RETURNING *`,
+        [submissionId, submission.item_id, approverId, comment || null],
+      );
 
-    // Update submission status
-    await this.db.query(
-      `UPDATE marketplace_submissions SET status = 'approved', updated_at = NOW() WHERE id = $1`,
-      [submissionId],
-    );
+      await client.query(
+        `UPDATE marketplace_submissions SET status = 'approved', updated_at = NOW() WHERE id = $1`,
+        [submissionId],
+      );
 
-    // Update item status to approved
-    await this.db.query(
-      `UPDATE marketplace_items SET status = 'approved', updated_at = NOW() WHERE id = $1`,
-      [submission.item_id],
-    );
+      await client.query(
+        `UPDATE marketplace_items SET status = 'approved', updated_at = NOW() WHERE id = $1`,
+        [submission.item_id],
+      );
 
-    return approval;
+      if (submission.item_type === 'skill' && submission.source_id) {
+        await client.query(
+          `UPDATE skills SET status = 'marketplace', updated_at = NOW() WHERE id = $1`,
+          [submission.source_id],
+        );
+      }
+
+      return approval;
+    });
   }
 
   async rejectSubmission(submissionId: number, approverId: string, comment?: string) {
-    const submission = await this.findSubmissionById(submissionId);
+    return this.db.transaction(async (client) => {
+      const submission = await this.findSubmissionByIdWithClient(submissionId, client);
 
-    if (submission.status !== 'pending') {
-      throw new BadRequestException('该提交已处理');
-    }
+      if (submission.status !== 'pending') {
+        throw new BadRequestException('该提交已处理');
+      }
 
-    // Create approval record (with rejected result)
-    const approval = await this.db.queryOne(
-      `INSERT INTO marketplace_approvals (submission_id, item_id, approver_id, result, comment)
-       VALUES ($1, $2, $3, 'rejected', $4)
-       RETURNING *`,
-      [submissionId, submission.item_id, approverId, comment || null],
-    );
+      const approval = await this.queryOne(
+        client,
+        `INSERT INTO marketplace_approvals (submission_id, item_id, approver_id, result, comment)
+         VALUES ($1, $2, $3, 'rejected', $4)
+         RETURNING *`,
+        [submissionId, submission.item_id, approverId, comment || null],
+      );
 
-    // Update submission status
-    await this.db.query(
-      `UPDATE marketplace_submissions SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
-      [submissionId],
-    );
+      await client.query(
+        `UPDATE marketplace_submissions SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
+        [submissionId],
+      );
 
-    // Update item status back to rejected
-    await this.db.query(
-      `UPDATE marketplace_items SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
-      [submission.item_id],
-    );
+      await client.query(
+        `UPDATE marketplace_items SET status = 'rejected', updated_at = NOW() WHERE id = $1`,
+        [submission.item_id],
+      );
 
-    return approval;
+      if (submission.item_type === 'skill' && submission.source_id) {
+        await client.query(
+          `UPDATE skills SET status = 'team', updated_at = NOW() WHERE id = $1`,
+          [submission.source_id],
+        );
+      }
+
+      return approval;
+    });
   }
 
   async findApprovals() {
@@ -754,6 +769,26 @@ export class MarketplaceService {
       throw new NotFoundException('分类不存在');
     }
     return category;
+  }
+
+  private async findSubmissionByIdWithClient(id: number, client: PoolClient) {
+    const submission = await this.queryOne(
+      client,
+      `SELECT ms.*, mi.name as item_name, mi.type as item_type, mi.source_id
+       FROM marketplace_submissions ms
+       JOIN marketplace_items mi ON ms.item_id = mi.id
+       WHERE ms.id = $1`,
+      [id],
+    );
+    if (!submission) {
+      throw new NotFoundException('提交记录不存在');
+    }
+    return submission;
+  }
+
+  private async queryOne<T = any>(client: PoolClient, text: string, params?: unknown[]): Promise<T | null> {
+    const result = await client.query(text, params);
+    return (result.rows[0] as T) || null;
   }
 
   private async fetchWithTimeout<T>(

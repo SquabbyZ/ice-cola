@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { conversationService, ConversationService } from './conversation-service';
+import { conversationService } from './conversation-service';
 
 // Mock axios
 vi.mock('axios', () => {
@@ -19,7 +19,12 @@ vi.mock('axios', () => {
 import axios from 'axios';
 
 describe('ConversationService', () => {
-  const mockAxios = axios as jest.Mocked<typeof axios>;
+  const mockAxios = axios as unknown as {
+    get: ReturnType<typeof vi.fn>;
+    post: ReturnType<typeof vi.fn>;
+    put: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
     localStorage.clear();
@@ -42,7 +47,7 @@ describe('ConversationService', () => {
       };
       mockAxios.get.mockResolvedValue(mockResponse);
 
-      const result = await conversationService.getList('team-1', 1, 20);
+      await conversationService.getList('team-1', 1, 20);
 
       expect(mockAxios.get).toHaveBeenCalledWith(
         expect.stringContaining('/teams/team-1/conversations'),

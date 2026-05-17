@@ -2,7 +2,7 @@
  * use-toast 单元测试 - 测试 reducer 函数
  */
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { reducer } from './use-toast';
 
 describe('use-toast reducer', () => {

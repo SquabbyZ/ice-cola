@@ -21,7 +21,7 @@ describe('QuotaService', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockRpc = new GatewayRpcService();
+    mockRpc = new GatewayRpcService({ send: vi.fn() } as any);
     quotaService = new QuotaService(mockRpc);
   });
 

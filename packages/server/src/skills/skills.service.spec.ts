@@ -1,10 +1,13 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import type { PoolClient } from 'pg';
 import { SkillsService } from './skills.service';
 import { DatabaseService } from '../database/database.service';
+import type { UpdateSkillDto } from './dto/update-skill.dto';
 
 describe('SkillsService', () => {
   let service: SkillsService;
   let db: jest.Mocked<DatabaseService>;
+  let transactionClient: Pick<PoolClient, 'query'>;
 
   const mockSkill = {
     id: 'skill-1',
@@ -32,6 +35,8 @@ describe('SkillsService', () => {
           provide: DatabaseService,
           useValue: {
             query: jest.fn(),
+            queryOne: jest.fn(),
+            transaction: jest.fn(),
           },
         },
       ],
@@ -39,6 +44,9 @@ describe('SkillsService', () => {
 
     service = module.get<SkillsService>(SkillsService);
     db = module.get(DatabaseService);
+    transactionClient = { query: jest.fn() };
+    jest.mocked(transactionClient.query).mockImplementation(async (text, params) => ({ rows: await db.query(String(text), params as unknown[]) }));
+    db.transaction.mockImplementation(async (callback) => callback(transactionClient as PoolClient));
   });
 
   describe('create', () => {
@@ -132,18 +140,22 @@ describe('SkillsService', () => {
   });
 
   describe('findOne', () => {
-    it('returns skill by id', async () => {
+    it('returns skill by id scoped to team', async () => {
       db.query.mockResolvedValue([mockSkill]);
 
-      const result = await service.findOne('skill-1');
+      const result = await service.findOne('skill-1', 'team-1');
 
       expect(result).toEqual(mockSkill);
+      expect(db.query).toHaveBeenCalledWith(
+        'SELECT * FROM skills WHERE id = $1 AND team_id = $2',
+        ['skill-1', 'team-1']
+      );
     });
 
     it('returns undefined when not found', async () => {
       db.query.mockResolvedValue([]);
 
-      const result = await service.findOne('nonexistent');
+      const result = await service.findOne('nonexistent', 'team-1');
 
       expect(result).toBeUndefined();
     });
@@ -153,7 +165,7 @@ describe('SkillsService', () => {
     it('updates skill fields', async () => {
       db.query.mockResolvedValue([{ ...mockSkill, name: 'Updated Skill' }]);
 
-      const result = await service.update('skill-1', { name: 'Updated Skill' });
+      const result = await service.update('skill-1', 'team-1', { name: 'Updated Skill' });
 
       expect(result.name).toBe('Updated Skill');
     });
@@ -161,9 +173,31 @@ describe('SkillsService', () => {
     it('handles empty update', async () => {
       db.query.mockResolvedValue([mockSkill]);
 
-      const result = await service.update('skill-1', {});
+      const result = await service.update('skill-1', 'team-1', {});
 
       expect(result).toEqual(mockSkill);
+    });
+
+    it('does not allow status updates through generic update', async () => {
+      db.query.mockResolvedValue([mockSkill]);
+
+      await service.update('skill-1', 'team-1', { name: 'Safe Update', status: 'marketplace' } as UpdateSkillDto);
+
+      expect(db.query).toHaveBeenCalledWith(
+        expect.not.stringContaining('status'),
+        ['Safe Update', 'skill-1', 'team-1']
+      );
+    });
+
+    it('strips protected team access from generic config updates', async () => {
+      db.query.mockResolvedValue([mockSkill]);
+
+      await service.update('skill-1', 'team-1', { config: { teamAccess: { mode: 'all' }, theme: 'dark' } });
+
+      expect(db.query).toHaveBeenCalledWith(
+        expect.any(String),
+        [{ theme: 'dark' }, 'skill-1', 'team-1']
+      );
     });
   });
 
@@ -171,11 +205,11 @@ describe('SkillsService', () => {
     it('deletes skill', async () => {
       db.query.mockResolvedValue(null);
 
-      await service.delete('skill-1');
+      await service.delete('skill-1', 'team-1');
 
       expect(db.query).toHaveBeenCalledWith(
-        'DELETE FROM skills WHERE id = $1',
-        ['skill-1']
+        'DELETE FROM skills WHERE id = $1 AND team_id = $2',
+        ['skill-1', 'team-1']
       );
     });
   });
@@ -212,9 +246,13 @@ describe('SkillsService', () => {
       ];
       db.query.mockResolvedValue(mockVersions);
 
-      const result = await service.getVersions('skill-1');
+      const result = await service.getVersions('skill-1', 'team-1');
 
       expect(result).toEqual(mockVersions);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('JOIN skills s ON s.id = sv.skill_id'),
+        ['skill-1', 'team-1']
+      );
     });
   });
 
@@ -228,32 +266,80 @@ describe('SkillsService', () => {
         config_schema: {},
       };
       db.query
-        .mockResolvedValueOnce([mockVersion]) // SELECT version
-        .mockResolvedValueOnce([]) // UPDATE skill
-        .mockResolvedValueOnce([mockSkill]); // findOne after revert
+        .mockResolvedValueOnce([mockVersion])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([mockSkill]);
 
-      const result = await service.revertToVersion('skill-1', 'v1', 'user-1');
+      const result = await service.revertToVersion('skill-1', 'v1', 'user-1', 'team-1');
 
       expect(result).toEqual(mockSkill);
+      expect(db.query).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining('JOIN skills s ON s.id = sv.skill_id'),
+        ['v1', 'skill-1', 'team-1']
+      );
+      expect(db.query).toHaveBeenNthCalledWith(
+        2,
+        'UPDATE skills SET content = $1, config_schema = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND team_id = $4',
+        [mockVersion.content, mockVersion.config_schema, 'skill-1', 'team-1']
+      );
     });
 
     it('throws when version not found', async () => {
       db.query.mockResolvedValue([]);
 
       await expect(
-        service.revertToVersion('skill-1', 'nonexistent', 'user-1')
+        service.revertToVersion('skill-1', 'nonexistent', 'user-1', 'team-1')
       ).rejects.toThrow('Version not found');
     });
   });
 
   describe('requestPublishToTeam', () => {
-    it('updates skill status to team_pending', async () => {
+    it('updates skill status to team_pending with access policy', async () => {
       const updated = { ...mockSkill, status: 'team_pending' };
-      db.query.mockResolvedValue([updated]);
+      db.query
+        .mockResolvedValueOnce([mockSkill])
+        .mockResolvedValueOnce([updated]);
 
-      const result = await service.requestPublishToTeam('skill-1');
+      const result = await service.requestPublishToTeam('skill-1', { userId: 'user-1', teamId: 'team-1', role: 'MEMBER' }, { mode: 'role', minimumRole: 'ADMIN' });
 
       expect(result.status).toBe('team_pending');
+      expect(db.query).toHaveBeenLastCalledWith(
+        expect.stringContaining("status = 'team_pending'"),
+        ['skill-1', { teamAccess: { mode: 'role', minimumRole: 'ADMIN' } }]
+      );
+    });
+
+    it('rejects publishing non-personal skills to team', async () => {
+      db.query.mockResolvedValueOnce([{ ...mockSkill, status: 'team' }]);
+
+      await expect(service.requestPublishToTeam('skill-1', { userId: 'user-1', teamId: 'team-1', role: 'MEMBER' })).rejects.toThrow('只有个人 Skill 可以提交到团队');
+    });
+
+    it('requires users when access policy targets selected users', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.requestPublishToTeam('skill-1', { userId: 'user-1', teamId: 'team-1', role: 'MEMBER' }, { mode: 'users', userIds: [] })).rejects.toThrow('指定人可用时必须至少选择一个用户');
+    });
+
+    it('requires selected users to belong to the skill team', async () => {
+      db.query
+        .mockResolvedValueOnce([mockSkill])
+        .mockResolvedValueOnce([{ id: 'user-1' }]);
+
+      await expect(service.requestPublishToTeam('skill-1', { userId: 'user-1', teamId: 'team-1', role: 'MEMBER' }, { mode: 'users', userIds: ['user-1', 'user-2'] })).rejects.toThrow('指定成员必须属于当前团队');
+    });
+
+    it('rejects publishing another author personal skill to team', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.requestPublishToTeam('skill-1', { userId: 'user-2', teamId: 'team-1', role: 'MEMBER' })).rejects.toThrow('只能提交自己所在团队的个人 Skill');
+    });
+
+    it('rejects publishing personal skill from another team', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.requestPublishToTeam('skill-1', { userId: 'user-1', teamId: 'team-2', role: 'MEMBER' })).rejects.toThrow('只能提交自己所在团队的个人 Skill');
     });
   });
 
@@ -261,12 +347,31 @@ describe('SkillsService', () => {
     it('approves and sets status to team', async () => {
       const approved = { ...mockSkill, status: 'team' };
       db.query
-        .mockResolvedValueOnce([]) // INSERT review
-        .mockResolvedValueOnce([approved]); // UPDATE skill
+        .mockResolvedValueOnce([{ ...mockSkill, status: 'team_pending' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([approved]);
 
-      const result = await service.approveTeamPublish('skill-1', 'reviewer-1');
+      const result = await service.approveTeamPublish('skill-1', 'reviewer-1', { userId: 'reviewer-1', teamId: 'team-1', role: 'ADMIN' });
 
       expect(result.status).toBe('team');
+    });
+
+    it('rejects approving skills outside team_pending', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.approveTeamPublish('skill-1', 'reviewer-1', { userId: 'reviewer-1', teamId: 'team-1', role: 'ADMIN' })).rejects.toThrow('只有待团队审批的 Skill 可以通过');
+    });
+
+    it('rejects team approval from non-admin members', async () => {
+      db.query.mockResolvedValueOnce([{ ...mockSkill, status: 'team_pending' }]);
+
+      await expect(service.approveTeamPublish('skill-1', 'reviewer-1', { userId: 'reviewer-1', teamId: 'team-1', role: 'MEMBER' })).rejects.toThrow('只有团队管理员或所有者可以执行该操作');
+    });
+
+    it('rejects team approval when actor team is missing', async () => {
+      db.query.mockResolvedValueOnce([{ ...mockSkill, status: 'team_pending' }]);
+
+      await expect(service.approveTeamPublish('skill-1', 'reviewer-1', { userId: 'reviewer-1', role: 'ADMIN' })).rejects.toThrow('不能审批其他团队的 Skill');
     });
   });
 
@@ -274,23 +379,53 @@ describe('SkillsService', () => {
     it('rejects and reverts status to personal', async () => {
       const rejected = { ...mockSkill, status: 'personal' };
       db.query
-        .mockResolvedValueOnce([]) // INSERT review
-        .mockResolvedValueOnce([rejected]); // UPDATE skill
+        .mockResolvedValueOnce([{ ...mockSkill, status: 'team_pending' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([rejected]);
 
-      const result = await service.rejectTeamPublish('skill-1', 'reviewer-1', 'Not ready');
+      const result = await service.rejectTeamPublish('skill-1', 'reviewer-1', 'Not ready', { userId: 'reviewer-1', teamId: 'team-1', role: 'ADMIN' });
 
       expect(result.status).toBe('personal');
+    });
+
+    it('rejects rejecting skills outside team_pending', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.rejectTeamPublish('skill-1', 'reviewer-1', 'Not ready', { userId: 'reviewer-1', teamId: 'team-1', role: 'ADMIN' })).rejects.toThrow('只有待团队审批的 Skill 可以拒绝');
     });
   });
 
   describe('requestPublishToMarketplace', () => {
-    it('updates skill status to marketplace_pending', async () => {
-      const pending = { ...mockSkill, status: 'marketplace_pending' };
-      db.query.mockResolvedValue([pending]);
+    it('creates a pending marketplace submission only for team skills', async () => {
+      const teamSkill = { ...mockSkill, status: 'team' };
+      const pending = { ...mockSkill, status: 'marketplace_pending', marketplace_id: '7' };
+      const marketplaceItem = { id: 7 };
+      const submission = { id: 11, status: 'pending' };
+      db.query
+        .mockResolvedValueOnce([teamSkill])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([marketplaceItem])
+        .mockResolvedValueOnce([submission])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([pending]);
 
-      const result = await service.requestPublishToMarketplace('skill-1');
+      const result = await service.requestPublishToMarketplace('skill-1', 'user-1', undefined, { userId: 'user-1', teamId: 'team-1', role: 'ADMIN' });
 
-      expect(result.status).toBe('marketplace_pending');
+      expect(result.skill.status).toBe('marketplace_pending');
+      expect(result.marketplaceItem).toEqual(marketplaceItem);
+      expect(result.submission).toEqual(submission);
+    });
+
+    it('rejects direct personal skill marketplace submission', async () => {
+      db.query.mockResolvedValueOnce([mockSkill]);
+
+      await expect(service.requestPublishToMarketplace('skill-1', 'user-1', undefined, { userId: 'user-1', teamId: 'team-1', role: 'ADMIN' })).rejects.toThrow('只有团队已发布的 Skill 可以提交到市场');
+    });
+
+    it('rejects marketplace submission from non-admin members', async () => {
+      db.query.mockResolvedValueOnce([{ ...mockSkill, status: 'team' }]);
+
+      await expect(service.requestPublishToMarketplace('skill-1', 'user-1', undefined, { userId: 'user-1', teamId: 'team-1', role: 'MEMBER' })).rejects.toThrow('只有团队管理员或所有者可以执行该操作');
     });
   });
 
@@ -298,13 +433,20 @@ describe('SkillsService', () => {
     it('approves marketplace publish with marketplace id', async () => {
       const approved = { ...mockSkill, status: 'marketplace', marketplace_id: 'mp-1' };
       db.query
-        .mockResolvedValueOnce([]) // INSERT review
-        .mockResolvedValueOnce([approved]); // UPDATE skill
+        .mockResolvedValueOnce([{ ...mockSkill, status: 'marketplace_pending' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([approved]);
 
       const result = await service.approveMarketplacePublish('skill-1', 'reviewer-1', 'mp-1');
 
       expect(result.status).toBe('marketplace');
       expect(result.marketplace_id).toBe('mp-1');
+    });
+
+    it('rejects approving skills outside marketplace_pending', async () => {
+      db.query.mockResolvedValueOnce([{ ...mockSkill, status: 'team' }]);
+
+      await expect(service.approveMarketplacePublish('skill-1', 'reviewer-1', 'mp-1')).rejects.toThrow('只有待市场审批的 Skill 可以通过');
     });
   });
 });

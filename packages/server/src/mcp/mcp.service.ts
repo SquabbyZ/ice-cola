@@ -1,9 +1,63 @@
-import { Injectable } from '@nestjs/common';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateMCPServerDtoType,
   UpdateMCPServerDtoType,
 } from './dto/mcp.dto';
+
+type MCPQueryParam = string | number | boolean | string[] | null;
+
+type MCPServerRow = {
+  status?: string;
+};
+
+type ConversationMCPServerRow = {
+  name: string;
+  server_type?: string;
+  config?: Record<string, unknown>;
+};
+
+type ConversationMCPConfig = {
+  servers: ConversationMCPServerRow[];
+  mcpServers: Array<{
+    name: string;
+    type: string;
+    config: Record<string, unknown>;
+  }>;
+};
+
+type ConversationMCPServerInput = {
+  conversationId: string;
+  serverId: string;
+  serverName: string;
+  teamId: string;
+  serverType?: string;
+  config?: Record<string, unknown>;
+};
+
+type UpdateMCPServerField = {
+  readonly key: keyof UpdateMCPServerDtoType;
+  readonly column: string;
+  readonly serialize?: (value: NonNullable<UpdateMCPServerDtoType[keyof UpdateMCPServerDtoType]>) => MCPQueryParam;
+};
+
+const UPDATE_SERVER_FIELDS: UpdateMCPServerField[] = [
+  { key: 'name', column: 'name' },
+  { key: 'description', column: 'description' },
+  { key: 'version', column: 'version' },
+  { key: 'author', column: 'author' },
+  { key: 'category', column: 'category' },
+  { key: 'icon', column: 'icon' },
+  { key: 'color', column: 'color' },
+  { key: 'tags', column: 'tags', serialize: (value) => value as string[] },
+  { key: 'homepage', column: 'homepage' },
+  { key: 'repository', column: 'repository' },
+  { key: 'enabled', column: 'enabled', serialize: (value) => value as boolean },
+  { key: 'configSchema', column: 'config_schema', serialize: (value) => JSON.stringify(value) },
+  { key: 'instructions', column: 'instructions' },
+  { key: 'ratings', column: 'ratings', serialize: (value) => value as number },
+  { key: 'installs', column: 'installs', serialize: (value) => value as number },
+];
 
 @Injectable()
 export class McpService {
@@ -40,7 +94,7 @@ export class McpService {
 
   async findAllServers(teamId?: string, category?: string, search?: string) {
     let query = 'SELECT * FROM mcp_servers WHERE 1=1';
-    const params: any[] = [];
+    const params: MCPQueryParam[] = [];
     let paramIndex = 1;
 
     if (teamId) {
@@ -67,65 +121,58 @@ export class McpService {
     return this.db.query(query, params);
   }
 
-  async findServerById(id: string) {
-    return this.db.queryOne('SELECT * FROM mcp_servers WHERE id = $1', [id]);
+  async findServerById(id: string, teamId: string) {
+    return this.db.queryOne('SELECT * FROM mcp_servers WHERE id = $1 AND (team_id = $2 OR team_id IS NULL)', [id, teamId]);
   }
 
-  async updateServer(id: string, dto: UpdateMCPServerDtoType) {
+  async updateServer(id: string, dto: UpdateMCPServerDtoType, teamId: string) {
     const fields: string[] = [];
-    const values: any[] = [];
+    const values: MCPQueryParam[] = [];
     let paramCount = 1;
 
-    const snakeCaseMap: Record<string, string> = {
-      configSchema: 'config_schema',
-    };
-
-    Object.entries(dto).forEach(([key, value]) => {
+    for (const field of UPDATE_SERVER_FIELDS) {
+      const value = dto[field.key];
       if (value !== undefined) {
-        const snakeKey = snakeCaseMap[key] || key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`${snakeKey} = $${paramCount}`);
-        if (key === 'configSchema') {
-          values.push(JSON.stringify(value));
-        } else {
-          values.push(value);
-        }
+        fields.push(`${field.column} = $${paramCount}`);
+        values.push(field.serialize ? field.serialize(value) : value as MCPQueryParam);
         paramCount++;
       }
-    });
+    }
 
-    if (fields.length === 0) return this.findServerById(id);
+    if (fields.length === 0) return this.findServerById(id, teamId);
 
     fields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(id);
+    values.push(id, teamId);
 
     const rows = await this.db.query(
-      `UPDATE mcp_servers SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      `UPDATE mcp_servers SET ${fields.join(', ')} WHERE id = $${paramCount} AND team_id = $${paramCount + 1} RETURNING *`,
       values
     );
     return rows[0];
   }
 
-  async deleteServer(id: string) {
-    await this.db.query('DELETE FROM mcp_servers WHERE id = $1', [id]);
+  async deleteServer(id: string, teamId: string) {
+    await this.db.query('DELETE FROM mcp_servers WHERE id = $1 AND team_id = $2', [id, teamId]);
   }
 
-  async incrementInstalls(id: string) {
+  async incrementInstalls(id: string, teamId: string) {
     return this.db.queryOne(
-      'UPDATE mcp_servers SET installs = installs + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
-      [id]
+      'UPDATE mcp_servers SET installs = installs + 1, updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND (team_id = $2 OR team_id IS NULL) RETURNING *',
+      [id, teamId]
     );
   }
 
-  async updateRatings(id: string, ratings: number) {
+  async updateRatings(id: string, ratings: number, teamId: string) {
     return this.db.queryOne(
-      'UPDATE mcp_servers SET ratings = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [ratings, id]
+      'UPDATE mcp_servers SET ratings = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND (team_id = $3 OR team_id IS NULL) RETURNING *',
+      [ratings, id, teamId]
     );
   }
 
   // ==================== User MCP Connections ====================
 
-  async connectServer(userId: string, serverId: string, config?: Record<string, string>) {
+  async connectServer(userId: string, serverId: string, teamId: string, config?: Record<string, string>) {
+    await this.assertServersAccessible([serverId], teamId);
     const id = this.generateUUID();
     return this.db.queryOne(
       `INSERT INTO user_mcp_connections (id, user_id, server_id, status, config, connected_at)
@@ -152,7 +199,7 @@ export class McpService {
        ORDER BY umc.connected_at DESC`,
       [userId]
     );
-    return rows.map((row: any) => ({
+    return rows.map((row: MCPServerRow) => ({
       ...row,
       connected: row.status === 'connected',
       enabled: row.status === 'connected',
@@ -161,7 +208,7 @@ export class McpService {
 
   async findConnectedServers(userId: string) {
     const connections = await this.findUserConnections(userId);
-    return connections.filter((c: any) => c.status === 'connected');
+    return connections.filter((connection: MCPServerRow) => connection.status === 'connected');
   }
 
   async updateConnectionConfig(userId: string, serverId: string, config: Record<string, string>) {
@@ -176,6 +223,69 @@ export class McpService {
       'SELECT * FROM user_mcp_connections WHERE user_id = $1 AND server_id = $2',
       [userId, serverId]
     );
+  }
+
+  async assertConversationAccess(conversationId: string, teamId: string) {
+    const conversation = await this.db.findConversationById(conversationId, teamId);
+    if (!conversation) {
+      throw new ForbiddenException('Conversation access denied');
+    }
+  }
+
+  async assertServersAccessible(serverIds: string[], teamId: string) {
+    if (serverIds.length === 0) return;
+
+    const rows = await this.db.query(
+      'SELECT id FROM mcp_servers WHERE id = ANY($1) AND (team_id = $2 OR team_id IS NULL)',
+      [serverIds, teamId]
+    );
+    if (rows.length !== new Set(serverIds).size) {
+      throw new ForbiddenException('MCP server access denied');
+    }
+  }
+
+  async getConversationMCPServers(conversationId: string): Promise<ConversationMCPServerRow[]> {
+    const rows = await this.db.getConversationMCPServers(conversationId);
+    return rows.map((row) => ({
+      name: row.name,
+      server_type: row.server_type,
+      config: row.config,
+    }));
+  }
+
+  async setConversationMCPServers(conversationId: string, serverIds: string[], teamId: string) {
+    await this.assertServersAccessible(serverIds, teamId);
+    return this.db.setConversationMCPServers(conversationId, serverIds);
+  }
+
+  async clearConversationMCPServers(conversationId: string) {
+    return this.db.clearConversationMCPServers(conversationId);
+  }
+
+  async addConversationMCPServer(input: ConversationMCPServerInput) {
+    await this.assertServersAccessible([input.serverId], input.teamId);
+    return this.db.addConversationMCPServer({
+      conversationId: input.conversationId,
+      serverId: input.serverId,
+      serverName: input.serverName,
+      serverType: input.serverType || 'stdio',
+      config: input.config,
+    });
+  }
+
+  async removeConversationMCPServer(conversationId: string, serverId: string) {
+    return this.db.removeConversationMCPServer(conversationId, serverId);
+  }
+
+  async getConversationMCPConfig(conversationId: string): Promise<ConversationMCPConfig> {
+    const servers = await this.getConversationMCPServers(conversationId);
+    const mcpServers = servers.map((server) => ({
+      name: server.name,
+      type: server.server_type || 'stdio',
+      config: server.config || {},
+    }));
+
+    return { servers, mcpServers };
   }
 
   private generateUUID(): string {

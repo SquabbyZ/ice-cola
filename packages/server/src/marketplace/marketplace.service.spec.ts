@@ -8,6 +8,7 @@ import { MarketplaceItemStatus } from './dto/query-items.dto';
 describe('MarketplaceService', () => {
   let service: MarketplaceService;
   let db: jest.Mocked<DatabaseService>;
+  let transactionClient: { query: jest.Mock };
 
   const mockItem = {
     id: 1,
@@ -46,6 +47,7 @@ describe('MarketplaceService', () => {
           useValue: {
             query: jest.fn(),
             queryOne: jest.fn(),
+            transaction: jest.fn(),
           },
         },
       ],
@@ -53,6 +55,8 @@ describe('MarketplaceService', () => {
 
     service = module.get<MarketplaceService>(MarketplaceService);
     db = module.get(DatabaseService);
+    transactionClient = { query: jest.fn() };
+    db.transaction.mockImplementation(async (callback) => callback(transactionClient as any));
   });
 
   describe('findItems', () => {
@@ -251,18 +255,39 @@ describe('MarketplaceService', () => {
 
   describe('approveSubmission', () => {
     it('approves submission and updates statuses', async () => {
-      db.queryOne
-        .mockResolvedValueOnce({ ...mockSubmission, status: 'pending' })
-        .mockResolvedValueOnce({ id: 1 }); // approval record
-      db.query.mockResolvedValue(null);
+      transactionClient.query
+        .mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'pending' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValue({ rows: [] });
 
       await service.approveSubmission(1, 'admin-1', 'Approved!');
 
-      expect(db.query).toHaveBeenCalled(); // Just check it was called at least once
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE marketplace_submissions SET status = 'approved'"),
+        [1]
+      );
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE marketplace_items SET status = 'approved'"),
+        [1]
+      );
+    });
+
+    it('marks source skill marketplace only after admin marketplace approval', async () => {
+      transactionClient.query
+        .mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'pending', item_id: 1, item_type: 'skill', source_id: 'skill-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValue({ rows: [] });
+
+      await service.approveSubmission(1, 'admin-1', 'Approved!');
+
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE skills SET status = 'marketplace'"),
+        ['skill-1']
+      );
     });
 
     it('throws BadRequestException when already processed', async () => {
-      db.queryOne.mockResolvedValue({ ...mockSubmission, status: 'approved' });
+      transactionClient.query.mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'approved' }] });
 
       await expect(service.approveSubmission(1, 'admin-1')).rejects.toThrow(BadRequestException);
     });
@@ -270,18 +295,39 @@ describe('MarketplaceService', () => {
 
   describe('rejectSubmission', () => {
     it('rejects submission and updates item status', async () => {
-      db.queryOne
-        .mockResolvedValueOnce({ ...mockSubmission, status: 'pending' })
-        .mockResolvedValueOnce({ id: 1 });
-      db.query.mockResolvedValue(null);
+      transactionClient.query
+        .mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'pending' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValue({ rows: [] });
 
       await service.rejectSubmission(1, 'admin-1', 'Needs changes');
 
-      expect(db.query).toHaveBeenCalled();
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE marketplace_submissions SET status = 'rejected'"),
+        [1]
+      );
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE marketplace_items SET status = 'rejected'"),
+        [1]
+      );
+    });
+
+    it('returns source skill to team when admin rejects marketplace approval', async () => {
+      transactionClient.query
+        .mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'pending', item_id: 1, item_type: 'skill', source_id: 'skill-1' }] })
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] })
+        .mockResolvedValue({ rows: [] });
+
+      await service.rejectSubmission(1, 'admin-1', 'Needs changes');
+
+      expect(transactionClient.query).toHaveBeenCalledWith(
+        expect.stringContaining("UPDATE skills SET status = 'team'"),
+        ['skill-1']
+      );
     });
 
     it('throws BadRequestException when already processed', async () => {
-      db.queryOne.mockResolvedValue({ ...mockSubmission, status: 'approved' });
+      transactionClient.query.mockResolvedValueOnce({ rows: [{ ...mockSubmission, status: 'approved' }] });
 
       await expect(service.rejectSubmission(1, 'admin-1')).rejects.toThrow(BadRequestException);
     });

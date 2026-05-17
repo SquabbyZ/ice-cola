@@ -15,6 +15,9 @@ interface SkillCardProps {
   onEdit?: (skill: Skill) => void;
   onDelete?: (id: string) => void;
   onPublish?: (id: string) => void;
+  onApproveTeam?: (id: string) => void;
+  onRejectTeam?: (id: string) => void;
+  onPublishMarketplace?: (id: string) => void;
   onVersionHistory?: (id: string) => void;
   showActions?: boolean;
 }
@@ -28,6 +31,9 @@ export const SkillCard: React.FC<SkillCardProps> = ({
   onEdit,
   onDelete,
   onPublish,
+  onApproveTeam,
+  onRejectTeam,
+  onPublishMarketplace,
   onVersionHistory,
   showActions = true,
 }) => {
@@ -191,9 +197,30 @@ const [showMenu, setShowMenu] = useState(false);
                       </button>
                     </>
                   )}
-                  <button onClick={() => { onDelete?.(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
-                    <Trash2 className="w-4 h-4" /> 删除
-                  </button>
+                  {skill.status === 'team_pending' && (onApproveTeam || onRejectTeam) && (
+                    <>
+                      {onApproveTeam && (
+                        <button onClick={() => { onApproveTeam(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-emerald-50 flex items-center gap-2 text-emerald-600">
+                          <Upload className="w-4 h-4" /> 通过团队发布
+                        </button>
+                      )}
+                      {onRejectTeam && (
+                        <button onClick={() => { onRejectTeam(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-2 text-red-600">
+                          <X className="w-4 h-4" /> 拒绝团队发布
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {skill.status === 'team' && onPublishMarketplace && (
+                    <button onClick={() => { onPublishMarketplace(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-indigo-50 flex items-center gap-2 text-indigo-600">
+                      <Upload className="w-4 h-4" /> 提交到市场
+                    </button>
+                  )}
+                  {skill.status === 'personal' && (
+                    <button onClick={() => { onDelete?.(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 text-red-600 flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" /> 删除
+                    </button>
+                  )}
                 </div>,
                 document.body
               )}
