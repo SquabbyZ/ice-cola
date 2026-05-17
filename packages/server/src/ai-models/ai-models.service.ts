@@ -1,8 +1,7 @@
 import { Injectable, OnModuleInit, HttpException, HttpStatus } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
 import { DatabaseService } from '../database/database.service';
 import { EncryptionService } from './encryption.service';
+import { AiApiClient } from './api-client';
 import { seedAiModels } from './seed/ai-models.seed';
 import { CreateProviderDto, UpdateProviderDto } from './dto/provider.dto';
 import { CreateModelDto, UpdateModelDto } from './dto/model.dto';
@@ -27,7 +26,7 @@ export class AiModelsService implements OnModuleInit {
   constructor(
     private readonly db: DatabaseService,
     private readonly encryption: EncryptionService,
-    private readonly httpService: HttpService,
+    private readonly apiClient: AiApiClient,
   ) {}
 
   // ==================== PROVIDER CRUD ====================
@@ -293,16 +292,7 @@ export class AiModelsService implements OnModuleInit {
 
     let remoteModels: Array<{ id: string; name?: string }> = [];
     try {
-      const url = `${baseUrl.replace(/\/+$/, '')}/v1/models`;
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers: {
-            Authorization: `Bearer ${decryptedKey}`,
-          },
-          timeout: 15000,
-        }),
-      );
-      const body = response.data;
+      const body = await this.apiClient.fetchModels(baseUrl, decryptedKey, 15000);
       if (Array.isArray(body?.data)) {
         remoteModels = body.data;
       } else if (Array.isArray(body?.models)) {

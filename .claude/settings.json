@@ -65,6 +65,36 @@
         "-y",
         "frontend-design@claude-plugins-official"
       ]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp",
+        "start"
+      ]
+    },
+    "docker": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@ffs/openmcp",
+        "docker"
+      ]
+    },
+    "fetch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-fetch-server"
+      ]
+    },
+    "websearch": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "websearch-mcp"
+      ]
     }
   },
   "permissions": {

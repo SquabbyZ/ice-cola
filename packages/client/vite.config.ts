@@ -16,6 +16,16 @@ export default defineConfig({
     port: 1420,
     strictPort: true,
     proxy: {
+      '/api/marketplace': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/marketplace/, '/marketplace'),
+      },
+      '/api/mcp': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/mcp/, '/mcp'),
+      },
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,
@@ -23,6 +33,7 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/teams': {
         target: 'http://localhost:3000',

@@ -147,7 +147,8 @@ export const useMCPStore = create<MCPState>((set, get) => ({
   loadServers: async () => {
     set({ isLoading: true, error: null });
     try {
-      const response = await fetch('/api/mcp/servers', {
+      // Use marketplace API instead of MCP API
+      const response = await fetch('/api/marketplace/items?type=mcp', {
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeader(),
@@ -159,7 +160,8 @@ export const useMCPStore = create<MCPState>((set, get) => ({
       }
 
       const result = await response.json();
-      const servers = (result.data || []).map(transformServer);
+      // Marketplace API returns { items: [...], pagination: {...} }
+      const servers = ((result.data?.items || result.data || []) as any[]).map(transformServer);
 
       set({ servers, isLoading: false });
     } catch (err) {
