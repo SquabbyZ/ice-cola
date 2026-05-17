@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Eye, Archive, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Search, Eye, Archive, ChevronLeft, ChevronRight, RefreshCw, Upload, Trash2 } from 'lucide-react';
 import { Spinner } from '../components/ui/spinner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -35,7 +35,10 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/toolti
 import {
   getMarketplaceItems,
   getCategories,
-  syncSkillsFromSkillsSh, updateMarketplaceItem,
+  syncSkillsFromSkillsSh,
+  adminUpdateItem,
+  adminDeleteItem,
+  syncMcps,
   type MarketplaceItem,
   type MarketplaceItemType,
   type MarketplaceItemStatus,
@@ -47,24 +50,28 @@ const Marketplace: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<MarketplaceItemType>('skill');
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<MarketplaceItemStatus | 'all'>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [page, setPage] = useState(1);
   const [detailItem, setDetailItem] = useState<MarketplaceItem | null>(null);
-  const [archiveItem, setArchiveItem] = useState<MarketplaceItem | null>(null);
-  const [isArchiving, setIsArchiving] = useState(false);
+  const [offlineItem, setOfflineItem] = useState<MarketplaceItem | null>(null);
+  const [onlineItem, setOnlineItem] = useState<MarketplaceItem | null>(null);
+  const [deleteItem, setDeleteItem] = useState<MarketplaceItem | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['marketplace-items', activeTab, search, statusFilter, categoryFilter, page],
     queryFn: () =>
       getMarketplaceItems({
         type: activeTab,
-        status: statusFilter !== 'all' ? (statusFilter as MarketplaceItemStatus) : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         category: categoryFilter !== 'all' ? categoryFilter : undefined,
         search: search || undefined,
         page,
         pageSize: ITEMS_PER_PAGE,
+        includeAll: true,
       }),
   });
 
@@ -76,42 +83,81 @@ const Marketplace: React.FC = () => {
   const items = data?.data ?? [];
   const meta = data?.meta ?? { total: 0, page: 1, limit: ITEMS_PER_PAGE };
   const totalPages = Math.max(1, Math.ceil(meta.total / meta.limit));
-  const categories = categoriesData?.data ?? [];
+  const categories = categoriesData ?? [];
 
-  const handleArchive = async () => {
-    if (!archiveItem) return;
-    setIsArchiving(true);
+  const handleOffline = async () => {
+    if (!offlineItem) return;
+    setIsProcessing(true);
     try {
-      await updateMarketplaceItem(archiveItem.id, { status: 'archived' });
-      setArchiveItem(null);
+      await adminUpdateItem(offlineItem.id, { status: 'archived' });
+      setOfflineItem(null);
       refetch();
     } catch (err) {
-      console.error('[Marketplace] Archive failed:', err);
+      console.error('[Marketplace] Offline failed:', err);
     } finally {
-      setIsArchiving(false);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleOnline = async () => {
+    if (!onlineItem) return;
+    setIsProcessing(true);
+    try {
+      await adminUpdateItem(onlineItem.id, { status: 'approved' });
+      setOnlineItem(null);
+      refetch();
+    } catch (err) {
+      console.error('[Marketplace] Online failed:', err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+    setIsProcessing(true);
+    try {
+      await adminDeleteItem(deleteItem.id);
+      setDeleteItem(null);
+      refetch();
+    } catch (err) {
+      console.error('[Marketplace] Delete failed:', err);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const handleSync = async () => {
     setIsSyncing(true);
+    setSyncMessage(null);
     try {
-      await syncSkillsFromSkillsSh();
+      if (activeTab === 'mcp') {
+        const result = await syncMcps();
+        setSyncMessage(`同步完成：新增 ${result.created} 个，更新 ${result.updated} 个${result.errors.length > 0 ? `，${result.errors.length} 个失败` : ''}`);
+      } else {
+        await syncSkillsFromSkillsSh();
+        setSyncMessage('同步完成');
+      }
       refetch();
     } catch (err) {
       console.error('[Marketplace] Sync failed:', err);
+      setSyncMessage('同步失败');
     } finally {
       setIsSyncing(false);
+      setTimeout(() => setSyncMessage(null), 3000);
     }
   };
 
   const getStatusBadge = (status: MarketplaceItemStatus) => {
     switch (status) {
-      case 'active':
+      case 'approved':
         return <Badge variant="success">{t('marketplace.statusActive')}</Badge>;
-      case 'inactive':
-        return <Badge variant="warning">{t('marketplace.statusInactive')}</Badge>;
       case 'archived':
         return <Badge variant="secondary">{t('marketplace.statusArchived')}</Badge>;
+      case 'draft':
+      case 'pending_approval':
+      case 'rejected':
+        return <Badge variant="secondary">{status}</Badge>;
     }
   };
 
@@ -129,16 +175,21 @@ const Marketplace: React.FC = () => {
               <CardTitle>{t('marketplace.listTitle')}</CardTitle>
               <CardDescription>{t('marketplace.listDesc')}</CardDescription>
             </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="icon">
-                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{isSyncing ? t('marketplace.syncing') : t(`marketplace.sync${activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}`)}</p>
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex items-center gap-2">
+              {syncMessage && (
+                <span className="text-sm text-muted-foreground">{syncMessage}</span>
+              )}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="icon">
+                    <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{isSyncing ? t('marketplace.syncing') : (activeTab === 'mcp' ? '同步 MCP 服务器' : '同步技能市场')}</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -161,14 +212,13 @@ const Marketplace: React.FC = () => {
                     className="pl-9"
                   />
                 </div>
-                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
+                <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v as MarketplaceItemStatus | 'all'); setPage(1); }}>
                   <SelectTrigger className="w-[150px]">
                     <SelectValue placeholder={t('marketplace.filterStatus')} />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">{t('marketplace.allStatus')}</SelectItem>
-                    <SelectItem value="active">{t('marketplace.statusActive')}</SelectItem>
-                    <SelectItem value="inactive">{t('marketplace.statusInactive')}</SelectItem>
+                    <SelectItem value="approved">{t('marketplace.statusActive')}</SelectItem>
                     <SelectItem value="archived">{t('marketplace.statusArchived')}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -179,7 +229,7 @@ const Marketplace: React.FC = () => {
                   <SelectContent>
                     <SelectItem value="all">{t('marketplace.allCategories')}</SelectItem>
                     {categories.map((cat) => (
-                      <SelectItem key={cat.id} value={cat.id}>
+                      <SelectItem key={cat.id} value={cat.slug}>
                         {cat.name}
                       </SelectItem>
                     ))}
@@ -233,16 +283,34 @@ const Marketplace: React.FC = () => {
                               >
                                 <Eye className="h-4 w-4 text-muted-foreground" />
                               </Button>
-                              {item.status !== 'archived' && (
+                              {item.status === 'approved' ? (
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  title={t('marketplace.archive')}
-                                  onClick={() => setArchiveItem(item)}
+                                  title="下线"
+                                  onClick={() => setOfflineItem(item)}
                                 >
                                   <Archive className="h-4 w-4 text-muted-foreground" />
                                 </Button>
-                              )}
+                              ) : null}
+                              {item.status === 'archived' ? (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="上线"
+                                  onClick={() => setOnlineItem(item)}
+                                >
+                                  <Upload className="h-4 w-4 text-muted-foreground" />
+                                </Button>
+                              ) : null}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title="删除"
+                                onClick={() => setDeleteItem(item)}
+                              >
+                                <Trash2 className="h-4 w-4 text-muted-foreground" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -322,22 +390,64 @@ const Marketplace: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Archive Confirm Dialog */}
-      <Dialog open={!!archiveItem} onOpenChange={(open) => { if (!open) setArchiveItem(null); }}>
+      {/* Offline Confirm Dialog */}
+      <Dialog open={!!offlineItem} onOpenChange={(open) => { if (!open) setOfflineItem(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t('marketplace.confirmArchiveTitle')}</DialogTitle>
+            <DialogTitle>确认下线</DialogTitle>
             <DialogDescription>
-              {t('marketplace.confirmArchiveDesc', { name: archiveItem?.name })}
+              确定要将 "{offlineItem?.name}" 下线吗？下线后用户将无法看到该服务。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setArchiveItem(null)}>
+            <Button variant="outline" onClick={() => setOfflineItem(null)}>
               {t('marketplace.cancel')}
             </Button>
-            <Button variant="destructive" onClick={handleArchive} disabled={isArchiving}>
-              {isArchiving && <Spinner className="mr-2 size-4" />}
-              {isArchiving ? t('marketplace.archiving') : t('marketplace.confirmArchive')}
+            <Button variant="destructive" onClick={handleOffline} disabled={isProcessing}>
+              {isProcessing && <Spinner className="mr-2 size-4" />}
+              确认下线
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Online Confirm Dialog */}
+      <Dialog open={!!onlineItem} onOpenChange={(open) => { if (!open) setOnlineItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认上线</DialogTitle>
+            <DialogDescription>
+              确定要将 "{onlineItem?.name}" 上线吗？上线后用户将可以看到该服务。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOnlineItem(null)}>
+              {t('marketplace.cancel')}
+            </Button>
+            <Button onClick={handleOnline} disabled={isProcessing}>
+              {isProcessing && <Spinner className="mr-2 size-4" />}
+              确认上线
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirm Dialog */}
+      <Dialog open={!!deleteItem} onOpenChange={(open) => { if (!open) setDeleteItem(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>
+              确定要删除 "{deleteItem?.name}" 吗？此操作不可恢复。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteItem(null)}>
+              {t('marketplace.cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={isProcessing}>
+              {isProcessing && <Spinner className="mr-2 size-4" />}
+              确认删除
             </Button>
           </DialogFooter>
         </DialogContent>

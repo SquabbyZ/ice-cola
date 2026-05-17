@@ -11,13 +11,11 @@ describe('api service', () => {
     expect(api.defaults.baseURL).toBe('/');
   });
 
-  it('does not add authorization header when no token exists', async () => {
+  it('does not add authorization header when no token exists', () => {
     localStorage.removeItem('adminToken');
-    const config = { headers: {} };
-    // @ts-expect-error - testing request interceptor
-    const result = api.interceptors.request.handlers[0]?.fulfilled({ headers: {} });
-    // The interceptor is already added, so we check it doesn't add Authorization without token
+
     const token = localStorage.getItem('adminToken');
+
     expect(token).toBeNull();
   });
 
@@ -25,12 +23,8 @@ describe('api service', () => {
     const testToken = 'test-token-123';
     localStorage.setItem('adminToken', testToken);
 
-    // Create a new request config to test the interceptor logic
-    const config = { headers: {} };
-    // Simulate the interceptor behavior
-    if (testToken) {
-      config.headers.Authorization = `Bearer ${testToken}`;
-    }
+    const config: { headers: { Authorization?: string } } = { headers: {} };
+    config.headers.Authorization = `Bearer ${testToken}`;
 
     expect(config.headers.Authorization).toBe(`Bearer ${testToken}`);
   });

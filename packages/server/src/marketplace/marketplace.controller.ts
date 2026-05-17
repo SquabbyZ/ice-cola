@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
@@ -6,7 +6,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { TeamRole } from '../quota/quota.service';
 import { CreateItemDto } from './dto/create-item.dto';
 import { UpdateItemDto } from './dto/update-item.dto';
-import { QueryItemsDto } from './dto/query-items.dto';
+import { QueryItemsDto, MarketplaceItemStatus } from './dto/query-items.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { ApproveSubmissionDto } from './dto/approve-submission.dto';
@@ -23,8 +23,13 @@ export class MarketplaceController {
 
   @Get('items')
   @UseGuards(JwtAuthGuard)
-  async findItems(@Query() query: QueryItemsDto) {
-    const result = await this.marketplaceService.findItems(query);
+  async findItems(@Query() query: QueryItemsDto, @Request() req: any) {
+    const isAdmin = req.user?.role === TeamRole.ADMIN || req.user?.role === TeamRole.OWNER;
+    const includeAll = isAdmin && req.query['includeAll'] === 'true';
+    const safeQuery: QueryItemsDto = isAdmin || !query.status || query.status === MarketplaceItemStatus.APPROVED
+      ? query
+      : { ...query, status: MarketplaceItemStatus.APPROVED };
+    const result = await this.marketplaceService.findItems(safeQuery, includeAll);
     return {
       code: 0,
       data: result,
@@ -34,8 +39,12 @@ export class MarketplaceController {
 
   @Get('items/:id')
   @UseGuards(JwtAuthGuard)
-  async findItemById(@Param('id', ParseIntPipe) id: number) {
+  async findItemById(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
     const result = await this.marketplaceService.findItemById(id);
+    const isAdmin = req.user?.role === TeamRole.ADMIN || req.user?.role === TeamRole.OWNER;
+    if (!isAdmin && result.status !== 'approved') {
+      throw new NotFoundException('市场项不存在');
+    }
     return {
       code: 0,
       data: result,
@@ -73,6 +82,46 @@ export class MarketplaceController {
       code: 0,
       data: null,
       message: '市场项已删除',
+    };
+  }
+
+  // ============================================================
+  // Admin Operations (ADMIN/OWNER only)
+  // ============================================================
+
+  @Put('items/:id/admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
+  async adminUpdateItem(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateItemDto) {
+    const result = await this.marketplaceService.adminUpdateItem(id, dto);
+    return {
+      code: 0,
+      data: result,
+      message: '市场项已更新',
+    };
+  }
+
+  @Delete('items/:id/admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
+  async adminDeleteItem(@Param('id', ParseIntPipe) id: number) {
+    await this.marketplaceService.adminDeleteItem(id);
+    return {
+      code: 0,
+      data: null,
+      message: '市场项已删除',
+    };
+  }
+
+  @Post('sync/mcps')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(TeamRole.OWNER, TeamRole.ADMIN)
+  async syncMcps() {
+    const result = await this.marketplaceService.syncMcps();
+    return {
+      code: 0,
+      data: result,
+      message: `同步完成：新增 ${result.created} 个，更新 ${result.updated} 个`,
     };
   }
 

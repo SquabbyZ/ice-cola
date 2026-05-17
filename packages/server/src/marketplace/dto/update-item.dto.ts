@@ -1,4 +1,5 @@
-import { IsString, IsOptional, IsArray, IsObject, IsNumber } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsString, IsOptional, IsArray, IsObject, IsNumber, IsIn } from 'class-validator';
 
 export class UpdateItemDto {
   @IsString()
@@ -21,15 +22,21 @@ export class UpdateItemDto {
   @IsOptional()
   color?: string;
 
+  @Type(() => Number)
   @IsNumber()
   @IsOptional()
   categoryId?: number;
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   tags?: string[];
 
   @IsObject()
   @IsOptional()
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+
+  @IsIn(['draft', 'pending_approval', 'approved', 'rejected', 'archived'])
+  @IsOptional()
+  status?: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived';
 }

@@ -6,6 +6,8 @@ import { QueryItemsDto } from './dto/query-items.dto';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
+const MCP_SYNC_FETCH_TIMEOUT_MS = 10000;
+
 @Injectable()
 export class MarketplaceService {
   constructor(private readonly db: DatabaseService) {}
@@ -14,7 +16,7 @@ export class MarketplaceService {
   // Marketplace Items
   // ============================================================
 
-  async findItems(query: QueryItemsDto) {
+  async findItems(query: QueryItemsDto, includeAll: boolean = false) {
     const page = query.page || 1;
     const limit = query.limit || 20;
     const offset = (page - 1) * limit;
@@ -31,8 +33,8 @@ export class MarketplaceService {
     if (query.status) {
       where += ` AND mi.status = $${paramIndex++}`;
       params.push(query.status);
-    } else {
-      // Default: only show approved items for public listing
+    } else if (!includeAll) {
+      // Default: only show approved items for public listing (only when not fetching all)
       where += ` AND mi.status = 'approved'`;
     }
 
@@ -70,8 +72,26 @@ export class MarketplaceService {
       params,
     );
 
+    // Transform items to match expected format (especially for MCP type)
+    const transformedItems = items.map((item: any) => {
+      const transformed: any = { ...item };
+      // Map category_slug to category for MCP type (client expects string like 'data', 'tool')
+      if (item.type === 'mcp' && item.category_slug) {
+        transformed.category = item.category_slug;
+      }
+      // Parse config_schema if it's a string
+      if (transformed.config_schema && typeof transformed.config_schema === 'string') {
+        try {
+          transformed.config_schema = JSON.parse(transformed.config_schema);
+        } catch {
+          // Keep as is if parsing fails
+        }
+      }
+      return transformed;
+    });
+
     return {
-      items,
+      items: transformedItems,
       pagination: {
         page,
         limit,
@@ -94,7 +114,20 @@ export class MarketplaceService {
     if (!item) {
       throw new NotFoundException('市场项不存在');
     }
-    return item;
+
+    // Transform item to match expected format (especially for MCP type)
+    const transformed: any = { ...item };
+    if (item.type === 'mcp' && item.category_slug) {
+      transformed.category = item.category_slug;
+    }
+    if (transformed.config_schema && typeof transformed.config_schema === 'string') {
+      try {
+        transformed.config_schema = JSON.parse(transformed.config_schema);
+      } catch {
+        // Keep as is if parsing fails
+      }
+    }
+    return transformed;
   }
 
   async createItem(authorId: string, dto: CreateItemDto) {
@@ -189,6 +222,229 @@ export class MarketplaceService {
 
     await this.db.query('DELETE FROM marketplace_items WHERE id = $1', [id]);
     return null;
+  }
+
+  // ============================================================
+  // Admin Operations (for ADMIN/OWNER)
+  // ============================================================
+
+  async adminUpdateItem(id: number, dto: UpdateItemDto) {
+    const item = await this.findItemById(id);
+
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    let paramIndex = 1;
+
+    const fieldMap: Record<string, string> = {
+      name: 'name',
+      description: 'description',
+      version: 'version',
+      icon: 'icon',
+      color: 'color',
+      categoryId: 'category_id',
+      tags: 'tags',
+      metadata: 'metadata',
+      status: 'status',
+    };
+
+    for (const [key, dbKey] of Object.entries(fieldMap)) {
+      const value = (dto as Record<string, unknown>)[key];
+      if (value !== undefined) {
+        fields.push(`${dbKey} = $${paramIndex++}`);
+        values.push(key === 'metadata' ? JSON.stringify(value) : value);
+      }
+    }
+
+    if (fields.length === 0) {
+      return item;
+    }
+
+    fields.push('updated_at = NOW()');
+    values.push(id);
+
+    const updated = await this.db.queryOne(
+      `UPDATE marketplace_items SET ${fields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values,
+    );
+    if (!updated) {
+      throw new NotFoundException('市场项不存在');
+    }
+
+    const transformed: any = { ...updated };
+    if (updated.type === 'mcp' && updated.category_slug) {
+      transformed.category = updated.category_slug;
+    }
+    if (transformed.config_schema && typeof transformed.config_schema === 'string') {
+      try {
+        transformed.config_schema = JSON.parse(transformed.config_schema);
+      } catch {
+        // Keep raw schema if parsing fails.
+      }
+    }
+
+    return transformed;
+  }
+
+  async adminDeleteItem(id: number) {
+    const result = await this.db.queryOne(
+      'DELETE FROM marketplace_items WHERE id = $1 RETURNING *',
+      [id],
+    );
+    if (!result) {
+      throw new NotFoundException('市场项不存在');
+    }
+    return null;
+  }
+
+  async syncMcps(): Promise<{ created: number; updated: number; errors: string[] }> {
+    const errors: string[] = [];
+    let created = 0;
+    let updated = 0;
+
+    try {
+      const contents = await this.fetchWithTimeout(
+        'https://api.github.com/repos/modelcontextprotocol/servers/contents/src',
+        { headers: { 'Accept': 'application/json' } },
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`GitHub API error: ${response.status}`);
+          }
+
+          return response.json() as Promise<Array<{ name: string; type: string; download_url?: string }>>;
+        },
+      );
+
+      // Filter for directory entries (MCP servers)
+      const servers = contents.filter(item => item.type === 'dir');
+
+      for (const server of servers) {
+        try {
+          // Get README for description
+          const readmeUrl = `https://api.github.com/repos/modelcontextprotocol/servers/contents/src/${server.name}/README.md`;
+          const readmeData = await this.fetchWithTimeout(
+            readmeUrl,
+            { headers: { 'Accept': 'application/json' } },
+            async (response) => {
+              if (!response.ok) {
+                return null;
+              }
+
+              return response.json() as Promise<{ content?: string }>;
+            },
+          );
+
+          let description = `${server.name} MCP 服务器`;
+          let instructions = '';
+          let configSchema: Record<string, any> = {};
+
+          if (readmeData?.content) {
+            const decoded = Buffer.from(readmeData.content, 'base64').toString('utf-8');
+            const lines = decoded.split('\n');
+            let descLine = '';
+
+            for (const line of lines) {
+              if (line.startsWith('# ') && !descLine) {
+                descLine = line.substring(2).trim();
+              }
+            }
+
+            description = descLine || `${server.name} MCP 服务器`;
+            instructions = decoded.substring(0, 500);
+          }
+
+          // Check if server already exists
+          const existing = await this.db.queryOne(
+            'SELECT id, config_schema FROM marketplace_items WHERE slug = $1 AND type = $2',
+            [`mcp-${server.name}`, 'mcp']
+          );
+
+          // Map server name to category
+          const categoryMap: Record<string, { name: string; slug: string }> = {
+            'filesystem': { name: '工具', slug: 'tool' },
+            'github': { name: '开发', slug: 'development' },
+            'sqlite': { name: '数据源', slug: 'data' },
+            'postgres': { name: '数据源', slug: 'data' },
+            'slack': { name: '通讯', slug: 'communication' },
+            'brave-search': { name: '工具', slug: 'tool' },
+            'sentry': { name: '开发', slug: 'development' },
+            'fetch': { name: '工具', slug: 'tool' },
+            'memory': { name: '工具', slug: 'tool' },
+            'ollama': { name: '工具', slug: 'tool' },
+            'google-maps': { name: '工具', slug: 'tool' },
+            'aws-kb-retrieval': { name: '数据源', slug: 'data' },
+            'puppeteer': { name: '工具', slug: 'tool' },
+            's3': { name: '数据源', slug: 'data' },
+            'azureAISearch': { name: '数据源', slug: 'data' },
+            'vertexai': { name: '数据源', slug: 'data' },
+            'everydaysleep': { name: '工具', slug: 'tool' },
+          };
+
+          const categoryInfo = categoryMap[server.name] || { name: '工具', slug: 'tool' };
+          const category = await this.db.queryOne(
+            'SELECT id FROM marketplace_categories WHERE slug = $1 AND item_type = $2',
+            [categoryInfo.slug, 'mcp']
+          );
+          const categoryId = category?.id || 7;
+
+          // Icon mapping
+          const iconMap: Record<string, string> = {
+            'filesystem': '📁', 'github': '🐙', 'sqlite': '🗃️', 'postgres': '🐘',
+            'slack': '💬', 'brave-search': '🦁', 'sentry': '🚀', 'fetch': '🌐',
+            'memory': '🧠', 'ollama': '🦙', 'google-maps': '🗺️', 'aws-kb-retrieval': '☁️',
+            'puppeteer': '🎭', 's3': '📦', 'azureAISearch': '🔍', 'vertexai': '📊',
+            'everydaysleep': '😴',
+          };
+          const icon = iconMap[server.name] || '🔌';
+
+          const serverData = {
+            type: 'mcp',
+            name: server.name.charAt(0).toUpperCase() + server.name.slice(1).replace(/-/g, ' '),
+            slug: `mcp-${server.name}`,
+            description,
+            version: '1.0.0',
+            icon,
+            color: '#3B82F6',
+            categoryId,
+            tags: [server.name],
+            homepage: `https://github.com/modelcontextprotocol/servers`,
+            repository: `https://github.com/modelcontextprotocol/servers/tree/main/src/${server.name}`,
+            configSchema: JSON.stringify(configSchema),
+            instructions: instructions.substring(0, 500),
+          };
+
+          if (existing) {
+            // Update existing
+            await this.db.query(
+              `UPDATE marketplace_items SET
+                name = $1, description = $2, icon = $3, config_schema = $4, instructions = $5, updated_at = NOW()
+               WHERE id = $6`,
+              [serverData.name, serverData.description, serverData.icon, serverData.configSchema, serverData.instructions, existing.id]
+            );
+            updated++;
+          } else {
+            // Insert new
+            await this.db.query(
+              `INSERT INTO marketplace_items (type, name, slug, description, version, author_id, icon, color, category_id, tags, homepage, repository, config_schema, instructions, status)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'approved')`,
+              [
+                serverData.type, serverData.name, serverData.slug, serverData.description,
+                serverData.version, 'system', serverData.icon, serverData.color, serverData.categoryId,
+                JSON.stringify(serverData.tags), serverData.homepage, serverData.repository,
+                serverData.configSchema, serverData.instructions
+              ]
+            );
+            created++;
+          }
+        } catch (err) {
+          errors.push(`Failed to sync ${server.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
+      return { created, updated, errors };
+    } catch (error) {
+      errors.push(`Sync failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      return { created, updated, errors };
+    }
   }
 
   // ============================================================
@@ -498,5 +754,21 @@ export class MarketplaceService {
       throw new NotFoundException('分类不存在');
     }
     return category;
+  }
+
+  private async fetchWithTimeout<T>(
+    url: string,
+    init: RequestInit | undefined,
+    parse: (response: Response) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MCP_SYNC_FETCH_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal });
+      return await parse(response);
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 }

@@ -80,6 +80,24 @@ describe('MarketplaceService', () => {
       expect(callArgs[0]).toContain('mi.status = $2');
     });
 
+    it('shows only approved items by default for public listings', async () => {
+      db.queryOne.mockResolvedValue({ count: '2' });
+      db.query.mockResolvedValue([mockItem]);
+
+      await service.findItems({});
+
+      expect(db.query.mock.calls[0][0]).toContain("mi.status = 'approved'");
+    });
+
+    it('does not add the default approved filter when includeAll is true', async () => {
+      db.queryOne.mockResolvedValue({ count: '2' });
+      db.query.mockResolvedValue([mockItem]);
+
+      await service.findItems({}, true);
+
+      expect(db.query.mock.calls[0][0]).not.toContain("mi.status = 'approved'");
+    });
+
     it('searches by name or description', async () => {
       db.queryOne.mockResolvedValue({ count: '2' });
       db.query.mockResolvedValue([mockItem]);
@@ -337,6 +355,52 @@ describe('MarketplaceService', () => {
       db.queryOne.mockResolvedValue(null);
 
       await expect(service.deleteCategory(999)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('syncMcps', () => {
+    it('imports MCP servers and creates approved items', async () => {
+      const originalFetch = global.fetch;
+      const responses = [
+        {
+          ok: true,
+          json: async () => ([{ name: 'filesystem', type: 'dir' }]),
+        },
+        {
+          ok: true,
+          json: async () => ({ content: Buffer.from('# Filesystem\nConfiguration details').toString('base64') }),
+        },
+      ] as const;
+      let callIndex = 0;
+      (global as any).fetch = jest.fn(async () => responses[Math.min(callIndex++, responses.length - 1)]);
+
+      try {
+        db.queryOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce({ id: 7 });
+        db.query.mockResolvedValueOnce(null).mockResolvedValueOnce(null);
+
+        const result = await service.syncMcps();
+
+        expect(result.created).toBe(1);
+        expect(result.updated).toBe(0);
+        expect(result.errors).toEqual([]);
+      } finally {
+        global.fetch = originalFetch;
+      }
+    });
+
+    it('reports fetch failures as sync errors', async () => {
+      const originalFetch = global.fetch;
+      (global as any).fetch = jest.fn(async () => ({ ok: false, status: 500 }));
+
+      try {
+        const result = await service.syncMcps();
+
+        expect(result.errors.length).toBeGreaterThan(0);
+      } finally {
+        global.fetch = originalFetch;
+      }
     });
   });
 
