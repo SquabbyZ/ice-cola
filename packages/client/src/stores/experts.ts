@@ -15,6 +15,9 @@ export interface ExpertPrompt {
   systemPrompt: string;
   icon?: string;
   color?: string;
+  category?: string;
+  sourceId?: string | null;
+  marketplaceId?: string | null;
   isDefault: boolean;
 }
 

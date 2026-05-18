@@ -30,11 +30,13 @@ from gateway.platforms.api_server import (
 # ---------------------------------------------------------------------------
 
 
-def _make_adapter(api_key: str = "") -> APIServerAdapter:
+def _make_adapter(api_key: str = "", internal_mcp_key: str = "") -> APIServerAdapter:
     """Create an adapter with optional API key."""
     extra = {}
     if api_key:
         extra["key"] = api_key
+    if internal_mcp_key:
+        extra["internal_mcp_key"] = internal_mcp_key
     config = PlatformConfig(enabled=True, extra=extra)
     adapter = APIServerAdapter(config)
     return adapter
@@ -115,6 +117,84 @@ class TestStartRun:
                 data = await resp.json()
                 assert data["status"] == "started"
                 assert data["run_id"].startswith("run_")
+
+    @pytest.mark.asyncio
+    async def test_start_passes_mcp_servers_to_agent(self):
+        mcp_adapter = _make_adapter(internal_mcp_key="internal-secret")
+        app = _create_runs_app(mcp_adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(mcp_adapter, "_create_agent") as mock_create:
+                agent_created = threading.Event()
+                mock_agent = MagicMock()
+                mock_agent.run_conversation.return_value = {"final_response": "done"}
+                mock_agent.session_prompt_tokens = 0
+                mock_agent.session_completion_tokens = 0
+                mock_agent.session_total_tokens = 0
+
+                def _create_agent(**kwargs):
+                    agent_created.set()
+                    return mock_agent
+
+                mock_create.side_effect = _create_agent
+
+                resp = await cli.post(
+                    "/v1/runs",
+                    headers={"X-Hermes-Internal-MCP-Key": "internal-secret"},
+                    json={
+                        "input": "hello",
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+                assert resp.status == 202
+                assert agent_created.wait(timeout=3.0)
+                assert mock_create.call_args.kwargs["mcp_servers"] == [
+                    {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                ]
+
+    @pytest.mark.asyncio
+    async def test_start_rejects_mcp_servers_without_internal_auth(self, adapter):
+        app = _create_runs_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(adapter, "_create_agent") as mock_create:
+                resp = await cli.post(
+                    "/v1/runs",
+                    json={
+                        "input": "hello",
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+                assert resp.status == 403
+                mock_create.assert_not_called()
+                assert adapter._run_streams == {}
+                assert adapter._run_streams_created == {}
+                assert adapter._active_run_tasks == {}
+
+    @pytest.mark.asyncio
+    async def test_start_rejects_mcp_servers_with_invalid_internal_auth(self):
+        mcp_adapter = _make_adapter(internal_mcp_key="internal-secret")
+        app = _create_runs_app(mcp_adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(mcp_adapter, "_create_agent") as mock_create:
+                resp = await cli.post(
+                    "/v1/runs",
+                    json={
+                        "input": "hello",
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+                assert resp.status == 403
+                mock_create.assert_not_called()
+                assert mcp_adapter._run_streams == {}
+                assert mcp_adapter._run_streams_created == {}
+                assert mcp_adapter._active_run_tasks == {}
 
     @pytest.mark.asyncio
     async def test_start_invalid_json_returns_400(self, adapter):
@@ -363,3 +443,24 @@ class TestStopRun:
                 body = await events_resp.text()
                 # Stream should have received run.failed and closed
                 assert "run.failed" in body or "stream closed" in body
+
+    @pytest.mark.asyncio
+    async def test_sweep_orphaned_runs_interrupts_and_clears_state(self, adapter):
+        app = _create_runs_app(adapter)
+        adapter._RUN_STREAM_TTL = 0
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(adapter, "_create_agent") as mock_create:
+                mock_agent, agent_ready, interrupted = _make_slow_agent()
+                mock_create.return_value = mock_agent
+
+                resp = await cli.post("/v1/runs", json={"input": "hello"})
+                assert resp.status == 202
+                data = await resp.json()
+                run_id = data["run_id"]
+                agent_ready.wait(timeout=3.0)
+
+                await adapter._sweep_orphaned_runs_once()
+
+                assert interrupted.is_set()
+                assert run_id not in adapter._run_streams_created
+                assert run_id not in adapter._active_run_tasks

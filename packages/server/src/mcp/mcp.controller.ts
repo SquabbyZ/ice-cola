@@ -166,10 +166,7 @@ export class McpController {
     const result = await this.mcpService.addConversationMCPServer({
       conversationId,
       serverId,
-      serverName: body.serverName,
       teamId: req.user.teamId,
-      serverType: body.serverType,
-      config: body.config,
     });
     return { success: true, data: result };
   }

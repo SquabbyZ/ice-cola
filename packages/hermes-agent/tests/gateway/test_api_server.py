@@ -294,13 +294,15 @@ class TestAuth:
 # ---------------------------------------------------------------------------
 
 
-def _make_adapter(api_key: str = "", cors_origins=None) -> APIServerAdapter:
+def _make_adapter(api_key: str = "", cors_origins=None, internal_mcp_key: str = "") -> APIServerAdapter:
     """Create an adapter with optional API key."""
     extra = {}
     if api_key:
         extra["key"] = api_key
     if cors_origins is not None:
         extra["cors_origins"] = cors_origins
+    if internal_mcp_key:
+        extra["internal_mcp_key"] = internal_mcp_key
     config = PlatformConfig(enabled=True, extra=extra)
     return APIServerAdapter(config)
 
@@ -786,6 +788,51 @@ class TestChatCompletionsEndpoint:
             assert "usage" in data
 
     @pytest.mark.asyncio
+    async def test_successful_completion_passes_mcp_servers(self, adapter):
+        mock_result = {"final_response": "ok", "messages": [], "api_calls": 1}
+
+        mcp_adapter = _make_adapter(internal_mcp_key="internal-secret")
+        app = _create_app(mcp_adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(mcp_adapter, "_run_agent", new_callable=AsyncMock) as mock_run:
+                mock_run.return_value = (mock_result, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
+                resp = await cli.post(
+                    "/v1/chat/completions",
+                    headers={"X-Hermes-Internal-MCP-Key": "internal-secret"},
+                    json={
+                        "model": "hermes-agent",
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+            assert resp.status == 200
+            assert mock_run.call_args.kwargs["mcp_servers"] == [
+                {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+            ]
+
+    @pytest.mark.asyncio
+    async def test_completion_rejects_mcp_servers_without_internal_auth(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(adapter, "_run_agent", new_callable=AsyncMock) as mock_run:
+                resp = await cli.post(
+                    "/v1/chat/completions",
+                    json={
+                        "model": "hermes-agent",
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+            assert resp.status == 403
+            mock_run.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_system_prompt_extracted(self, adapter):
         """System messages from the client are passed as ephemeral_system_prompt."""
         mock_result = {
@@ -1059,6 +1106,51 @@ class TestResponsesEndpoint:
             assert resp.status == 200
             call_kwargs = mock_run.call_args.kwargs
             assert call_kwargs["ephemeral_system_prompt"] == "Talk like a pirate."
+
+    @pytest.mark.asyncio
+    async def test_successful_response_passes_mcp_servers(self, adapter):
+        mock_result = {"final_response": "done", "messages": [], "api_calls": 1}
+
+        mcp_adapter = _make_adapter(internal_mcp_key="internal-secret")
+        app = _create_app(mcp_adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(mcp_adapter, "_run_agent", new_callable=AsyncMock) as mock_run:
+                mock_run.return_value = (mock_result, {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0})
+                resp = await cli.post(
+                    "/v1/responses",
+                    headers={"X-Hermes-Internal-MCP-Key": "internal-secret"},
+                    json={
+                        "model": "hermes-agent",
+                        "input": "Hello",
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+            assert resp.status == 200
+            assert mock_run.call_args.kwargs["mcp_servers"] == [
+                {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+            ]
+
+    @pytest.mark.asyncio
+    async def test_response_rejects_mcp_servers_without_internal_auth(self, adapter):
+        app = _create_app(adapter)
+        async with TestClient(TestServer(app)) as cli:
+            with patch.object(adapter, "_run_agent", new_callable=AsyncMock) as mock_run:
+                resp = await cli.post(
+                    "/v1/responses",
+                    json={
+                        "model": "hermes-agent",
+                        "input": "Hello",
+                        "mcp_servers": [
+                            {"name": "filesystem", "type": "stdio", "config": {"command": "npx"}},
+                        ],
+                    },
+                )
+
+            assert resp.status == 403
+            mock_run.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_previous_response_id_chaining(self, adapter):

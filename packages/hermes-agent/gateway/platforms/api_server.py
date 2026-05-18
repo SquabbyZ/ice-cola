@@ -58,6 +58,8 @@ MAX_REQUEST_BYTES = 1_000_000  # 1 MB default limit for POST bodies
 CHAT_COMPLETIONS_SSE_KEEPALIVE_SECONDS = 30.0
 MAX_NORMALIZED_TEXT_LENGTH = 65_536  # 64 KB cap for normalized content parts
 MAX_CONTENT_LIST_SIZE = 1_000  # Max items when content is an array
+MAX_REQUEST_MCP_SERVERS = 8
+MAX_REQUEST_MCP_NAME_LENGTH = 64
 
 
 def _normalize_chat_content(
@@ -573,6 +575,7 @@ class APIServerAdapter(BasePlatformAdapter):
         self._host: str = extra.get("host", os.getenv("API_SERVER_HOST", DEFAULT_HOST))
         self._port: int = int(extra.get("port", os.getenv("API_SERVER_PORT", str(DEFAULT_PORT))))
         self._api_key: str = extra.get("key", os.getenv("API_SERVER_KEY", ""))
+        self._internal_mcp_key: str = extra.get("internal_mcp_key", os.getenv("API_SERVER_INTERNAL_MCP_KEY", ""))
         self._cors_origins: tuple[str, ...] = self._parse_cors_origins(
             extra.get("cors_origins", os.getenv("API_SERVER_CORS_ORIGINS", "")),
         )
@@ -713,6 +716,7 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_progress_callback=None,
         tool_start_callback=None,
         tool_complete_callback=None,
+        mcp_servers: Optional[list[dict[str, Any]]] = None,
     ) -> Any:
         """
         Create an AIAgent instance using the gateway's runtime config.
@@ -731,6 +735,29 @@ class APIServerAdapter(BasePlatformAdapter):
 
         user_config = _load_gateway_config()
         enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+        conversation_toolsets = []
+        conversation_server_names: list[str] = []
+        conversation_server_configs: dict[str, dict[str, Any]] = {}
+        if mcp_servers:
+            request_mcp_namespace = uuid.uuid4().hex[:12]
+            conversation_server_configs = {
+                f"req-{request_mcp_namespace}-{server['name']}": server["config"]
+                for server in mcp_servers
+                if server.get("name")
+            }
+            conversation_toolsets = sorted({f"mcp-{name}" for name in conversation_server_configs})
+            enabled_toolsets = sorted({*enabled_toolsets, *conversation_toolsets})
+            try:
+                from tools.mcp_tool import register_mcp_servers
+
+                conversation_server_names = list(conversation_server_configs.keys())
+                if conversation_server_configs:
+                    register_mcp_servers(conversation_server_configs)
+            except Exception:
+                logger.warning("Failed to register conversation MCP servers", exc_info=True)
+                conversation_toolsets = []
+                enabled_toolsets = sorted(_get_platform_tools(user_config, "api_server"))
+                conversation_server_names = []
 
         max_iterations = int(os.getenv("HERMES_MAX_ITERATIONS", "90"))
 
@@ -739,23 +766,34 @@ class APIServerAdapter(BasePlatformAdapter):
         from gateway.run import GatewayRunner
         fallback_model = GatewayRunner._load_fallback_model()
 
-        agent = AIAgent(
-            model=model,
-            **runtime_kwargs,
-            max_iterations=max_iterations,
-            quiet_mode=True,
-            verbose_logging=False,
-            ephemeral_system_prompt=ephemeral_system_prompt or None,
-            enabled_toolsets=enabled_toolsets,
-            session_id=session_id,
-            platform="api_server",
-            stream_delta_callback=stream_delta_callback,
-            tool_progress_callback=tool_progress_callback,
-            tool_start_callback=tool_start_callback,
-            tool_complete_callback=tool_complete_callback,
-            session_db=self._ensure_session_db(),
-            fallback_model=fallback_model,
-        )
+        try:
+            agent = AIAgent(
+                model=model,
+                **runtime_kwargs,
+                max_iterations=max_iterations,
+                quiet_mode=True,
+                verbose_logging=False,
+                ephemeral_system_prompt=ephemeral_system_prompt or None,
+                enabled_toolsets=enabled_toolsets,
+                session_id=session_id,
+                platform="api_server",
+                stream_delta_callback=stream_delta_callback,
+                tool_progress_callback=tool_progress_callback,
+                tool_start_callback=tool_start_callback,
+                tool_complete_callback=tool_complete_callback,
+                session_db=self._ensure_session_db(),
+                fallback_model=fallback_model,
+            )
+        except Exception:
+            if conversation_server_names:
+                try:
+                    from tools.mcp_tool import shutdown_mcp_servers
+                    shutdown_mcp_servers(conversation_server_names)
+                except Exception:
+                    logger.debug("Failed to roll back conversation MCP servers after agent init error", exc_info=True)
+            raise
+
+        agent._conversation_mcp_server_names = conversation_server_names
         return agent
 
     # ------------------------------------------------------------------
@@ -808,6 +846,43 @@ class APIServerAdapter(BasePlatformAdapter):
             ],
         })
 
+    @staticmethod
+    def _normalize_mcp_servers(raw_servers: Any) -> list[dict[str, Any]]:
+        if not raw_servers:
+            return []
+        if not isinstance(raw_servers, list):
+            raise ValueError("'mcp_servers' must be an array")
+        if len(raw_servers) > MAX_REQUEST_MCP_SERVERS:
+            raise ValueError(f"'mcp_servers' may contain at most {MAX_REQUEST_MCP_SERVERS} servers")
+        normalized: list[dict[str, Any]] = []
+        for idx, server in enumerate(raw_servers):
+            if not isinstance(server, dict):
+                raise ValueError(f"mcp_servers[{idx}] must be an object")
+            name = str(server.get("name") or "").strip()
+            if not name:
+                raise ValueError(f"mcp_servers[{idx}].name is required")
+            if len(name) > MAX_REQUEST_MCP_NAME_LENGTH or not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+                raise ValueError(f"mcp_servers[{idx}].name is invalid")
+            config = server.get("config") or {}
+            if not isinstance(config, dict):
+                raise ValueError(f"mcp_servers[{idx}].config must be an object")
+            normalized.append({
+                "name": name,
+                "type": str(server.get("type") or "stdio").strip() or "stdio",
+                "config": config,
+            })
+        return normalized
+
+    def _check_internal_mcp_auth(self, request: "web.Request", mcp_servers: list[dict[str, Any]]) -> Optional["web.Response"]:
+        if not mcp_servers:
+            return None
+        if not self._internal_mcp_key:
+            return web.json_response(_openai_error("Request-scoped MCP servers are disabled"), status=403)
+        token = request.headers.get("X-Hermes-Internal-MCP-Key", "")
+        if hmac.compare_digest(token, self._internal_mcp_key):
+            return None
+        return web.json_response(_openai_error("Invalid request-scoped MCP credential"), status=403)
+
     async def _handle_chat_completions(self, request: "web.Request") -> "web.Response":
         """POST /v1/chat/completions — OpenAI Chat Completions format."""
         auth_err = self._check_auth(request)
@@ -828,6 +903,13 @@ class APIServerAdapter(BasePlatformAdapter):
             )
 
         stream = body.get("stream", False)
+        try:
+            mcp_servers = self._normalize_mcp_servers(body.get("mcp_servers"))
+        except ValueError as exc:
+            return web.json_response(_openai_error(str(exc)), status=400)
+        internal_mcp_auth_err = self._check_internal_mcp_auth(request, mcp_servers)
+        if internal_mcp_auth_err:
+            return internal_mcp_auth_err
 
         # Extract system message (becomes ephemeral system prompt layered ON TOP of core)
         system_prompt = None
@@ -974,6 +1056,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 stream_delta_callback=_on_delta,
                 tool_progress_callback=_on_tool_progress,
                 agent_ref=agent_ref,
+                mcp_servers=mcp_servers,
             ))
 
             return await self._write_sse_chat_completion(
@@ -988,11 +1071,12 @@ class APIServerAdapter(BasePlatformAdapter):
                 conversation_history=history,
                 ephemeral_system_prompt=system_prompt,
                 session_id=session_id,
+                mcp_servers=mcp_servers,
             )
 
         idempotency_key = request.headers.get("Idempotency-Key")
         if idempotency_key:
-            fp = _make_request_fingerprint(body, keys=["model", "messages", "tools", "tool_choice", "stream"])
+            fp = _make_request_fingerprint(body, keys=["model", "messages", "tools", "tool_choice", "stream", "mcp_servers"])
             try:
                 result, usage = await _idem_cache.get_or_set(idempotency_key, fp, _compute_completion)
             except Exception as e:
@@ -1694,6 +1778,13 @@ class APIServerAdapter(BasePlatformAdapter):
         previous_response_id = body.get("previous_response_id")
         conversation = body.get("conversation")
         store = body.get("store", True)
+        try:
+            mcp_servers = self._normalize_mcp_servers(body.get("mcp_servers"))
+        except ValueError as exc:
+            return web.json_response(_openai_error(str(exc)), status=400)
+        internal_mcp_auth_err = self._check_internal_mcp_auth(request, mcp_servers)
+        if internal_mcp_auth_err:
+            return internal_mcp_auth_err
 
         # conversation and previous_response_id are mutually exclusive
         if conversation and previous_response_id:
@@ -1828,6 +1919,7 @@ class APIServerAdapter(BasePlatformAdapter):
                 tool_start_callback=_on_tool_start,
                 tool_complete_callback=_on_tool_complete,
                 agent_ref=agent_ref,
+                mcp_servers=mcp_servers,
             ))
 
             response_id = f"resp_{uuid.uuid4().hex[:28]}"
@@ -1856,13 +1948,14 @@ class APIServerAdapter(BasePlatformAdapter):
                 conversation_history=conversation_history,
                 ephemeral_system_prompt=instructions,
                 session_id=session_id,
+                mcp_servers=mcp_servers,
             )
 
         idempotency_key = request.headers.get("Idempotency-Key")
         if idempotency_key:
             fp = _make_request_fingerprint(
                 body,
-                keys=["input", "instructions", "previous_response_id", "conversation", "model", "tools"],
+                keys=["input", "instructions", "previous_response_id", "conversation", "model", "tools", "mcp_servers"],
             )
             try:
                 result, usage = await _idem_cache.get_or_set(idempotency_key, fp, _compute_response)
@@ -2252,6 +2345,7 @@ class APIServerAdapter(BasePlatformAdapter):
         tool_start_callback=None,
         tool_complete_callback=None,
         agent_ref: Optional[list] = None,
+        mcp_servers: Optional[list[dict[str, Any]]] = None,
     ) -> tuple:
         """
         Create an agent and run a conversation in a thread executor.
@@ -2274,20 +2368,30 @@ class APIServerAdapter(BasePlatformAdapter):
                 tool_progress_callback=tool_progress_callback,
                 tool_start_callback=tool_start_callback,
                 tool_complete_callback=tool_complete_callback,
+                mcp_servers=mcp_servers,
             )
             if agent_ref is not None:
                 agent_ref[0] = agent
-            result = agent.run_conversation(
-                user_message=user_message,
-                conversation_history=conversation_history,
-                task_id="default",
-            )
-            usage = {
-                "input_tokens": getattr(agent, "session_prompt_tokens", 0) or 0,
-                "output_tokens": getattr(agent, "session_completion_tokens", 0) or 0,
-                "total_tokens": getattr(agent, "session_total_tokens", 0) or 0,
-            }
-            return result, usage
+            try:
+                result = agent.run_conversation(
+                    user_message=user_message,
+                    conversation_history=conversation_history,
+                    task_id="default",
+                )
+                usage = {
+                    "input_tokens": getattr(agent, "session_prompt_tokens", 0) or 0,
+                    "output_tokens": getattr(agent, "session_completion_tokens", 0) or 0,
+                    "total_tokens": getattr(agent, "session_total_tokens", 0) or 0,
+                }
+                return result, usage
+            finally:
+                conversation_server_names = getattr(agent, "_conversation_mcp_server_names", None)
+                if conversation_server_names:
+                    try:
+                        from tools.mcp_tool import shutdown_mcp_servers
+                        shutdown_mcp_servers(conversation_server_names)
+                    except Exception:
+                        logger.debug("Failed to release conversation MCP servers", exc_info=True)
 
         return await loop.run_in_executor(None, _run)
 
@@ -2339,18 +2443,35 @@ class APIServerAdapter(BasePlatformAdapter):
 
         return _callback
 
+    def _count_active_runs(self) -> int:
+        return sum(1 for task in self._active_run_tasks.values() if not task.done())
+
+    def _interrupt_run(self, run_id: str, reason: str) -> None:
+        agent = self._active_run_agents.get(run_id)
+        if agent is not None:
+            try:
+                agent.interrupt(reason)
+            except Exception:
+                logger.debug("[api_server] failed to interrupt run %s", run_id, exc_info=True)
+
+    async def _sweep_orphaned_runs_once(self) -> None:
+        now = time.time()
+        stale = [
+            run_id
+            for run_id, created_at in list(self._run_streams_created.items())
+            if now - created_at > self._RUN_STREAM_TTL
+        ]
+        for run_id in stale:
+            logger.debug("[api_server] sweeping orphaned run %s", run_id)
+            self._interrupt_run(run_id, "Run expired by TTL sweep")
+            self._run_streams.pop(run_id, None)
+            self._run_streams_created.pop(run_id, None)
+
     async def _handle_runs(self, request: "web.Request") -> "web.Response":
         """POST /v1/runs — start an agent run, return run_id immediately."""
         auth_err = self._check_auth(request)
         if auth_err:
             return auth_err
-
-        # Enforce concurrency limit
-        if len(self._run_streams) >= self._MAX_CONCURRENT_RUNS:
-            return web.json_response(
-                _openai_error(f"Too many concurrent runs (max {self._MAX_CONCURRENT_RUNS})", code="rate_limit_exceeded"),
-                status=429,
-            )
 
         try:
             body = await request.json()
@@ -2364,6 +2485,20 @@ class APIServerAdapter(BasePlatformAdapter):
         user_message = raw_input if isinstance(raw_input, str) else (raw_input[-1].get("content", "") if isinstance(raw_input, list) else "")
         if not user_message:
             return web.json_response(_openai_error("No user message found in input"), status=400)
+
+        try:
+            mcp_servers = self._normalize_mcp_servers(body.get("mcp_servers"))
+        except ValueError as exc:
+            return web.json_response(_openai_error(str(exc)), status=400)
+        internal_mcp_auth_err = self._check_internal_mcp_auth(request, mcp_servers)
+        if internal_mcp_auth_err:
+            return internal_mcp_auth_err
+
+        if self._count_active_runs() >= self._MAX_CONCURRENT_RUNS:
+            return web.json_response(
+                _openai_error(f"Too many concurrent runs (max {self._MAX_CONCURRENT_RUNS})", code="rate_limit_exceeded"),
+                status=429,
+            )
 
         run_id = f"run_{uuid.uuid4().hex}"
         loop = asyncio.get_running_loop()
@@ -2438,26 +2573,38 @@ class APIServerAdapter(BasePlatformAdapter):
         ephemeral_system_prompt = instructions
 
         async def _run_and_close():
+            agent = None
             try:
-                agent = self._create_agent(
-                    ephemeral_system_prompt=ephemeral_system_prompt,
-                    session_id=session_id,
-                    stream_delta_callback=_text_cb,
-                    tool_progress_callback=event_cb,
-                )
-                self._active_run_agents[run_id] = agent
                 def _run_sync():
-                    r = agent.run_conversation(
-                        user_message=user_message,
-                        conversation_history=conversation_history,
-                        task_id="default",
+                    nonlocal agent
+                    agent = self._create_agent(
+                        ephemeral_system_prompt=ephemeral_system_prompt,
+                        session_id=session_id,
+                        stream_delta_callback=_text_cb,
+                        tool_progress_callback=event_cb,
+                        mcp_servers=mcp_servers,
                     )
-                    u = {
-                        "input_tokens": getattr(agent, "session_prompt_tokens", 0) or 0,
-                        "output_tokens": getattr(agent, "session_completion_tokens", 0) or 0,
-                        "total_tokens": getattr(agent, "session_total_tokens", 0) or 0,
-                    }
-                    return r, u
+                    loop.call_soon_threadsafe(self._active_run_agents.__setitem__, run_id, agent)
+                    try:
+                        r = agent.run_conversation(
+                            user_message=user_message,
+                            conversation_history=conversation_history,
+                            task_id="default",
+                        )
+                        u = {
+                            "input_tokens": getattr(agent, "session_prompt_tokens", 0) or 0,
+                            "output_tokens": getattr(agent, "session_completion_tokens", 0) or 0,
+                            "total_tokens": getattr(agent, "session_total_tokens", 0) or 0,
+                        }
+                        return r, u
+                    finally:
+                        conversation_server_names = getattr(agent, "_conversation_mcp_server_names", None)
+                        if conversation_server_names:
+                            try:
+                                from tools.mcp_tool import shutdown_mcp_servers
+                                shutdown_mcp_servers(conversation_server_names)
+                            except Exception:
+                                logger.debug("Failed to release conversation MCP servers", exc_info=True)
 
                 result, usage = await asyncio.get_running_loop().run_in_executor(None, _run_sync)
                 final_response = result.get("final_response", "") if isinstance(result, dict) else ""
@@ -2480,7 +2627,6 @@ class APIServerAdapter(BasePlatformAdapter):
                 except Exception:
                     pass
             finally:
-                # Sentinel: signal SSE stream to close
                 try:
                     q.put_nowait(None)
                 except Exception:
@@ -2568,11 +2714,6 @@ class APIServerAdapter(BasePlatformAdapter):
                 pass
 
         if task is not None and not task.done():
-            task.cancel()
-            # Bounded wait: run_conversation() executes in the default
-            # executor thread which task.cancel() cannot preempt — we rely on
-            # agent.interrupt() above to break the loop. Cap the wait so a
-            # slow/unresponsive interrupt can't hang this handler.
             try:
                 await asyncio.wait_for(asyncio.shield(task), timeout=5.0)
             except asyncio.TimeoutError:

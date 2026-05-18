@@ -13,6 +13,9 @@ export interface ExpertPrompt {
   systemPrompt: string;
   icon?: string;
   color?: string;
+  category?: string;
+  sourceId?: string | null;
+  marketplaceId?: string | null;
   isDefault: boolean;
 }
 
@@ -30,15 +33,7 @@ export class ExpertService {
     try {
       const result = await this.rpc.send('experts.list');
       if (result && result.experts) {
-        return result.experts.map((e: any) => ({
-          id: e.id,
-          name: e.name,
-          description: e.description || '',
-          systemPrompt: '',
-          icon: e.icon,
-          color: e.color,
-          isDefault: false,
-        }));
+        return result.experts.map((e: any) => this.toExpertPrompt(e));
       }
       return [];
     } catch (error) {
@@ -50,9 +45,13 @@ export class ExpertService {
   /**
    * 创建专家
    */
-  async createExpert(expert: Omit<ExpertPrompt, 'id'>): Promise<ExpertPrompt> {
-    const newExpert = await this.rpc.send('experts.create', expert);
-    return newExpert;
+  async createExpert(expert: Omit<ExpertPrompt, 'id' | 'sourceId' | 'marketplaceId'>): Promise<ExpertPrompt> {
+    const result = await this.rpc.send('experts.create', expert);
+    const payload = result?.expert ?? result;
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('Invalid expert response');
+    }
+    return this.toExpertPrompt(payload);
   }
 
   /**
@@ -67,5 +66,20 @@ export class ExpertService {
    */
   async deleteExpert(id: string): Promise<void> {
     await this.rpc.send('experts.delete', { id });
+  }
+
+  private toExpertPrompt(expert: any): ExpertPrompt {
+    return {
+      id: expert.id,
+      name: expert.name,
+      description: expert.description || '',
+      systemPrompt: expert.systemPrompt || '',
+      icon: expert.icon,
+      color: expert.color,
+      category: expert.category || undefined,
+      sourceId: expert.sourceId || null,
+      marketplaceId: expert.marketplaceId || null,
+      isDefault: expert.isDefault || false,
+    };
   }
 }

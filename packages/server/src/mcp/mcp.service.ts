@@ -29,10 +29,7 @@ type ConversationMCPConfig = {
 type ConversationMCPServerInput = {
   conversationId: string;
   serverId: string;
-  serverName: string;
   teamId: string;
-  serverType?: string;
-  config?: Record<string, unknown>;
 };
 
 type UpdateMCPServerField = {
@@ -263,13 +260,15 @@ export class McpService {
   }
 
   async addConversationMCPServer(input: ConversationMCPServerInput) {
-    await this.assertServersAccessible([input.serverId], input.teamId);
+    const server = await this.findServerById(input.serverId, input.teamId);
+    if (!server) {
+      throw new ForbiddenException('MCP server access denied');
+    }
     return this.db.addConversationMCPServer({
       conversationId: input.conversationId,
       serverId: input.serverId,
-      serverName: input.serverName,
-      serverType: input.serverType || 'stdio',
-      config: input.config,
+      serverName: server.name,
+      serverType: server.server_type || 'stdio',
     });
   }
 

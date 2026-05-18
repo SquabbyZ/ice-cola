@@ -47,25 +47,26 @@ describe('McpService conversation servers', () => {
     expect(db.setConversationMCPServers).toHaveBeenCalledWith('conversation-1', ['server-1']);
   });
 
-  it('adds a conversation server with stdio as the default server type after checking team access', async () => {
+  it('adds a conversation server using trusted marketplace metadata', async () => {
     const addedServer: QueryRow = { server_id: 'server-1', server_type: 'stdio' };
-    db.query.mockResolvedValue([{ id: 'server-1' }]);
+    db.queryOne.mockResolvedValue({ id: 'server-1', name: 'Filesystem', server_type: 'stdio' });
     db.addConversationMCPServer.mockResolvedValue(addedServer);
 
     await expect(service.addConversationMCPServer({
       conversationId: 'conversation-1',
       serverId: 'server-1',
-      serverName: 'Filesystem',
       teamId: 'team-1',
-      config: { root: '/workspace' },
     })).resolves.toEqual(addedServer);
 
+    expect(db.queryOne).toHaveBeenCalledWith(
+      'SELECT * FROM mcp_servers WHERE id = $1 AND (team_id = $2 OR team_id IS NULL)',
+      ['server-1', 'team-1']
+    );
     expect(db.addConversationMCPServer).toHaveBeenCalledWith({
       conversationId: 'conversation-1',
       serverId: 'server-1',
       serverName: 'Filesystem',
       serverType: 'stdio',
-      config: { root: '/workspace' },
     });
   });
 
@@ -74,6 +75,17 @@ describe('McpService conversation servers', () => {
 
     await expect(service.setConversationMCPServers('conversation-1', ['server-1'], 'team-1')).rejects.toThrow('MCP server access denied');
     expect(db.setConversationMCPServers).not.toHaveBeenCalled();
+  });
+
+  it('rejects added conversation servers outside the team scope', async () => {
+    db.queryOne.mockResolvedValue(null);
+
+    await expect(service.addConversationMCPServer({
+      conversationId: 'conversation-1',
+      serverId: 'server-1',
+      teamId: 'team-1',
+    })).rejects.toThrow('MCP server access denied');
+    expect(db.addConversationMCPServer).not.toHaveBeenCalled();
   });
 
   it('checks team server access before creating a user MCP connection', async () => {

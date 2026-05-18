@@ -121,6 +121,8 @@ CREATE TABLE IF NOT EXISTS experts (
     icon VARCHAR(50),
     color VARCHAR(20),
     category VARCHAR(100),
+    source_id VARCHAR(255),
+    marketplace_id VARCHAR(255),
     rating DECIMAL(3, 2) DEFAULT 0.00,
     is_default BOOLEAN DEFAULT false,
     call_count INTEGER DEFAULT 0,

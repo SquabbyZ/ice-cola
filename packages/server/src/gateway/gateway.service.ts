@@ -49,6 +49,21 @@ interface GatewayJwtPayload {
   type?: string;
 }
 
+interface HermesMCPServer {
+  name: string;
+  type: string;
+  config: Record<string, unknown>;
+}
+
+interface HermesMessageParams {
+  sessionId: string;
+  message: string;
+  teamId?: string;
+  conversationId?: string;
+  expertId?: string;
+  attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }>;
+}
+
 @Injectable()
 export class GatewayService {
   private gatewayInstance: any = null;
@@ -407,6 +422,20 @@ export class GatewayService {
     };
   }
 
+  private async getConversationHermesMcpServers(conversationId: string): Promise<HermesMCPServer[]> {
+    try {
+      const rows = await this.db.getConversationMCPServers(conversationId);
+      return rows.map((row: { name: string; server_type?: string; config?: Record<string, unknown> }) => ({
+        name: row.name,
+        type: row.server_type || 'stdio',
+        config: row.config || {},
+      }));
+    } catch (error) {
+      this.logger.warn(`Failed to load MCP servers for conversation ${conversationId}:`, error);
+      return [];
+    }
+  }
+
   private async checkHermesAgentHealth(): Promise<boolean> {
     const now = Date.now();
     if (now - this.hermesAgentStatus.lastChecked < this.HERMES_HEALTH_TTL_MS) {
@@ -425,7 +454,7 @@ export class GatewayService {
   }
 
   private async sendHermesAgentMessage(
-    params: { sessionId: string; message: string; teamId?: string; conversationId?: string; expertId?: string; attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }> },
+    params: HermesMessageParams,
     senderWs?: WebSocket,
   ) {
     const messageId = this.generateUUID();
@@ -481,16 +510,30 @@ export class GatewayService {
       messages.push({ role: 'user', content: params.message });
     }
 
+    const conversationMcpServers = params.conversationId
+      ? await this.getConversationHermesMcpServers(params.conversationId)
+      : [];
     const requestBody: Record<string, any> = {
       model: 'hermes-agent',
       messages,
       stream: true,
     };
+    if (conversationMcpServers.length > 0) {
+      requestBody.mcp_servers = conversationMcpServers;
+    }
 
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (requestBody.mcp_servers?.length) {
+        const internalKey = this.configService.get<string>('HERMES_INTERNAL_MCP_KEY');
+        if (!internalKey) {
+          throw new Error('Internal MCP key is required when forwarding request-scoped MCP servers');
+        }
+        headers['X-Hermes-Internal-MCP-Key'] = internalKey;
+      }
       const response = await firstValueFrom(
         this.httpService.post(`${this.HERMES_AGENT_URL}/v1/chat/completions`, requestBody, {
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           responseType: 'stream',
           timeout: 300000,
         }),
@@ -1272,22 +1315,7 @@ export class GatewayService {
 
     return {
       ok: true,
-      experts: experts.map(e => ({
-        id: e.id,
-        name: e.name,
-        description: e.description || '',
-        systemPrompt: e.systemprompt || '',
-        icon: e.icon || '🤖',
-        color: e.color || '#3B82F6',
-        category: e.category || null,
-        isDefault: e.is_default || false,
-        enabled: e.enabled ?? true,
-        callCount: e.call_count || 0,
-        rating: e.rating || 0,
-        teamId: e.teamid || null,
-        createdAt: e.createdat,
-        updatedAt: e.updatedat,
-      })),
+      experts: experts.map(e => this.toGatewayExpert(e)),
       total,
     };
   }
@@ -1300,22 +1328,7 @@ export class GatewayService {
 
     return {
       ok: true,
-      expert: {
-        id: expert.id,
-        name: expert.name,
-        description: expert.description || '',
-        systemPrompt: expert.systemprompt || '',
-        icon: expert.icon || '🤖',
-        color: expert.color || '#3B82F6',
-        category: expert.category || null,
-        isDefault: expert.is_default || false,
-        enabled: expert.enabled ?? true,
-        callCount: expert.call_count || 0,
-        rating: expert.rating || 0,
-        teamId: expert.teamid || null,
-        createdAt: expert.createdat,
-        updatedAt: expert.updatedat,
-      },
+      expert: this.toGatewayExpert(expert),
     };
   }
 
@@ -1346,22 +1359,7 @@ export class GatewayService {
 
     return {
       ok: true,
-      expert: {
-        id: expert.id,
-        name: expert.name,
-        description: expert.description || '',
-        systemPrompt: expert.systemprompt || '',
-        icon: expert.icon || '🤖',
-        color: expert.color || '#3B82F6',
-        category: expert.category || null,
-        isDefault: expert.is_default || false,
-        enabled: expert.enabled ?? true,
-        callCount: expert.call_count || 0,
-        rating: expert.rating || 0,
-        teamId: expert.teamid || null,
-        createdAt: expert.createdat,
-        updatedAt: expert.updatedat,
-      },
+      expert: this.toGatewayExpert(expert),
     };
   }
 
@@ -1400,22 +1398,7 @@ export class GatewayService {
 
     return {
       ok: true,
-      expert: {
-        id: updated.id,
-        name: updated.name,
-        description: updated.description || '',
-        systemPrompt: updated.systemprompt || '',
-        icon: updated.icon || '🤖',
-        color: updated.color || '#3B82F6',
-        category: updated.category || null,
-        isDefault: updated.is_default || false,
-        enabled: updated.enabled ?? true,
-        callCount: updated.call_count || 0,
-        rating: updated.rating || 0,
-        teamId: updated.teamid || null,
-        createdAt: updated.createdat,
-        updatedAt: updated.updatedat,
-      },
+      expert: this.toGatewayExpert(updated),
     };
   }
 
@@ -1446,7 +1429,7 @@ export class GatewayService {
       activeExpert: {
         id: expert.id,
         name: expert.name,
-        systemPrompt: expert.systemprompt,
+        systemPrompt: expert.systemPrompt ?? expert.systemprompt,
       },
     };
   }
@@ -1536,6 +1519,27 @@ export class GatewayService {
         id: expert.id,
         rating: expert.rating,
       },
+    };
+  }
+
+  private toGatewayExpert(expert: any) {
+    return {
+      id: expert.id,
+      name: expert.name,
+      description: expert.description || '',
+      systemPrompt: expert.systemPrompt ?? expert.systemprompt ?? '',
+      icon: expert.icon || '🤖',
+      color: expert.color || '#3B82F6',
+      category: expert.category || null,
+      sourceId: expert.source_id || null,
+      marketplaceId: expert.marketplace_id || null,
+      isDefault: expert.is_default || false,
+      enabled: expert.enabled ?? true,
+      callCount: expert.call_count || 0,
+      rating: expert.rating || 0,
+      teamId: expert.teamId ?? expert.teamid ?? null,
+      createdAt: expert.createdAt ?? expert.createdat,
+      updatedAt: expert.updatedAt ?? expert.updatedat,
     };
   }
 

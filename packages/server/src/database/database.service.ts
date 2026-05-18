@@ -357,12 +357,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     icon?: string;
     color?: string;
     category?: string;
+    sourceId?: string;
+    marketplaceId?: string;
     isDefault?: boolean;
   }) {
     const id = this.generateUUID();
     return this.queryOne(
-      `INSERT INTO experts (id, "teamId", name, description, "systemPrompt", icon, color, category, is_default, enabled, "createdAt", "updatedAt")
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), NOW())
+      `INSERT INTO experts (id, "teamId", name, description, "systemPrompt", icon, color, category, source_id, marketplace_id, is_default, enabled, "createdAt", "updatedAt")
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, NOW(), NOW())
        RETURNING *`,
       [
         id,
@@ -373,6 +375,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         data.icon || null,
         data.color || null,
         data.category || null,
+        data.sourceId || null,
+        data.marketplaceId || null,
         data.isDefault ?? false,
       ]
     );
@@ -436,16 +440,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   async updateExpert(id: string, updates: any) {
-    const allowedFields = ['name', 'description', 'systemPrompt', 'icon', 'color', 'category', 'enabled', 'is_default', 'call_count', 'rating'];
+    const allowedFields = ['name', 'description', 'systemPrompt', 'icon', 'color', 'category', 'source_id', 'marketplace_id', 'enabled', 'is_default', 'call_count', 'rating'];
     const fields: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
 
     Object.entries(updates).forEach(([key, value]) => {
       if (allowedFields.includes(key) && value !== undefined) {
-        // Convert camelCase to snake_case
-        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        fields.push(`"${snakeKey}" = $${paramIndex}`);
+        const column = key === 'systemPrompt' ? 'systemPrompt' : key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        fields.push(`"${column}" = $${paramIndex}`);
         values.push(value);
         paramIndex++;
       }

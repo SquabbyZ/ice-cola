@@ -7,7 +7,7 @@
 import { create } from 'zustand';
 import { gatewayClient } from '@/lib/gateway-client';
 import { GatewayRpcService } from '@/services/gateway-rpc';
-import { ExpertService } from '@/services/expert-service';
+import { ExpertService, type ExpertPrompt as MarketplaceExpertPrompt } from '@/services/expert-service';
 import { useExpertStore } from './experts';
 
 const gatewayRpc = new GatewayRpcService(gatewayClient);
@@ -202,15 +202,52 @@ const MOCK_MARKETPLACE_EXPERTS: Expert[] = [
   },
 ];
 
+const INSTALLED_EXPERT_IDS_KEY = 'expert-marketplace-installed-expert-ids';
+
 function getAuthHeader(): Record<string, string> {
   const token = localStorage.getItem('accessToken');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function readInstalledExpertIds(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(INSTALLED_EXPERT_IDS_KEY);
+    return raw ? JSON.parse(raw) as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeInstalledExpertIds(installedExpertIds: Record<string, string>): void {
+  localStorage.setItem(INSTALLED_EXPERT_IDS_KEY, JSON.stringify(installedExpertIds));
+}
+
+function matchInstalledExpert(marketplace: Expert, userExperts: MarketplaceExpertPrompt[], installedExpertIds: Record<string, string>): string | null {
+  const persistedExpertId = installedExpertIds[marketplace.id];
+  if (persistedExpertId) {
+    const persistedMatch = userExperts.find((expert) => expert.id === persistedExpertId);
+    if (persistedMatch) {
+      return persistedMatch.id;
+    }
+  }
+
+  const sourceMatch = userExperts.find(
+    (expert) => expert.marketplaceId === marketplace.id || expert.sourceId === marketplace.id
+  );
+  if (sourceMatch) {
+    return sourceMatch.id;
+  }
+
+  const legacyMatch = userExperts.find(
+    (expert) => expert.name === marketplace.name && expert.description === marketplace.description
+  );
+  return legacyMatch?.id ?? null;
+}
+
 export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, get) => ({
   experts: [],
   installedExperts: [],
-  installedExpertIds: {},
+  installedExpertIds: readInstalledExpertIds(),
   searchQuery: '',
   selectedCategory: 'all',
   isLoading: false,
@@ -244,16 +281,14 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
         // ignore
       }
 
-      // 通过名称匹配市场专家和用户专家，确定哪些已安装
+      const persistedInstalledExpertIds = readInstalledExpertIds();
       const installedMap: Record<string, string> = {};
       const installedIds: string[] = [];
 
       marketplaceExperts.forEach((marketplace) => {
-        const matched = userExperts.find(
-          (ue) => ue.name === marketplace.name && ue.description === marketplace.description
-        );
-        if (matched) {
-          installedMap[marketplace.id] = matched.id;
+        const matchedId = matchInstalledExpert(marketplace, userExperts as any[], persistedInstalledExpertIds);
+        if (matchedId) {
+          installedMap[marketplace.id] = matchedId;
           installedIds.push(marketplace.id);
         }
       });
@@ -280,22 +315,23 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
     // 从用户的专家列表中重新计算哪些市场专家已被安装
     try {
       const userExperts = await expertService.getAllExperts();
-      const { experts, installedExpertIds } = get();
+      const { experts } = get();
+      const persistedInstalledExpertIds = readInstalledExpertIds();
 
-      const installedMap: Record<string, string> = { ...installedExpertIds };
+      const installedMap: Record<string, string> = {};
       const installedIds: string[] = [];
 
       experts.forEach((marketplace) => {
-        const matched = userExperts.find(
-          (ue) => ue.name === marketplace.name && ue.description === marketplace.description
-        );
-        if (matched) {
-          installedMap[marketplace.id] = matched.id;
+        const matchedId = matchInstalledExpert(marketplace, userExperts, persistedInstalledExpertIds);
+        if (matchedId) {
+          installedMap[marketplace.id] = matchedId;
           if (!installedIds.includes(marketplace.id)) {
             installedIds.push(marketplace.id);
           }
         }
       });
+
+      writeInstalledExpertIds(installedMap);
 
       set((state) => ({
         experts: state.experts.map((exp) => ({
@@ -330,6 +366,7 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
         systemPrompt: marketplaceExpert.systemPrompt,
         icon: marketplaceExpert.icon,
         color: marketplaceExpert.color,
+        category: marketplaceExpert.category,
         isDefault: false,
       });
 
@@ -340,6 +377,10 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
           [id]: createdExpert.id,
         },
       }));
+      writeInstalledExpertIds({
+        ...get().installedExpertIds,
+        [id]: createdExpert.id,
+      });
 
       // 刷新"我的专家"列表，让新添加的专家立即显示
       useExpertStore.getState().loadPrompts();
@@ -378,6 +419,11 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
         delete newMapping[id];
         return { installedExpertIds: newMapping };
       });
+      {
+        const nextMapping = { ...get().installedExpertIds };
+        delete nextMapping[id];
+        writeInstalledExpertIds(nextMapping);
+      }
 
       // 刷新"我的专家"列表
       useExpertStore.getState().loadPrompts();
@@ -387,7 +433,9 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
         experts: state.experts.map((exp) =>
           exp.id === id ? { ...exp, isInstalled: true } : exp
         ),
-        installedExperts: [...state.installedExperts, id],
+        installedExperts: state.installedExperts.includes(id)
+          ? state.installedExperts
+          : [...state.installedExperts, id],
       }));
       console.error('Failed to uninstall expert:', err);
     }

@@ -2919,33 +2919,46 @@ def probe_mcp_server_tools() -> Dict[str, List[tuple]]:
     return result
 
 
-def shutdown_mcp_servers():
-    """Close all MCP server connections and stop the background loop.
+def shutdown_mcp_servers(server_names: List[str] | None = None):
+    """Close MCP server connections and stop the background loop when idle.
 
-    Each server Task is signalled to exit its ``async with`` block so that
-    the anyio cancel-scope cleanup happens in the same Task that opened it.
-    All servers are shut down in parallel via ``asyncio.gather``.
+    When *server_names* is provided, only those servers are shut down and
+    deregistered. Otherwise all servers are closed.
     """
     with _lock:
-        servers_snapshot = list(_servers.values())
+        if server_names is None:
+            servers_snapshot = list(_servers.items())
+        else:
+            servers_snapshot = [
+                (name, _servers[name])
+                for name in server_names
+                if name in _servers
+            ]
 
-    # Fast path: nothing to shut down.
     if not servers_snapshot:
-        _stop_mcp_loop()
+        with _lock:
+            should_stop = not _servers
+        if should_stop:
+            _stop_mcp_loop()
         return
 
     async def _shutdown():
         results = await asyncio.gather(
-            *(server.shutdown() for server in servers_snapshot),
+            *(server.shutdown() for _, server in servers_snapshot),
             return_exceptions=True,
         )
-        for server, result in zip(servers_snapshot, results):
+        for (name, server), result in zip(servers_snapshot, results):
             if isinstance(result, Exception):
                 logger.debug(
-                    "Error closing MCP server '%s': %s", server.name, result,
+                    "Error closing MCP server '%s': %s", name, result,
                 )
         with _lock:
-            _servers.clear()
+            if server_names is None:
+                _servers.clear()
+            else:
+                for name, server in servers_snapshot:
+                    if _servers.get(name) is server:
+                        del _servers[name]
 
     with _lock:
         loop = _mcp_loop
@@ -2956,7 +2969,10 @@ def shutdown_mcp_servers():
         except Exception as exc:
             logger.debug("Error during MCP shutdown: %s", exc)
 
-    _stop_mcp_loop()
+    with _lock:
+        should_stop = not _servers
+    if should_stop:
+        _stop_mcp_loop()
 
 
 def _kill_orphaned_mcp_children() -> None:

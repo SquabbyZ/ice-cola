@@ -79,17 +79,19 @@ describe('McpController conversation authorization', () => {
     const addedServer: McpServerFixture = { server_id: 'server-1', name: 'Filesystem' };
     service.addConversationMCPServer.mockResolvedValue(addedServer);
 
-    await expect(controller.addConversationMCPServer('conversation-1', 'server-1', { serverName: 'Filesystem' }, { user: { id: 'user-1', teamId: 'team-1' } })).resolves.toEqual({
+    await expect(controller.addConversationMCPServer(
+      'conversation-1',
+      'server-1',
+      { serverName: 'Filesystem', serverType: 'stdio', config: { command: 'unsafe-client-value' } },
+      { user: { id: 'user-1', teamId: 'team-1' } }
+    )).resolves.toEqual({
       success: true,
       data: addedServer,
     });
     expect(service.addConversationMCPServer).toHaveBeenCalledWith({
       conversationId: 'conversation-1',
       serverId: 'server-1',
-      serverName: 'Filesystem',
       teamId: 'team-1',
-      serverType: undefined,
-      config: undefined,
     });
   });
 
