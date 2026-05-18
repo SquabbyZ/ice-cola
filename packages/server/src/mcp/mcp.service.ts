@@ -180,21 +180,28 @@ export class McpService {
     );
   }
 
-  async disconnectServer(userId: string, serverId: string) {
+  async disconnectServer(userId: string, serverId: string, teamId: string) {
     return this.db.queryOne(
-      `UPDATE user_mcp_connections SET status = 'disconnected', disconnected_at = NOW() WHERE user_id = $1 AND server_id = $2 RETURNING *`,
-      [userId, serverId]
+      `UPDATE user_mcp_connections umc
+       SET status = 'disconnected', disconnected_at = NOW()
+       FROM mcp_servers ms
+       WHERE umc.server_id = ms.id
+         AND umc.user_id = $1
+         AND umc.server_id = $2
+         AND (ms.team_id = $3 OR ms.team_id IS NULL)
+       RETURNING umc.*`,
+      [userId, serverId, teamId]
     );
   }
 
-  async findUserConnections(userId: string) {
+  async findUserConnections(userId: string, teamId: string) {
     const rows = await this.db.query(
       `SELECT umc.*, ms.name, ms.description, ms.version, ms.author, ms.category, ms.icon, ms.color, ms.tags, ms.homepage, ms.repository, ms.enabled as server_enabled, ms.config_schema, ms.instructions, ms.ratings, ms.installs
        FROM user_mcp_connections umc
        INNER JOIN mcp_servers ms ON umc.server_id = ms.id
-       WHERE umc.user_id = $1
+       WHERE umc.user_id = $1 AND (ms.team_id = $2 OR ms.team_id IS NULL)
        ORDER BY umc.connected_at DESC`,
-      [userId]
+      [userId, teamId]
     );
     return rows.map((row: MCPServerRow) => ({
       ...row,
@@ -203,22 +210,32 @@ export class McpService {
     }));
   }
 
-  async findConnectedServers(userId: string) {
-    const connections = await this.findUserConnections(userId);
+  async findConnectedServers(userId: string, teamId: string) {
+    const connections = await this.findUserConnections(userId, teamId);
     return connections.filter((connection: MCPServerRow) => connection.status === 'connected');
   }
 
-  async updateConnectionConfig(userId: string, serverId: string, config: Record<string, string>) {
+  async updateConnectionConfig(userId: string, serverId: string, teamId: string, config: Record<string, string>) {
     return this.db.queryOne(
-      `UPDATE user_mcp_connections SET config = $1, updated_at = CURRENT_TIMESTAMP WHERE user_id = $2 AND server_id = $3 RETURNING *`,
-      [JSON.stringify(config), userId, serverId]
+      `UPDATE user_mcp_connections umc
+       SET config = $1, updated_at = CURRENT_TIMESTAMP
+       FROM mcp_servers ms
+       WHERE umc.server_id = ms.id
+         AND umc.user_id = $2
+         AND umc.server_id = $3
+         AND (ms.team_id = $4 OR ms.team_id IS NULL)
+       RETURNING umc.*`,
+      [JSON.stringify(config), userId, serverId, teamId]
     );
   }
 
-  async getConnectionStatus(userId: string, serverId: string) {
+  async getConnectionStatus(userId: string, serverId: string, teamId: string) {
     return this.db.queryOne(
-      'SELECT * FROM user_mcp_connections WHERE user_id = $1 AND server_id = $2',
-      [userId, serverId]
+      `SELECT umc.*
+       FROM user_mcp_connections umc
+       INNER JOIN mcp_servers ms ON umc.server_id = ms.id
+       WHERE umc.user_id = $1 AND umc.server_id = $2 AND (ms.team_id = $3 OR ms.team_id IS NULL)`,
+      [userId, serverId, teamId]
     );
   }
 
@@ -255,7 +272,8 @@ export class McpService {
     return this.db.setConversationMCPServers(conversationId, serverIds);
   }
 
-  async clearConversationMCPServers(conversationId: string) {
+  async clearConversationMCPServers(conversationId: string, teamId: string) {
+    await this.assertConversationAccess(conversationId, teamId);
     return this.db.clearConversationMCPServers(conversationId);
   }
 
@@ -272,7 +290,9 @@ export class McpService {
     });
   }
 
-  async removeConversationMCPServer(conversationId: string, serverId: string) {
+  async removeConversationMCPServer(conversationId: string, serverId: string, teamId: string) {
+    await this.assertConversationAccess(conversationId, teamId);
+    await this.assertServersAccessible([serverId], teamId);
     return this.db.removeConversationMCPServer(conversationId, serverId);
   }
 

@@ -81,13 +81,13 @@ export class McpController {
 
   @Get('connections')
   async findUserConnections(@Request() req: AuthenticatedRequest) {
-    const result = await this.mcpService.findUserConnections(req.user.id);
+    const result = await this.mcpService.findUserConnections(req.user.id, req.user.teamId);
     return { success: true, data: result };
   }
 
   @Get('connections/connected')
   async findConnectedServers(@Request() req: AuthenticatedRequest) {
-    const result = await this.mcpService.findConnectedServers(req.user.id);
+    const result = await this.mcpService.findConnectedServers(req.user.id, req.user.teamId);
     return { success: true, data: result };
   }
 
@@ -105,7 +105,7 @@ export class McpController {
     @Body() body: { serverId: string },
     @Request() req: AuthenticatedRequest,
   ) {
-    const result = await this.mcpService.disconnectServer(req.user.id, body.serverId);
+    const result = await this.mcpService.disconnectServer(req.user.id, body.serverId, req.user.teamId);
     return { success: true, data: result };
   }
 
@@ -115,7 +115,7 @@ export class McpController {
     @Body() body: { config: Record<string, string> },
     @Request() req: AuthenticatedRequest,
   ) {
-    const result = await this.mcpService.updateConnectionConfig(req.user.id, serverId, body.config);
+    const result = await this.mcpService.updateConnectionConfig(req.user.id, serverId, req.user.teamId, body.config);
     return { success: true, data: result };
   }
 
@@ -124,7 +124,7 @@ export class McpController {
     @Param('serverId') serverId: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    const result = await this.mcpService.getConnectionStatus(req.user.id, serverId);
+    const result = await this.mcpService.getConnectionStatus(req.user.id, serverId, req.user.teamId);
     return { success: true, data: result };
   }
 
@@ -150,8 +150,7 @@ export class McpController {
 
   @Delete('conversation/:conversationId/servers')
   async clearConversationMCPServers(@Param('conversationId') conversationId: string, @Request() req: AuthenticatedRequest) {
-    await this.mcpService.assertConversationAccess(conversationId, req.user.teamId);
-    const result = await this.mcpService.clearConversationMCPServers(conversationId);
+    const result = await this.mcpService.clearConversationMCPServers(conversationId, req.user.teamId);
     return { success: true, data: result };
   }
 
@@ -177,8 +176,7 @@ export class McpController {
     @Param('serverId') serverId: string,
     @Request() req: AuthenticatedRequest,
   ) {
-    await this.mcpService.assertConversationAccess(conversationId, req.user.teamId);
-    const result = await this.mcpService.removeConversationMCPServer(conversationId, serverId);
+    const result = await this.mcpService.removeConversationMCPServer(conversationId, serverId, req.user.teamId);
     return { success: true, data: result };
   }
 

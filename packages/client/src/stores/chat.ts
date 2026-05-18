@@ -34,14 +34,18 @@ export interface PendingMessage {
   content: string;
   retryCount: number;
   timestamp: number;
+  conversationId?: string;
+  teamId?: string;
+  expertId?: string;
+  mcpServerIds?: string[];
+  attachments?: Array<{
+    type: 'image' | 'file';
+    name: string;
+    mimeType: string;
+    data?: string;
+  }>;
 }
 
-export interface MCPServerSelection {
-  serverId: string;
-  serverName: string;
-  serverType: string;
-  config?: Record<string, string>;
-}
 
 export interface ChatState {
   messages: ChatMessage[];
@@ -54,8 +58,6 @@ export interface ChatState {
   editingMessageId: string | null;
   activeStreamId: string | null;
 
-  // MCP server selections per conversation
-  selectedMCPServers: Record<string, string[]>; // conversationId -> serverIds
 
   // Actions
   setConnected: (connected: boolean) => void;
@@ -76,8 +78,6 @@ export interface ChatState {
   setActiveStreamId: (id: string | null) => void;
   addToolCall: (messageId: string, toolCall: ToolCallResult) => void;
   updateToolCall: (messageId: string, toolCallId: string, updates: Partial<ToolCallResult>) => void;
-  setSelectedMCPServers: (conversationId: string, serverIds: string[]) => void;
-  getSelectedMCPServers: (conversationId: string) => string[];
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -90,7 +90,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   pendingMessages: [],
   editingMessageId: null,
   activeStreamId: null,
-  selectedMCPServers: {},
 
   setConnected: (connected) => set({ connected }),
   setSessionKey: (key) => set({ sessionKey: key }),
@@ -142,14 +141,4 @@ export const useChatStore = create<ChatState>((set, get) => ({
           : msg
       ),
     })),
-  setSelectedMCPServers: (conversationId, serverIds) =>
-    set((state) => ({
-      selectedMCPServers: {
-        ...state.selectedMCPServers,
-        [conversationId]: serverIds,
-      },
-    })),
-  getSelectedMCPServers: (conversationId) => {
-    return get().selectedMCPServers[conversationId] || [];
-  },
 }));

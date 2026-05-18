@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConversationService } from './conversation.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -24,8 +25,8 @@ export class ConversationController {
     @Body() body: { title: string },
     @Req() req: any,
   ) {
-    const userId = req.user?.sub || '';
-    const result = await this.conversationService.create(teamId, body.title, userId);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.create(req.user.teamId, body.title, req.user.sub);
     return { success: true, data: result };
   }
 
@@ -33,8 +34,10 @@ export class ConversationController {
   async getList(
     @Param('teamId') teamId: string,
     @Query() query: { page?: number; pageSize?: number },
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.getList(teamId, query);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.getList(req.user.teamId, query);
     return { success: true, data: result };
   }
 
@@ -42,8 +45,10 @@ export class ConversationController {
   async getById(
     @Param('teamId') teamId: string,
     @Param('conversationId') conversationId: string,
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.getById(teamId, conversationId);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.getById(req.user.teamId, conversationId);
     return { success: true, data: result };
   }
 
@@ -52,8 +57,10 @@ export class ConversationController {
     @Param('teamId') teamId: string,
     @Param('conversationId') conversationId: string,
     @Body() body: { role: 'user' | 'assistant' | 'system'; content: string; model?: string; usage?: Record<string, any> },
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.addMessage(teamId, conversationId, body);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.addMessage(req.user.teamId, conversationId, body);
     return { success: true, data: result };
   }
 
@@ -62,8 +69,10 @@ export class ConversationController {
     @Param('teamId') teamId: string,
     @Param('conversationId') conversationId: string,
     @Body() body: { title: string },
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.updateTitle(teamId, conversationId, body.title);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.updateTitle(req.user.teamId, conversationId, body.title);
     return { success: true, data: result };
   }
 
@@ -71,8 +80,10 @@ export class ConversationController {
   async delete(
     @Param('teamId') teamId: string,
     @Param('conversationId') conversationId: string,
+    @Req() req: any,
   ) {
-    await this.conversationService.delete(teamId, conversationId);
+    this.assertTeamAccess(teamId, req);
+    await this.conversationService.delete(req.user.teamId, conversationId);
     return { success: true, data: null };
   }
 
@@ -82,8 +93,10 @@ export class ConversationController {
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
     @Body() body: { content: string },
+    @Req() req: any,
   ) {
-    const result = await this.conversationService.updateMessage(teamId, conversationId, messageId, body);
+    this.assertTeamAccess(teamId, req);
+    const result = await this.conversationService.updateMessage(req.user.teamId, conversationId, messageId, body);
     return { success: true, data: result };
   }
 
@@ -92,8 +105,16 @@ export class ConversationController {
     @Param('teamId') teamId: string,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
+    @Req() req: any,
   ) {
-    await this.conversationService.deleteMessage(teamId, conversationId, messageId);
+    this.assertTeamAccess(teamId, req);
+    await this.conversationService.deleteMessage(req.user.teamId, conversationId, messageId);
     return { success: true, data: null };
+  }
+
+  private assertTeamAccess(teamId: string, req: any): void {
+    if (req.user?.teamId !== teamId) {
+      throw new ForbiddenException('Team access denied');
+    }
   }
 }

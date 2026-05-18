@@ -17,7 +17,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useChatStore, type Attachment } from '@/stores/chat';
+import { useChatStore, type Attachment, type PendingMessage } from '@/stores/chat';
 import { useExpertStore } from '@/stores/experts';
 import { useConversationStore } from '@/stores/conversations';
 import { useAuthStore } from '@/stores/authStore';
@@ -29,6 +29,15 @@ import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { TimeoutManager } from '@/lib/timeout-manager';
 import { conversationService } from '@/services/conversation-service';
 import { useConversationCapabilities } from '@/hooks/useConversationCapabilities';
+
+type StreamContext = {
+  conversationId?: string;
+  teamId: string;
+  expertId?: string;
+  mcpServerIds: string[];
+  content: string;
+  attachments: Attachment[];
+};
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -59,7 +68,7 @@ const Chat: React.FC = () => {
 
   const { messages, addMessage, setMessages, setSending, isSending, sessionKey,
           editingMessageId, setEditingMessageId, deleteMessage,
-          addToPendingQueue, removeFromPendingQueue, getPendingMessages, clearPendingQueue,
+          addToPendingQueue, removeFromPendingQueue, getPendingMessages,
           activeStreamId, setActiveStreamId } = useChatStore();
   const { loadPrompts } = useExpertStore();
   const {
@@ -79,6 +88,9 @@ const Chat: React.FC = () => {
 
   const chatListenerRegisteredRef = useRef(false);
   const deltaAccumulatorRef = useRef<Record<string, string>>({});
+  const streamContextsRef = useRef<Record<string, StreamContext>>({});
+  const timedOutStreamIdsRef = useRef<Set<string>>(new Set());
+  const retriedPendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   const user = useAuthStore(state => state.user);
   const teamId = user?.team?.id || 'default';
@@ -141,10 +153,11 @@ const Chat: React.FC = () => {
 
     const handleHermesFinal = (data: any) => {
       const msgId = data.messageId || data.runId;
-      if (!msgId) return;
+      if (!msgId || timedOutStreamIdsRef.current.has(msgId)) return;
 
       timeoutManager.current.clear(msgId);
       const finalContent = data.content || deltaAccumulatorRef.current[msgId] || '';
+      const streamContext = streamContextsRef.current[msgId];
 
       const currentMessages = messagesRef.current;
       const messageIndex = currentMessages.findIndex(msg => msg.runId === msgId);
@@ -155,11 +168,11 @@ const Chat: React.FC = () => {
           status: 'complete',
         });
 
-        if (currentConversationId && finalContent) {
-          conversationService.addMessage(teamId, currentConversationId, {
+        if (streamContext?.conversationId && finalContent) {
+          conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
             role: 'assistant',
             content: finalContent,
-          });
+          }).catch(() => {});
         }
       } else if (finalContent) {
         const existingById = currentMessages.find(msg => msg.id === msgId);
@@ -174,15 +187,16 @@ const Chat: React.FC = () => {
           });
         }
 
-        if (currentConversationId) {
-          conversationService.addMessage(teamId, currentConversationId, {
+        if (streamContext?.conversationId) {
+          conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
             role: 'assistant',
             content: finalContent,
-          });
+          }).catch(() => {});
         }
       }
 
       delete deltaAccumulatorRef.current[msgId];
+      delete streamContextsRef.current[msgId];
       useChatStore.getState().setSending(false);
       useChatStore.getState().setActiveStreamId(null);
     };
@@ -192,6 +206,7 @@ const Chat: React.FC = () => {
       if (!msgId) return;
 
       timeoutManager.current.clear(msgId);
+      delete streamContextsRef.current[msgId];
       const currentMessages = messagesRef.current;
       const messageIndex = currentMessages.findIndex(msg => msg.runId === msgId);
       const errorMessage = data.error || t('chat.errorSendFailed');
@@ -266,26 +281,6 @@ const Chat: React.FC = () => {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    if (gatewayConnected) {
-      const pendingMessages = getPendingMessages();
-      if (pendingMessages.length > 0) {
-        pendingMessages.forEach(async (pendingMsg) => {
-          try {
-            await send('hermes.send', {
-              sessionId: sessionKey,
-              message: pendingMsg.content,
-            });
-            removeFromPendingQueue(pendingMsg.id);
-          } catch {
-            // retry failed silently
-          }
-        });
-        clearPendingQueue();
-      }
-    }
-  }, [gatewayConnected]);
-
   const MAX_RETRIES = 3;
 
   const getErrorMessage = (error: any, isConnected: boolean): string => {
@@ -306,92 +301,151 @@ const Chat: React.FC = () => {
     return t('chat.errorSendFailed');
   };
 
-  const handleSendWithContent = async (content: string, retryCount = 0) => {
-    if ((!content && attachments.length === 0) || isSending) return;
+  const handleSendWithContent = async (
+    content: string,
+    retryCount = 0,
+    pendingSnapshot?: Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'attachments'>,
+    options?: { skipLocalMessage?: boolean; messageId?: string },
+  ): Promise<boolean> => {
+    const conversationId = pendingSnapshot?.conversationId ?? currentConversationId ?? undefined;
+    const targetTeamId = pendingSnapshot?.teamId ?? teamId;
+    const currentExpertId = pendingSnapshot?.expertId ?? (useExpertStore.getState().activeExpertId || undefined);
+    const targetMcpServerIds = pendingSnapshot?.mcpServerIds ?? [...selectedMCPServerIds];
+    const targetAttachments = pendingSnapshot?.attachments
+      ? pendingSnapshot.attachments.map((attachment) => ({
+          id: crypto.randomUUID(),
+          type: attachment.type,
+          name: attachment.name,
+          url: '',
+          mimeType: attachment.mimeType,
+          data: attachment.data,
+        }))
+      : attachments.length > 0
+        ? [...attachments]
+        : [];
+
+    if ((!content && targetAttachments.length === 0) || isSending) return false;
 
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: options?.messageId || crypto.randomUUID(),
       role: 'user' as const,
       content: content || '[附件]',
       timestamp: Date.now(),
       status: 'complete' as const,
-      attachments: attachments.length > 0 ? [...attachments] : undefined,
+      attachments: targetAttachments.length > 0 ? targetAttachments : undefined,
     };
 
-    addMessage(userMessage);
-    setMessage('');
+    if (!options?.skipLocalMessage) {
+      addMessage(userMessage);
+      setMessage('');
+    }
     setSending(true);
 
     try {
       const sessionId = sessionKey || 'default';
-      const currentExpertId = useExpertStore.getState().activeExpertId || undefined;
-
       const response = await send('hermes.send', {
         sessionId,
         message: userMessage.content,
-        conversationId: currentConversationId || undefined,
+        conversationId,
         expertId: currentExpertId,
-        attachments: attachments.length > 0 ? attachments.map(a => ({
+        attachments: targetAttachments.length > 0 ? targetAttachments.map((a) => ({
           type: a.type,
           name: a.name,
           mimeType: a.mimeType,
           data: a.data,
         })) : undefined,
       });
-      setAttachments([]);
-
-      if (response?.ok) {
-        const runId = response.runId || response.messageId;
-
-        const placeholderMessage = {
-          id: runId,
-          role: 'assistant' as const,
-          content: '',
-          timestamp: Date.now(),
-          status: 'streaming' as const,
-          runId: runId,
-        };
-        addMessage(placeholderMessage);
-        setActiveStreamId(runId);
-
-        timeoutManager.current.set(runId, () => {
-          const currentMessages = messagesRef.current;
-          const messageIndex = currentMessages.findIndex(msg => msg.runId === runId);
-
-          if (messageIndex >= 0) {
-            useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
-              content: currentMessages[messageIndex].content || t('chat.timeoutRetry'),
-              status: 'error',
-            });
-          }
-          useChatStore.getState().setSending(false);
-        }, 30000);
+      if (!response?.ok) {
+        setSending(false);
+        return false;
       }
 
-      if (currentConversationId) {
-        conversationService.addMessage(teamId, currentConversationId, {
+      if (!pendingSnapshot) {
+        setAttachments([]);
+      }
+
+      const runId = response.runId || response.messageId;
+      streamContextsRef.current[runId] = {
+        conversationId,
+        teamId: targetTeamId,
+        expertId: currentExpertId,
+        mcpServerIds: [...targetMcpServerIds],
+        content: userMessage.content,
+        attachments: targetAttachments,
+      };
+
+      const placeholderMessage = {
+        id: runId,
+        role: 'assistant' as const,
+        content: '',
+        timestamp: Date.now(),
+        status: 'streaming' as const,
+        runId: runId,
+      };
+      addMessage(placeholderMessage);
+      setActiveStreamId(runId);
+
+      timeoutManager.current.set(runId, () => {
+        const currentMessages = messagesRef.current;
+        const messageIndex = currentMessages.findIndex(msg => msg.runId === runId);
+        const streamContext = streamContextsRef.current[runId];
+
+        timedOutStreamIdsRef.current.add(runId);
+        if (messageIndex >= 0) {
+          useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
+            content: currentMessages[messageIndex].content || t('chat.timeoutRetry'),
+            status: 'error',
+          });
+        }
+        delete streamContextsRef.current[runId];
+        if (streamContext?.conversationId) {
+          conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
+            role: 'assistant',
+            content: currentMessages[messageIndex]?.content || t('chat.timeoutRetry'),
+          }).catch(() => {});
+        }
+        useChatStore.getState().setSending(false);
+      }, 30000);
+
+      if (conversationId) {
+        conversationService.addMessage(targetTeamId, conversationId, {
           role: 'user',
           content: userMessage.content,
-        });
+        }).catch(() => {});
 
-        const currentConv = conversations.find(c => c.id === currentConversationId);
+        const currentConv = conversations.find(c => c.id === conversationId);
         if (currentConv && !currentConv.title) {
           const newTitle = generateTitle(userMessage.content);
-          renameConversation(teamId, currentConversationId, newTitle);
+          renameConversation(targetTeamId, conversationId, newTitle);
         }
       }
+
+      return true;
     } catch (error) {
       if (!gatewayConnected && retryCount < MAX_RETRIES) {
-        addToPendingQueue({
-          id: userMessage.id,
-          content: userMessage.content,
-          retryCount: retryCount + 1,
-          timestamp: Date.now(),
-        });
+        if (!options?.skipLocalMessage) {
+          addToPendingQueue({
+            id: userMessage.id,
+            content: userMessage.content,
+            retryCount: retryCount + 1,
+            timestamp: Date.now(),
+            conversationId,
+            teamId: targetTeamId,
+            expertId: currentExpertId,
+            mcpServerIds: [...targetMcpServerIds],
+            attachments: targetAttachments.map((attachment) => ({
+              type: attachment.type,
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              data: attachment.data,
+            })),
+          });
+        }
 
         useChatStore.getState().updateMessage(userMessage.id, {
           status: 'pending',
         });
+        setSending(false);
       } else {
         const errorMessage = getErrorMessage(error, gatewayConnected);
         const errorMessageObj = {
@@ -404,8 +458,49 @@ const Chat: React.FC = () => {
         addMessage(errorMessageObj);
         setSending(false);
       }
+
+      return false;
     }
   };
+
+  useEffect(() => {
+    if (!gatewayConnected || isSending) return;
+
+    const pendingMsg = getPendingMessages().find((msg) => !retriedPendingMessageIdsRef.current.has(msg.id));
+    if (!pendingMsg) return;
+    retriedPendingMessageIdsRef.current.add(pendingMsg.id);
+
+    handleSendWithContent(
+      pendingMsg.content,
+      pendingMsg.retryCount,
+      {
+        conversationId: pendingMsg.conversationId,
+        teamId: pendingMsg.teamId,
+        expertId: pendingMsg.expertId,
+        mcpServerIds: pendingMsg.mcpServerIds,
+        attachments: pendingMsg.attachments,
+      },
+      {
+        skipLocalMessage: true,
+        messageId: pendingMsg.id,
+      }
+    ).then((succeeded) => {
+      if (succeeded) {
+        retriedPendingMessageIdsRef.current.delete(pendingMsg.id);
+        removeFromPendingQueue(pendingMsg.id);
+      } else {
+        retriedPendingMessageIdsRef.current.delete(pendingMsg.id);
+        useChatStore.getState().updateMessage(pendingMsg.id, {
+          status: 'pending',
+        });
+      }
+    }).catch(() => {
+      retriedPendingMessageIdsRef.current.delete(pendingMsg.id);
+      useChatStore.getState().updateMessage(pendingMsg.id, {
+        status: 'pending',
+      });
+    });
+  }, [gatewayConnected, isSending, getPendingMessages, handleSendWithContent, removeFromPendingQueue]);
 
   const handleSend = () => handleSendWithContent(message.trim());
 

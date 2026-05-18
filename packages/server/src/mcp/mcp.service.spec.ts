@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { McpService } from './mcp.service';
 import { DatabaseService } from '../database/database.service';
 
@@ -14,6 +15,7 @@ describe('McpService conversation servers', () => {
   let db: jest.Mocked<Pick<DatabaseService,
     | 'query'
     | 'queryOne'
+    | 'findConversationById'
     | 'getConversationMCPServers'
     | 'setConversationMCPServers'
     | 'clearConversationMCPServers'
@@ -25,6 +27,7 @@ describe('McpService conversation servers', () => {
     db = {
       query: jest.fn(),
       queryOne: jest.fn(),
+      findConversationById: jest.fn(),
       getConversationMCPServers: jest.fn(),
       setConversationMCPServers: jest.fn(),
       clearConversationMCPServers: jest.fn(),
@@ -117,6 +120,41 @@ describe('McpService conversation servers', () => {
       'UPDATE mcp_servers SET ratings = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 AND (team_id = $3 OR team_id IS NULL) RETURNING *',
       [5, 'server-1', 'team-1']
     );
+  });
+
+  it('filters user MCP connections by authenticated team visibility', async () => {
+    db.query.mockResolvedValue([]);
+
+    await service.findUserConnections('user-1', 'team-1');
+
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('(ms.team_id = $2 OR ms.team_id IS NULL)'), ['user-1', 'team-1']);
+  });
+
+  it('updates connection config only for team-visible servers', async () => {
+    db.queryOne.mockResolvedValue({ id: 'connection-1' });
+
+    await service.updateConnectionConfig('user-1', 'server-1', 'team-1', { token: 'value' });
+
+    expect(db.queryOne).toHaveBeenCalledWith(expect.stringContaining('(ms.team_id = $4 OR ms.team_id IS NULL)'), [JSON.stringify({ token: 'value' }), 'user-1', 'server-1', 'team-1']);
+  });
+
+  it('clears conversation MCP servers only after verifying conversation team access', async () => {
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1' });
+    db.clearConversationMCPServers.mockResolvedValue([]);
+
+    await service.clearConversationMCPServers('conversation-1', 'team-1');
+
+    expect(db.findConversationById).toHaveBeenCalledWith('conversation-1', 'team-1');
+    expect(db.clearConversationMCPServers).toHaveBeenCalledWith('conversation-1');
+  });
+
+  it('rejects removing conversation MCP servers outside the authenticated team visibility', async () => {
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1' });
+    db.query.mockResolvedValue([]);
+
+    await expect(service.removeConversationMCPServer('conversation-1', 'server-1', 'team-1')).rejects.toThrow(ForbiddenException);
+
+    expect(db.removeConversationMCPServer).not.toHaveBeenCalled();
   });
 
   it('builds Hermes MCP config from enabled conversation servers', async () => {

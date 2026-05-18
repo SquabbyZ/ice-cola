@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ToolRegistryService } from './tool-registry.service';
 import {
@@ -18,8 +19,14 @@ import {
   ToolType,
   ToolStatus,
 } from './dto/tool.dto';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { TeamRole } from '../quota/quota.service';
 
 @Controller('tools')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(TeamRole.OWNER, TeamRole.ADMIN)
 export class ToolsController {
   constructor(private readonly toolRegistryService: ToolRegistryService) {}
 
