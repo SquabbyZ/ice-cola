@@ -439,6 +439,27 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async findExpertByIdForTeam(id: string, teamId?: string) {
+    if (!teamId) {
+      return this.queryOne(
+        'SELECT * FROM experts WHERE id = $1 AND "teamId" IS NULL',
+        [id]
+      );
+    }
+
+    return this.queryOne(
+      'SELECT * FROM experts WHERE id = $1 AND ("teamId" = $2 OR "teamId" IS NULL)',
+      [id, teamId]
+    );
+  }
+
+  async findTeamExpertById(id: string, teamId: string) {
+    return this.queryOne(
+      'SELECT * FROM experts WHERE id = $1 AND "teamId" = $2',
+      [id, teamId]
+    );
+  }
+
   async updateExpert(id: string, updates: any) {
     const allowedFields = ['name', 'description', 'systemPrompt', 'icon', 'color', 'category', 'source_id', 'marketplace_id', 'enabled', 'is_default', 'call_count', 'rating'];
     const fields: string[] = [];

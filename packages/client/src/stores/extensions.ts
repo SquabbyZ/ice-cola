@@ -73,7 +73,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
 
   loadInstalledExtensions: async () => {
     try {
-      const extensions = await extensionService.getInstalledExtensions('current-user');
+      const extensions = await extensionService.getInstalledExtensions();
       set({ installedExtensions: extensions });
     } catch (err) {
       console.error('Failed to load installed extensions:', err);
@@ -82,7 +82,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
 
   installExtension: async (id) => {
     try {
-      await extensionService.installExtension(id, 'current-user');
+      await extensionService.installExtension(id);
       set((state) => ({
         extensions: state.extensions.map((ext) =>
           ext.id === id ? { ...ext, installed: true, enabled: true } : ext
@@ -99,7 +99,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
 
   uninstallExtension: async (id) => {
     try {
-      await extensionService.uninstallExtension(id, 'current-user');
+      await extensionService.uninstallExtension(id);
       set((state) => ({
         extensions: state.extensions.map((ext) =>
           ext.id === id ? { ...ext, installed: false, enabled: false } : ext
@@ -116,7 +116,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
 
   enableExtension: async (id) => {
     try {
-      await extensionService.enableExtension(id, 'current-user');
+      await extensionService.enableExtension(id);
       set((state) => {
         const updatedExtensions = state.extensions.map((ext) =>
           ext.id === id ? { ...ext, enabled: true } : ext
@@ -139,7 +139,7 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
 
   disableExtension: async (id) => {
     try {
-      await extensionService.disableExtension(id, 'current-user');
+      await extensionService.disableExtension(id);
       set((state) => {
         const updatedExtensions = state.extensions.map((ext) =>
           ext.id === id ? { ...ext, enabled: false } : ext

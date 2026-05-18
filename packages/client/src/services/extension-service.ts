@@ -31,9 +31,9 @@ export class ExtensionService {
   /**
    * 获取用户已安装的扩展
    */
-  async getInstalledExtensions(userId: string): Promise<Extension[]> {
+  async getInstalledExtensions(): Promise<Extension[]> {
     try {
-      const result = await this.getClient().send('extensions.installed', { userId });
+      const result = await this.getClient().send('extensions.installed', {});
       if (result && Array.isArray(result)) {
         return result;
       }
@@ -47,9 +47,9 @@ export class ExtensionService {
   /**
    * 安装扩展
    */
-  async installExtension(extensionId: string, userId: string, config?: any): Promise<void> {
+  async installExtension(extensionId: string, config?: any): Promise<void> {
     try {
-      await this.getClient().send('extensions.install', { extensionId, userId, config });
+      await this.getClient().send('extensions.install', { extensionId, config });
     } catch (error) {
       console.error('Error installing extension:', error);
       throw error;
@@ -59,9 +59,9 @@ export class ExtensionService {
   /**
    * 卸载扩展
    */
-  async uninstallExtension(extensionId: string, userId: string): Promise<void> {
+  async uninstallExtension(extensionId: string): Promise<void> {
     try {
-      await this.getClient().send('extensions.uninstall', { extensionId, userId });
+      await this.getClient().send('extensions.uninstall', { extensionId });
     } catch (error) {
       console.error('Error uninstalling extension:', error);
       throw error;
@@ -71,9 +71,9 @@ export class ExtensionService {
   /**
    * 启用扩展
    */
-  async enableExtension(extensionId: string, userId: string): Promise<void> {
+  async enableExtension(extensionId: string): Promise<void> {
     try {
-      await this.getClient().send('extensions.enable', { extensionId, userId });
+      await this.getClient().send('extensions.enable', { extensionId });
     } catch (error) {
       console.error('Error enabling extension:', error);
       throw error;
@@ -83,9 +83,9 @@ export class ExtensionService {
   /**
    * 禁用扩展
    */
-  async disableExtension(extensionId: string, userId: string): Promise<void> {
+  async disableExtension(extensionId: string): Promise<void> {
     try {
-      await this.getClient().send('extensions.disable', { extensionId, userId });
+      await this.getClient().send('extensions.disable', { extensionId });
     } catch (error) {
       console.error('Error disabling extension:', error);
       throw error;
@@ -95,9 +95,9 @@ export class ExtensionService {
   /**
    * 更新扩展配置
    */
-  async updateExtensionConfig(extensionId: string, userId: string, config: any): Promise<void> {
+  async updateExtensionConfig(extensionId: string, config: any): Promise<void> {
     try {
-      await this.getClient().send('extensions.updateConfig', { extensionId, userId, config });
+      await this.getClient().send('extensions.updateConfig', { extensionId, config });
     } catch (error) {
       console.error('Error updating extension config:', error);
       throw error;

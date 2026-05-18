@@ -64,6 +64,11 @@ interface HermesMessageParams {
   attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }>;
 }
 
+interface ConversationPromptMessage {
+  role: string;
+  content: any;
+}
+
 @Injectable()
 export class GatewayService {
   private gatewayInstance: any = null;
@@ -422,6 +427,51 @@ export class GatewayService {
     };
   }
 
+  private async resolveConversationPromptContext(params: {
+    conversationId?: string;
+    expertId?: string;
+    teamId?: string;
+  }): Promise<{ messages: ConversationPromptMessage[]; mcpServers: HermesMCPServer[] }> {
+    const messages: ConversationPromptMessage[] = [];
+    let isConversationAuthorized = false;
+
+    if (params.expertId) {
+      try {
+        const expert = await this.db.findExpertByIdForTeam(params.expertId, params.teamId);
+        const prompt = expert?.systemprompt || expert?.systemPrompt;
+        if (prompt) {
+          messages.push({ role: 'system', content: prompt });
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
+      }
+    }
+
+    if (params.conversationId && params.teamId) {
+      try {
+        const conversation = await this.db.findConversationById(params.conversationId, params.teamId);
+        if (conversation) {
+          isConversationAuthorized = true;
+          const history = await this.db.findMessagesByConversationId(params.conversationId);
+          const recentHistory = history.slice(-20);
+          for (const msg of recentHistory) {
+            if (msg.role === 'user' || msg.role === 'assistant') {
+              messages.push({ role: msg.role, content: msg.content });
+            }
+          }
+        }
+      } catch (err) {
+        this.logger.warn('Failed to load conversation history:', err);
+      }
+    }
+
+    const mcpServers = params.conversationId && isConversationAuthorized
+      ? await this.getConversationHermesMcpServers(params.conversationId)
+      : [];
+
+    return { messages, mcpServers };
+  }
+
   private async getConversationHermesMcpServers(conversationId: string): Promise<HermesMCPServer[]> {
     try {
       const rows = await this.db.getConversationMCPServers(conversationId);
@@ -460,37 +510,14 @@ export class GatewayService {
     const messageId = this.generateUUID();
     this.logger.log(`Routing to hermes-agent at ${this.HERMES_AGENT_URL}`);
 
-    // Resolve system prompt from expert if provided
-    let systemPrompt: string | undefined;
-    if (params.expertId) {
-      try {
-        const expert = await this.db.findExpertById(params.expertId);
-        if (expert?.systemprompt || expert?.systemPrompt) {
-          systemPrompt = expert.systemprompt || expert.systemPrompt;
-        }
-      } catch (err) {
-        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
-      }
-    }
+    const { messages: conversationMessages, mcpServers: conversationMcpServers } =
+      await this.resolveConversationPromptContext({
+        conversationId: params.conversationId,
+        expertId: params.expertId,
+        teamId: params.teamId,
+      });
 
-    // Build messages array with conversation history
-    const messages: Array<{ role: string; content: any }> = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    if (params.conversationId) {
-      try {
-        const history = await this.db.findMessagesByConversationId(params.conversationId);
-        const recentHistory = history.slice(-20);
-        for (const msg of recentHistory) {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            messages.push({ role: msg.role, content: msg.content });
-          }
-        }
-      } catch (err) {
-        this.logger.warn('Failed to load conversation history:', err);
-      }
-    }
+    const messages: Array<{ role: string; content: any }> = [...conversationMessages];
 
     // Build user message with optional attachments (multimodal)
     if (params.attachments && params.attachments.length > 0) {
@@ -510,9 +537,6 @@ export class GatewayService {
       messages.push({ role: 'user', content: params.message });
     }
 
-    const conversationMcpServers = params.conversationId
-      ? await this.getConversationHermesMcpServers(params.conversationId)
-      : [];
     const requestBody: Record<string, any> = {
       model: 'hermes-agent',
       messages,
@@ -754,36 +778,11 @@ export class GatewayService {
     }
 
     // Build model params from config
-    // Load conversation history for context if conversationId is provided
-    const messages: Array<{ role: string; content: string }> = [];
-
-    // Inject expert system prompt if provided
-    if (params.expertId) {
-      try {
-        const expert = await this.db.findExpertById(params.expertId);
-        const prompt = expert?.systemprompt || expert?.systemPrompt;
-        if (prompt) {
-          messages.push({ role: 'system', content: prompt });
-        }
-      } catch (err) {
-        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
-      }
-    }
-
-    if (params.conversationId) {
-      try {
-        const history = await this.db.findMessagesByConversationId(params.conversationId);
-        // Use last 20 messages for context (avoid token limit issues)
-        const recentHistory = history.slice(-20);
-        for (const msg of recentHistory) {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            messages.push({ role: msg.role, content: msg.content });
-          }
-        }
-      } catch (err) {
-        this.logger.warn('Failed to load conversation history:', err);
-      }
-    }
+    const { messages } = await this.resolveConversationPromptContext({
+      conversationId: params.conversationId,
+      expertId: params.expertId,
+      teamId: params.teamId,
+    });
     messages.push({ role: 'user', content: params.message });
 
     const requestBody: Record<string, any> = {
@@ -1320,8 +1319,8 @@ export class GatewayService {
     };
   }
 
-  async getExpert(params: { id: string }) {
-    const expert = await this.db.findExpertById(params.id);
+  async getExpert(params: { id: string; teamId?: string }) {
+    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
     if (!expert) {
       throw new Error('Expert not found');
     }
@@ -1371,12 +1370,17 @@ export class GatewayService {
     icon?: string;
     color?: string;
     category?: string;
+    teamId?: string;
     enabled?: boolean;
     isDefault?: boolean;
     callCount?: number;
     rating?: number;
   }) {
-    const existing = await this.db.findExpertById(params.id);
+    if (!params.teamId) {
+      throw new Error('Authentication required');
+    }
+
+    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
     if (!existing) {
       throw new Error('Expert not found');
     }
@@ -1389,10 +1393,6 @@ export class GatewayService {
     if (params.icon !== undefined) updates.icon = params.icon;
     if (params.color !== undefined) updates.color = params.color;
     if (params.category !== undefined) updates.category = params.category;
-    if (params.enabled !== undefined) updates.enabled = params.enabled;
-    if (params.isDefault !== undefined) updates.is_default = params.isDefault;
-    if (params.callCount !== undefined) updates.call_count = params.callCount;
-    if (params.rating !== undefined) updates.rating = params.rating;
 
     const updated = await this.db.updateExpert(params.id, updates);
 
@@ -1402,8 +1402,12 @@ export class GatewayService {
     };
   }
 
-  async deleteExpert(params: { id: string }) {
-    const existing = await this.db.findExpertById(params.id);
+  async deleteExpert(params: { id: string; teamId?: string }) {
+    if (!params.teamId) {
+      throw new Error('Authentication required');
+    }
+
+    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
     if (!existing) {
       throw new Error('Expert not found');
     }
@@ -1416,10 +1420,10 @@ export class GatewayService {
     };
   }
 
-  async setActiveExpert(params: { id: string; userId?: string }) {
+  async setActiveExpert(params: { id: string; teamId?: string; userId?: string }) {
     // This would typically update a user preference or session state
     // For now, we just return success
-    const expert = await this.db.findExpertById(params.id);
+    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
     if (!expert) {
       throw new Error('Expert not found');
     }
@@ -1441,6 +1445,11 @@ export class GatewayService {
     tokens?: number;
     duration?: number;
   }) {
+    const expert = await this.db.findExpertByIdForTeam(params.expertId, params.teamId);
+    if (!expert) {
+      throw new Error('Expert not found');
+    }
+
     // Record the usage
     await this.db.createExpertUsage({
       expertId: params.expertId,
@@ -1458,11 +1467,13 @@ export class GatewayService {
     };
   }
 
-  async getExpertStats(params: { id: string }) {
-    const stats = await this.db.getExpertStats(params.id);
-    if (!stats) {
+  async getExpertStats(params: { id: string; teamId?: string }) {
+    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
+    if (!expert) {
       throw new Error('Expert not found');
     }
+
+    const stats = await this.db.getExpertStats(params.id);
 
     const [dailyStats, weeklyStats, monthlyStats] = await Promise.all([
       this.db.getExpertUsageStats(params.id, 'day'),
@@ -1503,15 +1514,20 @@ export class GatewayService {
     };
   }
 
-  async rateExpert(params: { id: string; rating: number }) {
+  async rateExpert(params: { id: string; rating: number; teamId?: string }) {
     if (params.rating < 1 || params.rating > 5) {
       throw new Error('Rating must be between 1 and 5');
     }
+    if (!params.teamId) {
+      throw new Error('Authentication required');
+    }
 
-    const expert = await this.db.updateExpertRating(params.id, params.rating);
-    if (!expert) {
+    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
+    if (!existing) {
       throw new Error('Expert not found');
     }
+
+    const expert = await this.db.updateExpertRating(params.id, params.rating);
 
     return {
       ok: true,

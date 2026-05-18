@@ -28,7 +28,7 @@ import { MCPSelector } from '@/components/MCPSelector';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { TimeoutManager } from '@/lib/timeout-manager';
 import { conversationService } from '@/services/conversation-service';
-import { conversationMCPService } from '@/services/conversation-mcp-service';
+import { useConversationCapabilities } from '@/hooks/useConversationCapabilities';
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,7 +51,6 @@ const Chat: React.FC = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
-  const [selectedMCPServerIds, setSelectedMCPServerIds] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +70,7 @@ const Chat: React.FC = () => {
     conversations,
     renameConversation,
   } = useConversationStore();
+  const { expertId, mcpServerIds: selectedMCPServerIds, setConversationMcpServers } = useConversationCapabilities(currentConversationId);
 
   const { isConnected: gatewayConnected, send, on } = useGateway({ autoConnect: true });
 
@@ -99,24 +99,11 @@ const Chat: React.FC = () => {
     }
   }, [gatewayConnected, teamId, loadConversations]);
 
-  useEffect(() => {
-    if (currentConversationId) {
-      conversationMCPService.getConversationMCPServers(currentConversationId)
-        .then(servers => {
-          setSelectedMCPServerIds(servers.map(s => s.server_id));
-        })
-        .catch(err => console.error('Failed to load MCP servers for conversation:', err));
-    }
-  }, [currentConversationId]);
-
   const handleMCPSelectionChange = async (serverIds: string[]) => {
-    setSelectedMCPServerIds(serverIds);
-    if (currentConversationId) {
-      try {
-        await conversationMCPService.setConversationMCPServers(currentConversationId, serverIds);
-      } catch (err) {
-        console.error('Failed to save MCP server selection:', err);
-      }
+    try {
+      await setConversationMcpServers(serverIds);
+    } catch {
+      // save failed; hook restored last confirmed MCP selection
     }
   };
 
@@ -337,12 +324,13 @@ const Chat: React.FC = () => {
 
     try {
       const sessionId = sessionKey || 'default';
+      const currentExpertId = useExpertStore.getState().activeExpertId || undefined;
 
       const response = await send('hermes.send', {
         sessionId,
         message: userMessage.content,
         conversationId: currentConversationId || undefined,
-        expertId: useExpertStore.getState().activeExpertId || undefined,
+        expertId: currentExpertId,
         attachments: attachments.length > 0 ? attachments.map(a => ({
           type: a.type,
           name: a.name,
@@ -747,7 +735,7 @@ const Chat: React.FC = () => {
               <div className="flex items-center gap-3 mb-3 pb-3 border-b border-zinc-100/50">
                 <ExpertSelector
                   experts={useExpertStore.getState().prompts}
-                  activeExpertId={useExpertStore.getState().activeExpertId}
+                  activeExpertId={expertId ?? null}
                   onSelectExpert={(id) => useExpertStore.getState().setActiveExpert(id)}
                 />
                 <MCPSelector

@@ -143,12 +143,15 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.getMessages(params);
           break;
         case 'config.get':
+          this.requireAdminContext(ws);
           result = await this.gatewayService.getConfig(params);
           break;
         case 'config.patch':
+          this.requireAdminContext(ws);
           result = await this.gatewayService.patchConfig(params);
           break;
         case 'config.set':
+          this.requireAdminContext(ws);
           result = await this.gatewayService.setConfig(params);
           // Emit config-changed event if restart is needed
           if (result?.needsRestart) {
@@ -161,9 +164,9 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'hermes.send':
           {
-            const clientInfo = this.clients.get(ws);
+            const clientInfo = this.requireClientContext(ws);
             result = await this.gatewayService.sendHermesMessage(
-              { ...params, teamId: clientInfo?.teamId },
+              { ...params, teamId: clientInfo.teamId },
               ws,
             );
           }
@@ -184,55 +187,62 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.updateQuotaConfig(params);
           break;
         case 'experts.list':
-          result = await this.gatewayService.listExperts(params);
+          result = await this.gatewayService.listExperts({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.get':
-          result = await this.gatewayService.getExpert(params);
+          result = await this.gatewayService.getExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.create':
-          result = await this.gatewayService.createExpert(params);
+          result = await this.gatewayService.createExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.update':
-          result = await this.gatewayService.updateExpert(params);
+          result = await this.gatewayService.updateExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.delete':
-          result = await this.gatewayService.deleteExpert(params);
+          result = await this.gatewayService.deleteExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.setActive':
-          result = await this.gatewayService.setActiveExpert(params);
+          result = await this.gatewayService.setActiveExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.categories':
-          result = await this.gatewayService.getExpertCategories(params);
+          result = await this.gatewayService.getExpertCategories({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.stats':
-          result = await this.gatewayService.getExpertStats(params);
+          result = await this.gatewayService.getExpertStats({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.rate':
-          result = await this.gatewayService.rateExpert(params);
+          result = await this.gatewayService.rateExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'experts.recordUsage':
-          result = await this.gatewayService.recordExpertUsage(params);
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.recordExpertUsage({
+              ...params,
+              userId: clientInfo.userId,
+              teamId: clientInfo.teamId,
+            });
+          }
           break;
         case 'extensions.list':
           result = await this.gatewayService.getAllExtensions();
           break;
         case 'extensions.installed':
-          result = await this.gatewayService.getInstalledExtensions(params);
+          result = await this.gatewayService.getInstalledExtensions({ userId: this.requireUserContext(ws).userId });
           break;
         case 'extensions.install':
-          result = await this.gatewayService.installExtension(params);
+          result = await this.gatewayService.installExtension({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'extensions.uninstall':
-          result = await this.gatewayService.uninstallExtension(params);
+          result = await this.gatewayService.uninstallExtension({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'extensions.enable':
-          result = await this.gatewayService.enableExtension(params);
+          result = await this.gatewayService.enableExtension({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'extensions.disable':
-          result = await this.gatewayService.disableExtension(params);
+          result = await this.gatewayService.disableExtension({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'extensions.updateConfig':
-          result = await this.gatewayService.updateExtensionConfig(params);
+          result = await this.gatewayService.updateExtensionConfig({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'skills.list':
           result = await this.gatewayService.listSkills({ ...params, teamId: this.requireClientContext(ws).teamId });
@@ -299,6 +309,22 @@ export class GatewayGateway implements OnModuleInit {
       clientInfo.teamId = result.user.team?.id;
       clientInfo.role = result.user.team?.role;
     }
+  }
+
+  private requireUserContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId'>> {
+    const clientInfo = this.clients.get(ws);
+    if (!clientInfo?.userId) {
+      throw new Error('Authentication required');
+    }
+    return { userId: clientInfo.userId };
+  }
+
+  private requireAdminContext(ws: WebSocket): Required<GatewayClientContext> {
+    const clientInfo = this.requireClientContext(ws);
+    if (clientInfo.role !== 'OWNER' && clientInfo.role !== 'ADMIN') {
+      throw new Error('Admin privileges required');
+    }
+    return clientInfo;
   }
 
   private requireClientContext(ws: WebSocket): Required<GatewayClientContext> {
