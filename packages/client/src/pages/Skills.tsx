@@ -9,6 +9,7 @@ import { useSkillsStore } from '@/stores/skillsStore';
 import type { SkillVersion } from '@/stores/skillsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { SkillCard } from '@/components/SkillCard';
+import { getTeamId } from '@/lib/team';
 import { CreateSkillDialog } from '@/components/CreateSkillDialog';
 import { SkillVersionHistory } from '@/components/SkillVersionHistory';
 
@@ -62,7 +63,7 @@ const Skills: React.FC = () => {
   } = useSkillsStore();
 
   const user = useAuthStore(state => state.user);
-  const teamId = user?.team?.id;
+  const teamId = getTeamId(user);
   const canReviewTeamSkills = user?.team?.role === 'OWNER' || user?.team?.role === 'ADMIN';
 
   useEffect(() => {
@@ -390,7 +391,11 @@ const Skills: React.FC = () => {
         open={createDialogOpen}
         onClose={() => setCreateDialogOpen(false)}
         onSubmit={async (data) => {
-          await createSkill(teamId || 'default', {
+          if (!teamId) {
+            return;
+          }
+
+          await createSkill(teamId, {
             ...data,
             authorId: user?.id || '',
             status: 'personal',

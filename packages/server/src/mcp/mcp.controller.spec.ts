@@ -57,6 +57,16 @@ describe('McpController conversation authorization', () => {
     expect(service.assertConversationAccess).toHaveBeenCalledWith('conversation-1', 'team-1');
   });
 
+  it('returns an empty list when a conversation has no MCP servers', async () => {
+    service.getConversationMCPServers.mockResolvedValue([]);
+
+    await expect(controller.getConversationMCPServers('conversation-1', { user: { id: 'user-1', teamId: 'team-1' } })).resolves.toEqual({
+      success: true,
+      data: [],
+    });
+    expect(service.assertConversationAccess).toHaveBeenCalledWith('conversation-1', 'team-1');
+  });
+
   it('does not read MCP servers when conversation access is denied', async () => {
     service.assertConversationAccess.mockRejectedValue(new ForbiddenException('Conversation access denied'));
 

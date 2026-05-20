@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { getRequiredJwtSecret } from '../config/security-config';
 import { DatabaseService } from '../database/database.service';
 import { HttpService } from '@nestjs/axios';
 import { AiModelsService } from '../ai-models/ai-models.service';
@@ -43,7 +44,7 @@ interface ConnectResult {
 }
 
 interface GatewayJwtPayload {
-  sub: string;
+  sub?: string;
   teamId?: string;
   role?: string;
   type?: string;
@@ -111,7 +112,9 @@ export class GatewayService {
 
     let userRole: string | undefined;
     try {
-      const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token);
+      const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token, {
+        secret: getRequiredJwtSecret(this.configService),
+      });
       if (payload.type !== 'access') {
         throw new Error('Authentication required');
       }
@@ -200,11 +203,11 @@ export class GatewayService {
 
   async refresh(params: { refreshToken: string }) {
     try {
-      const payload = this.jwtService.verify(params.refreshToken, {
-        secret: this.configService.get('JWT_SECRET'),
+      const payload = this.jwtService.verify<GatewayJwtPayload>(params.refreshToken, {
+        secret: getRequiredJwtSecret(this.configService),
       });
 
-      if (payload.type !== 'refresh') {
+      if (payload.type !== 'refresh' || !payload.sub) {
         throw new Error('无效的刷新令牌');
       }
 

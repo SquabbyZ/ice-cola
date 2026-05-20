@@ -29,7 +29,7 @@ export class HermesController {
 
   @Get('sessions')
   async getSessions(@Request() req) {
-    return this.hermesService.getSession(req.user.teamId, '');
+    return this.hermesService.getSessions(req.user.teamId);
   }
 
   @Get('sessions/:sessionId')

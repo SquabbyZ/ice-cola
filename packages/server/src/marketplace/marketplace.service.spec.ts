@@ -72,6 +72,17 @@ describe('MarketplaceService', () => {
       expect(result.pagination.total).toBe(10);
     });
 
+    it('returns empty MCP listings without throwing', async () => {
+      db.queryOne.mockResolvedValue({ count: '0' });
+      db.query.mockResolvedValue([]);
+
+      const result = await service.findItems({ type: MarketplaceItemType.MCP });
+
+      expect(result.items).toEqual([]);
+      expect(result.pagination.total).toBe(0);
+      expect(result.pagination.totalPages).toBe(0);
+    });
+
     it('filters by type and status', async () => {
       db.queryOne.mockResolvedValue({ count: '5' });
       db.query.mockResolvedValue([mockItem]);

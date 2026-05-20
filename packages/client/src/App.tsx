@@ -34,6 +34,7 @@ const App: React.FC = () => {
         >
           <Route index element={<Dashboard />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="chat/:conversationId" element={<Chat />} />
           <Route path="extensions" element={<Extensions />} />
           <Route path="experts" element={<Experts />} />
           <Route path="tasks" element={<Tasks />} />

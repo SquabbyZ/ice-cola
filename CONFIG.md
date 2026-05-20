@@ -29,6 +29,8 @@ cmd /c "set PGPASSWORD=你的密码&& D:\pg18\bin\psql.exe -U postgres -h 127.0.
 
 ## 服务配置
 
+以下示例仅用于本地开发。真实 API Key、JWT 密钥和数据库密码只能放在未提交的 `.env` 或密钥管理系统中。
+
 ### Server (.env)
 
 ```
@@ -36,7 +38,7 @@ DATABASE_URL=postgresql://postgres:密码@localhost:5432/icecola?schema=public
 PORT=3000
 NODE_ENV=development
 HERMES_ENDPOINT=http://localhost:9119
-RESEND_API_KEY=re_你的Resend密钥
+RESEND_API_KEY=
 RESEND_FROM_EMAIL=Ice Cola <noreply@你的域名>
 ```
 

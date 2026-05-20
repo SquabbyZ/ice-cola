@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { useConversationStore } from '@/stores/conversations';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chat';
+import { getTeamId } from '@/lib/team';
 import SettingsModal from './SettingsModal';
 import {
   DropdownMenu,
@@ -51,7 +52,7 @@ const Sidebar: React.FC = () => {
   const { user, logout } = useAuthStore();
   const { setMessages } = useChatStore();
 
-  const teamId = user?.team?.id || 'default';
+  const teamId = getTeamId(user);
 
   const isPathActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -59,10 +60,14 @@ const Sidebar: React.FC = () => {
   };
 
   const handleNewConversation = async () => {
+    if (!teamId) {
+      return;
+    }
+
     try {
-      await createConversation(teamId, '');
+      const conversation = await createConversation(teamId, '');
       setMessages([]);
-      navigate('/chat');
+      navigate(`/chat/${conversation.id}`);
     } catch {
       // Handle error silently
     }

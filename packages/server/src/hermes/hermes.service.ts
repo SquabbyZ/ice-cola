@@ -1,12 +1,14 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+
+interface ErrorLike {
+  message: string;
+  code?: string;
+}
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { ChatRequestDto, ChatResponseDto, HermesStatusDto } from './dto/hermes.dto';
 import { QuotaService } from '../quota/quota.service';
 import { ConversationService } from '../conversation/conversation.service';
-import { PlannerServiceImpl } from '../hermes-core/services/planner.service';
-import { OrchestratorServiceImpl } from '../hermes-core/services/orchestrator.service';
-import { MemoryServiceImpl } from '../hermes-core/services/memory.service';
 
 @Injectable()
 export class HermesService {
@@ -18,112 +20,70 @@ export class HermesService {
     private readonly httpService: HttpService,
     private readonly quotaService: QuotaService,
     private readonly conversationService: ConversationService,
-    private readonly plannerService: PlannerServiceImpl,
-    private readonly orchestratorService: OrchestratorServiceImpl,
-    private readonly memoryService: MemoryServiceImpl,
   ) {
     this.hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://hermes-agent:9119');
   }
 
   async chat(userId: string, teamId: string, dto: ChatRequestDto): Promise<ChatResponseDto> {
-    // 1. Check quota
-    const quotaCheck = await this.quotaService.checkQuota(teamId);
-    if (!quotaCheck.hasQuota) {
-      throw new HttpException(
-        {
-          success: false,
-          error: quotaCheck.unlimited ? '配额无限制' : `配额不足，还剩 ${quotaCheck.remaining} 次`,
-        },
-        HttpStatus.FORBIDDEN,
-      );
-    }
+    const conversation = dto.sessionId
+      ? await this.conversationService.getBySessionId(teamId, dto.sessionId)
+      : null;
 
-    // 2. Consume quota
-    await this.quotaService.consumeQuota(teamId, 1, `hermes:chat:${dto.sessionId || 'new'}`);
-
-    // 3. Create conversation
-    const conversation = await this.conversationService.create(
+    const activeConversation = conversation || await this.conversationService.create(
       teamId,
       'New conversation',
       userId,
     );
 
     // 4. Add user message
-    await this.conversationService.addMessage(teamId, conversation.id, {
+    await this.conversationService.addMessage(teamId, activeConversation.id, {
       role: 'user',
       content: dto.message,
     });
 
+    await this.quotaService.consumeQuota(teamId, 1);
+
     try {
-      // 5. Generate task plan using Hermes Core
-      const plan = await this.plannerService.plan(dto.message, conversation.id);
-
-      // 6. Execute plan using Hermes Core
-      const executedPlan = await this.orchestratorService.executePlan(plan);
-
-      // 7. Extract final response from the last completed step
-      const lastStep = executedPlan.steps.filter(s => s.status === 'completed').pop();
-      const response = lastStep?.output?.response || '任务执行完成，但没有返回内容';
-
-      // 8. Add assistant response to conversation
-      await this.conversationService.addMessage(teamId, conversation.id, {
-        role: 'assistant',
-        content: response,
-        model: lastStep?.output?.model || 'hermes-core',
+      const response = await this.callHermesAgent({
+        message: dto.message,
+        sessionId: activeConversation.id,
+        context: dto.context,
+        model: dto.model,
       });
 
-      return {
-        success: true,
-        response,
-        sessionId: conversation.id,
-        model: lastStep?.output?.model || 'hermes-core',
-      };
-    } catch (error: any) {
-      this.logger.error(`Hermes Core execution failed: ${error.message}`);
+      await this.conversationService.addMessage(teamId, activeConversation.id, {
+        role: 'assistant',
+        content: response.response,
+        model: response.model,
+        usage: response.usage,
+      });
 
-      // Fallback: use original hermes-agent call
-      try {
-        const response = await this.callHermesAgent({
-          message: dto.message,
-          sessionId: conversation.id,
-          context: dto.context,
-          model: dto.model,
-        });
+      return response;
+    } catch (error: unknown) {
+      const hermesError = error as ErrorLike;
+      this.logger.error(`Hermes chat failed: ${hermesError.message}`);
 
-        await this.conversationService.addMessage(teamId, conversation.id, {
+      if (hermesError.code === 'ECONNREFUSED' || hermesError.code === 'ETIMEDOUT') {
+        const demoResponse = this.getDemoResponse(dto.message);
+        await this.conversationService.addMessage(teamId, activeConversation.id, {
           role: 'assistant',
-          content: response.response,
-          model: response.model,
-          usage: response.usage,
+          content: demoResponse,
         });
-
-        return response;
-      } catch (fallbackError) {
-        this.logger.error(`Fallback also failed: ${fallbackError.message}`);
-
-        // If hermes-agent is not available, return a demo response
-        if (fallbackError.code === 'ECONNREFUSED' || fallbackError.code === 'ETIMEDOUT') {
-          const demoResponse = this.getDemoResponse(dto.message);
-          await this.conversationService.addMessage(teamId, conversation.id, {
-            role: 'assistant',
-            content: demoResponse,
-          });
-          return {
-            success: true,
-            response: demoResponse,
-            sessionId: conversation.id,
-            model: 'demo',
-          };
-        }
-
-        throw new HttpException(
-          {
-            success: false,
-            error: `Hermes 服务调用失败: ${fallbackError.message}`,
-          },
-          HttpStatus.BAD_GATEWAY,
-        );
+        return {
+          success: true,
+          response: demoResponse,
+          sessionId: activeConversation.id,
+          model: 'demo',
+        };
       }
+
+      throw new HttpException(
+        {
+          success: false,
+          error: 'Hermes 服务调用失败',
+        },
+        HttpStatus.BAD_GATEWAY,
+      );
     }
   }
 
@@ -139,8 +99,9 @@ export class HermesService {
         model: response.data?.model || 'unknown',
         provider: response.data?.provider || 'unknown',
       };
-    } catch (error: any) {
-      this.logger.warn(`Hermes status check failed: ${error.message}`);
+    } catch (error: unknown) {
+      const hermesError = error as ErrorLike;
+      this.logger.warn(`Hermes status check failed: ${hermesError.message}`);
       return {
         status: 'offline',
         version: 'unknown',
@@ -151,12 +112,12 @@ export class HermesService {
     }
   }
 
+  async getSessions(teamId: string) {
+    return this.conversationService.getList(teamId);
+  }
+
   async getSession(teamId: string, sessionId: string) {
-    const conversations = await this.conversationService.getList(teamId);
-    const conversation = conversations.conversations.find((c) => c.sessionId === sessionId);
-    if (!conversation) {
-      throw new HttpException({ error: 'Session not found' }, HttpStatus.NOT_FOUND);
-    }
+    const conversation = await this.conversationService.getBySessionId(teamId, sessionId);
     return this.conversationService.getById(teamId, conversation.id);
   }
 
@@ -166,9 +127,6 @@ export class HermesService {
     context?: Record<string, any>;
     model?: string;
   }): Promise<ChatResponseDto> {
-    // Try to call hermes-agent via HTTP
-    // Note: hermes-agent's web API is primarily for the management dashboard
-    // For programmatic chat, you would typically use MCP or the messaging platform integrations
     const response = await this.httpService
       .post(
         `${this.hermesEndpoint}/api/chat`,
@@ -189,29 +147,30 @@ export class HermesService {
 
     return {
       success: true,
-      response: response.data?.response || response.data?.message || JSON.stringify(response.data),
+      response: this.extractHermesResponse(response.data),
       sessionId: params.sessionId,
       model: response.data?.model,
       usage: response.data?.usage,
     };
   }
 
+  private extractHermesResponse(data: any): string {
+    if (typeof data?.response === 'string' && data.response.trim()) {
+      return data.response;
+    }
+
+    if (typeof data?.message === 'string' && data.message.trim()) {
+      return data.message;
+    }
+
+    return 'Hermes 服务返回了无效响应';
+  }
+
   private getDemoResponse(message: string): string {
-    // Demo response when hermes-agent is not available
     return `【Demo Mode】
 
 我收到了你的消息: "${message}"
 
-这是 Demo 响应，因为 Hermes Agent 服务当前不可用。
-
-要启用真正的 AI 响应:
-1. 确保 hermes-agent 容器正在运行
-2. 配置有效的 API Key（OpenRouter/Gemini等）
-3. 检查 hermes-agent 日志排除故障
-
-当前架构:
-- OpenClaw Server (NestJS): API 网关 + 配额管理
-- Hermes Agent (Python): AI Brain + 多平台消息集成
-- OpenClaw Main (TypeScript): 桌面客户端 SDK`;
+Hermes Agent 服务当前不可用，请稍后再试。`;
   }
 }

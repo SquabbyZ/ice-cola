@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { randomInt } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { DatabaseService } from '../database/database.service';
 import { CaptchaService } from '../commons/captcha.service';
@@ -16,6 +17,7 @@ interface RateLimitEntry {
 interface VerificationStatus {
   verified: boolean;
   codeId: string;
+  code: string;
 }
 
 @Injectable()
@@ -54,9 +56,9 @@ export class ClientAuthService {
     email: string,
     captchaToken: string,
     captchaAnswer: string[],
+    clientIp = 'unknown',
   ): Promise<void> {
     // Check rate limit first
-    const clientIp = 'unknown'; // In production, get from request
     this.checkRateLimit(clientIp);
 
     // Verify captcha
@@ -95,15 +97,20 @@ export class ClientAuthService {
   /**
    * Verify email code
    */
-  async verifyCode(email: string, code: string): Promise<boolean> {
+  async verifyCode(email: string, code: string, clientIp = 'unknown'): Promise<boolean> {
+    this.checkRateLimit(clientIp);
+
     // Find valid code in database
     const record = await this.db.findValidVerificationCode(email, code, 'register');
 
     if (!record) {
-      // Check attempts to see if we should suggest re-sending
-      const attempts = await this.db.getVerificationCodeAttempts(email, 'register');
-      if (attempts >= this.MAX_ATTEMPTS) {
-        throw new AppError('TOO_MANY_ATTEMPTS', '验证码错误次数过多，请重新获取', 400);
+      const latestRecord = await this.db.findLatestVerificationCode(email, 'register');
+      if (latestRecord) {
+        const updatedRecord = await this.db.incrementVerificationAttempts(latestRecord.id);
+        const attempts = Number(updatedRecord?.attempts || latestRecord.attempts || 0);
+        if (attempts >= this.MAX_ATTEMPTS) {
+          throw new AppError('TOO_MANY_ATTEMPTS', '验证码错误次数过多，请重新获取', 400);
+        }
       }
       return false;
     }
@@ -115,6 +122,7 @@ export class ClientAuthService {
     this.verifiedCache.set(email, {
       verified: true,
       codeId: record.id,
+      code,
     });
 
     this.logger.log(`Email ${email} verified successfully`);
@@ -124,42 +132,43 @@ export class ClientAuthService {
   /**
    * Register with email verification
    */
-  async registerWithVerification(dto: ClientRegisterDto): Promise<{
-    user: { id: string; email: string; name: string };
+  async registerWithVerification(dto: ClientRegisterDto, clientIp = 'unknown'): Promise<{
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+      team: { id: string; name: string; role: string } | null;
+    };
     accessToken: string;
     refreshToken: string;
     expiresIn: number;
   }> {
     // Check rate limit
-    const clientIp = 'unknown';
     this.checkRateLimit(clientIp);
 
-    // Check if email is verified (set by verifyCode)
-    const verificationStatus = this.verifiedCache.get(dto.email);
-    if (!verificationStatus?.verified) {
-      throw new AppError('EMAIL_NOT_VERIFIED', '请先完成邮箱验证', 400);
-    }
-
-    // Check if user already exists
     const existing = await this.db.findUserByEmail(dto.email);
     if (existing) {
       throw new AppError('AUTH_EMAIL_EXISTS', '邮箱已被注册', 400);
     }
 
+    const result = await this.db.consumeVerifiedVerificationCode(dto.email, dto.code, 'register');
+
+    if (!result) {
+      throw new AppError('EMAIL_NOT_VERIFIED', '请先完成邮箱验证', 400);
+    }
+
     // Hash password and create user
     const password = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.db.createUser({
+    const user = await this.db.createUserWithPersonalTeam({
       email: dto.email,
       password,
       name: dto.name,
     }) as any;
 
     // Generate tokens
-    const tokens = await this.generateTokens(user.id, null, 'MEMBER');
+    const tokens = await this.generateTokens(user.id, user.teamId, user.role);
 
-    // Clean up verification record
-    await this.db.markVerificationCodeAsVerified(verificationStatus.codeId);
     this.verifiedCache.delete(dto.email);
 
     this.logger.log(`User ${dto.email} registered successfully`);
@@ -169,6 +178,13 @@ export class ClientAuthService {
         id: user.id,
         email: user.email,
         name: user.name,
+        team: user.teamId
+          ? {
+              id: user.teamId,
+              name: user.team_name,
+              role: user.role,
+            }
+          : null,
       },
       ...tokens,
     };
@@ -205,7 +221,7 @@ export class ClientAuthService {
    * Generate 6-digit verification code
    */
   private generateCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1000000).toString();
   }
 
   /**

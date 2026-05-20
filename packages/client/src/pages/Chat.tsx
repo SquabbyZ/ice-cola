@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Code,
   MessageSquare,
@@ -10,11 +11,13 @@ import {
   AtSign,
   Paperclip,
   Send,
-  Menu,
   X,
   Check,
   Square,
   Sparkles,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Compass,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useChatStore, type Attachment, type PendingMessage } from '@/stores/chat';
@@ -29,6 +32,7 @@ import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { TimeoutManager } from '@/lib/timeout-manager';
 import { conversationService } from '@/services/conversation-service';
 import { useConversationCapabilities } from '@/hooks/useConversationCapabilities';
+import { getTeamId } from '@/lib/team';
 
 type StreamContext = {
   conversationId?: string;
@@ -38,6 +42,12 @@ type StreamContext = {
   content: string;
   attachments: Attachment[];
 };
+
+type LocationState = {
+  presetMessage?: string;
+};
+
+const COMPACT_CHAT_MEDIA_QUERY = '(max-width: 1180px), (max-height: 700px)';
 
 function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,9 +63,13 @@ function readFileAsBase64(file: File): Promise<string> {
 
 const Chat: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { conversationId: routeConversationId } = useParams<{ conversationId: string }>();
   const [message, setMessage] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [_isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isCompactLayout, setIsCompactLayout] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -93,7 +107,8 @@ const Chat: React.FC = () => {
   const retriedPendingMessageIdsRef = useRef<Set<string>>(new Set());
 
   const user = useAuthStore(state => state.user);
-  const teamId = user?.team?.id || 'default';
+  const teamId = getTeamId(user);
+  const hasTeamAccess = !!teamId;
 
   useEffect(() => {
     return () => {
@@ -106,7 +121,7 @@ const Chat: React.FC = () => {
   }, [loadPrompts]);
 
   useEffect(() => {
-    if (gatewayConnected) {
+    if (gatewayConnected && teamId) {
       loadConversations(teamId);
     }
   }, [gatewayConnected, teamId, loadConversations]);
@@ -118,6 +133,81 @@ const Chat: React.FC = () => {
       // save failed; hook restored last confirmed MCP selection
     }
   };
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(COMPACT_CHAT_MEDIA_QUERY);
+
+    const syncCompactLayout = () => {
+      setIsCompactLayout(mediaQuery.matches);
+    };
+
+    syncCompactLayout();
+    mediaQuery.addEventListener('change', syncCompactLayout);
+
+    return () => mediaQuery.removeEventListener('change', syncCompactLayout);
+  }, []);
+
+  useEffect(() => {
+    if (isCompactLayout) {
+      setIsSidebarOpen(false);
+      setIsSidebarCollapsed(false);
+      return;
+    }
+
+    setIsSidebarOpen(true);
+  }, [isCompactLayout]);
+
+  useEffect(() => {
+    const presetMessage = (location.state as LocationState | undefined)?.presetMessage;
+    if (!presetMessage) return;
+
+    setMessage((current) => (current ? current : presetMessage));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.pathname, location.state, navigate]);
+
+  useEffect(() => {
+    if (!routeConversationId) {
+      setCurrentConversationId(null);
+      setMessages([]);
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    if (routeConversationId === currentConversationId) return;
+
+    if (!teamId) {
+      setMessages([]);
+      setIsLoadingHistory(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsLoadingHistory(true);
+    setCurrentConversationId(routeConversationId);
+
+    conversationService.getById(teamId, routeConversationId)
+      .then((detail) => {
+        if (!isCurrent) return;
+        const formattedMessages = detail.messages.map((msg) => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.createdAt).getTime(),
+          status: 'complete' as const,
+        }));
+        setMessages(formattedMessages);
+      })
+      .catch(() => {
+        if (isCurrent) setMessages([]);
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingHistory(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [routeConversationId, currentConversationId, setCurrentConversationId, setMessages, teamId]);
 
   useEffect(() => {
     if (chatListenerRegisteredRef.current) return;
@@ -307,9 +397,13 @@ const Chat: React.FC = () => {
     pendingSnapshot?: Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'attachments'>,
     options?: { skipLocalMessage?: boolean; messageId?: string },
   ): Promise<boolean> => {
-    const conversationId = pendingSnapshot?.conversationId ?? currentConversationId ?? undefined;
+    let conversationId = pendingSnapshot?.conversationId ?? currentConversationId ?? undefined;
     const targetTeamId = pendingSnapshot?.teamId ?? teamId;
     const currentExpertId = pendingSnapshot?.expertId ?? (useExpertStore.getState().activeExpertId || undefined);
+    if (!targetTeamId) {
+      useChatStore.getState().setError('请先加入或创建团队后再开始聊天');
+      return false;
+    }
     const targetMcpServerIds = pendingSnapshot?.mcpServerIds ?? [...selectedMCPServerIds];
     const targetAttachments = pendingSnapshot?.attachments
       ? pendingSnapshot.attachments.map((attachment) => ({
@@ -325,6 +419,21 @@ const Chat: React.FC = () => {
         : [];
 
     if ((!content && targetAttachments.length === 0) || isSending) return false;
+
+    if (!conversationId && !pendingSnapshot) {
+      try {
+        const conversation = await createConversation(targetTeamId, '');
+        conversationId = conversation.id;
+        setCurrentConversationId(conversation.id);
+        navigate(`/chat/${conversation.id}`, { replace: true });
+
+        if (targetMcpServerIds.length > 0) {
+          await setConversationMcpServers(targetMcpServerIds);
+        }
+      } catch {
+        return false;
+      }
+    }
 
     const userMessage = {
       id: options?.messageId || crypto.randomUUID(),
@@ -356,6 +465,10 @@ const Chat: React.FC = () => {
         })) : undefined,
       });
       if (!response?.ok) {
+        useChatStore.getState().updateMessage(userMessage.id, {
+          status: 'error',
+          content: t('chat.errorSendFailed'),
+        });
         setSending(false);
         return false;
       }
@@ -529,7 +642,17 @@ const Chat: React.FC = () => {
 
   const handleStopGeneration = () => {
     if (!activeStreamId) return;
+
+    const currentStreamMessage = useChatStore.getState().messages.find((msg) => msg.id === activeStreamId);
     send('hermes.abort', { messageId: activeStreamId });
+    timeoutManager.current.clear(activeStreamId);
+    if (currentStreamMessage) {
+      useChatStore.getState().updateMessage(activeStreamId, {
+        content: currentStreamMessage.content || t('chat.timeoutRetry'),
+        status: 'complete',
+      });
+    }
+    delete streamContextsRef.current[activeStreamId];
     setActiveStreamId(null);
     setSending(false);
   };
@@ -541,15 +664,32 @@ const Chat: React.FC = () => {
   };
 
   const handleNewConversation = async () => {
+    if (!teamId) {
+      useChatStore.getState().setError('请先加入或创建团队后再开始聊天');
+      return;
+    }
+
     try {
-      await createConversation(teamId, '');
+      const conversation = await createConversation(teamId, '');
       setMessages([]);
+      setCurrentConversationId(conversation.id);
+      if (isCompactLayout) setIsSidebarOpen(false);
+      navigate(`/chat/${conversation.id}`);
     } catch {
       // create conversation failed
     }
   };
 
   const handleSelectConversation = async (conversationId: string) => {
+    if (!teamId) {
+      useChatStore.getState().setError('请先加入或创建团队后再开始聊天');
+      return;
+    }
+
+    if (isCompactLayout) setIsSidebarOpen(false);
+    navigate(`/chat/${conversationId}`);
+
+    if (conversationId === currentConversationId) return;
     setCurrentConversationId(conversationId);
     setIsLoadingHistory(true);
 
@@ -564,7 +704,7 @@ const Chat: React.FC = () => {
       }));
       setMessages(formattedMessages);
     } catch {
-      // load conversation messages failed
+      setMessages([]);
     } finally {
       setIsLoadingHistory(false);
     }
@@ -582,7 +722,7 @@ const Chat: React.FC = () => {
     if (deleteConfirmId === id) {
       deleteMessage(id);
       setDeleteConfirmId(null);
-      if (currentConversationId) {
+      if (currentConversationId && teamId) {
         conversationService.deleteMessage(teamId, currentConversationId, id).catch(() => {});
       }
     } else {
@@ -642,7 +782,7 @@ const Chat: React.FC = () => {
     setEditContent('');
     setMessage('');
 
-    if (currentConversationId) {
+    if (currentConversationId && teamId) {
       conversationService.updateMessage(teamId, currentConversationId, editingMessageId, {
         content: editContent.trim(),
       }).catch(() => {});
@@ -702,132 +842,154 @@ const Chat: React.FC = () => {
       prompt: t('chat.quickActions.slidesPrompt'),
       gradient: 'from-zinc-700 to-zinc-900',
     },
-    {
-      icon: AtSign,
-      label: t('chat.quickActions.emailEditing'),
-      desc: t('chat.quickActions.emailEditingDesc'),
-      prompt: t('chat.quickActions.emailEditingPrompt'),
-      gradient: 'from-zinc-600 to-zinc-800',
-    },
-    {
-      icon: BarChart3,
-      label: t('chat.quickActions.productPlanning'),
-      desc: t('chat.quickActions.productPlanningDesc'),
-      prompt: t('chat.quickActions.productPlanningPrompt'),
-      gradient: 'from-zinc-500 to-zinc-700',
-    },
   ];
+  const currentConversation = conversations.find((conversation) => conversation.id === currentConversationId);
+  const sidebarToggleLabel = isSidebarOpen ? t('chat.conversations') : t('chat.showSidebar');
+  const inputMinHeightClass = isCompactLayout ? 'min-h-[52px] max-h-[96px]' : 'min-h-[76px] max-h-[140px]';
 
   return (
-    <div className="flex h-full bg-zinc-50/50 overflow-hidden">
-      {/* Conversation Sidebar */}
+    <div className="relative flex h-full min-h-0 overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(212,255,236,0.38),transparent_34%),linear-gradient(135deg,rgba(250,250,250,0.96),rgba(244,244,245,0.88))]">
       {isSidebarOpen && (
-        <ConversationSidebar
-          teamId={teamId}
-          currentConversationId={currentConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        <div className={`${isCompactLayout ? 'absolute inset-y-0 left-0 z-30 shadow-2xl shadow-zinc-900/15' : 'relative'} flex-shrink-0`}>
+          <ConversationSidebar
+            teamId={teamId ?? ''}
+            currentConversationId={currentConversationId}
+            onSelectConversation={handleSelectConversation}
+            onNewConversation={handleNewConversation}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          />
+        </div>
+      )}
+      {isCompactLayout && isSidebarOpen && (
+        <button
+          aria-label={t('chat.conversations')}
+          className="absolute inset-0 z-20 bg-zinc-900/10 backdrop-blur-[1px]"
+          onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Toggle Sidebar Button */}
-        {!isSidebarOpen && (
-          <button
-            onClick={() => setIsSidebarOpen(true)}
-            className="absolute left-4 top-4 z-10 p-2.5 glass-panel rounded-xl shadow-md hover:bg-white/90 transition-all duration-200 active:scale-[0.98]"
-            title={t('chat.showSidebar')}
-          >
-            <Menu className="w-4 h-4 text-zinc-600" />
-          </button>
-        )}
-
-        {hasMessages ? (
-          /* Conversation View */
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-              {messages.map((msg, index) => {
-              const isLastAssistant = msg.role === 'assistant' && msg.status === 'complete'
-                && (index === messages.length - 1 || messages.slice(index + 1).every(m => m.role !== 'assistant' || m.status !== 'complete'));
-              return (
-                <ChatMessageItem
-                  key={msg.id}
-                  message={msg}
-                  onEdit={msg.role === 'user' ? handleEditMessage : undefined}
-                  onDelete={msg.role === 'user' ? handleDeleteMessage : undefined}
-                  onRegenerate={isLastAssistant ? handleRegenerate : undefined}
-                />
-              );
-            })}
-              <div ref={messagesEndRef} />
+      <section className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-white/70 bg-white/75 px-3 backdrop-blur-xl sm:px-4">
+          <div className="flex min-w-0 items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 w-9 rounded-xl p-0 text-zinc-600 hover:bg-zinc-100"
+              aria-label={sidebarToggleLabel}
+              title={sidebarToggleLabel}
+              onClick={() => setIsSidebarOpen((open) => !open)}
+            >
+              {isSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </Button>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-zinc-900">
+                {currentConversation?.title || t('chat.newChat')}
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-zinc-400">
+                <span className={`h-1.5 w-1.5 rounded-full ${gatewayConnected ? 'bg-emerald-400' : 'bg-zinc-300'}`} />
+                <span className="truncate">{gatewayConnected ? 'Hermes ready' : t('chat.connecting')}</span>
+              </div>
             </div>
           </div>
-        ) : (
-          /* Welcome View */
-          <div className="flex-1 overflow-y-auto">
-            <div className="max-w-[1200px] mx-auto px-6 py-16">
-              {/* Hero Section */}
-              <div className="text-center mb-14 animate-fade-in-up">
-                <div className="mb-8">
-                  <div className="w-20 h-20 mx-auto rounded-3xl bg-gradient-watermelon flex items-center justify-center shadow-xl shadow-zinc-300/50">
-                    <Sparkles className="w-10 h-10 text-white/90" />
-                  </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 rounded-xl px-3 text-xs text-zinc-600 hover:bg-zinc-100"
+            onClick={handleNewConversation}
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            {t('chat.newChat')}
+          </Button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {!hasTeamAccess ? (
+            <div className="flex h-full items-center justify-center px-4 text-center text-sm text-zinc-500">
+              请先创建或加入团队后再开始聊天。
+            </div>
+          ) : isLoadingHistory ? (
+            <div className="flex h-full items-center justify-center px-4 text-sm text-zinc-400">
+              {t('common.loading')}
+            </div>
+          ) : hasMessages ? (
+            <div className="mx-auto max-w-4xl space-y-4 px-3 py-4 sm:px-5 sm:py-6">
+              {messages.map((msg, index) => {
+                const isLastAssistant = msg.role === 'assistant' && msg.status === 'complete'
+                  && (index === messages.length - 1 || messages.slice(index + 1).every(m => m.role !== 'assistant' || m.status !== 'complete'));
+                return (
+                  <ChatMessageItem
+                    key={msg.id}
+                    message={msg}
+                    onEdit={msg.role === 'user' ? handleEditMessage : undefined}
+                    onDelete={msg.role === 'user' ? handleDeleteMessage : undefined}
+                    onRegenerate={isLastAssistant ? handleRegenerate : undefined}
+                  />
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+          ) : (
+            <div className="mx-auto flex min-h-full max-w-4xl flex-col justify-center px-4 py-4 sm:px-6">
+              <div className="mb-5 flex items-center gap-4 sm:mb-7">
+                <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl bg-gradient-watermelon shadow-xl shadow-zinc-300/50 sm:h-16 sm:w-16">
+                  <Compass className="h-7 w-7 text-white/90 sm:h-8 sm:w-8" />
                 </div>
-                <h1 className="text-4xl font-bold text-zinc-900 mb-4 tracking-tight">
-                  {t('chat.heroTitle')}
-                </h1>
-                <p className="text-lg text-zinc-400 font-medium">
-                  {t('chat.heroSubtitle')}
-                </p>
+                <div className="min-w-0 text-left">
+                  <h1 className="text-2xl font-bold tracking-tight text-zinc-950 sm:text-3xl">
+                    {t('chat.heroTitle')}
+                  </h1>
+                  <p className="mt-1 text-sm font-medium text-zinc-400 sm:text-base">
+                    {t('chat.heroSubtitle')}
+                  </p>
+                </div>
               </div>
 
-              {/* Suggestion Cards - Bento Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3">
                 {quickActions.map((action, index) => (
                   <button
                     key={action.label}
                     onClick={() => handleSendWithContent(action.prompt)}
-                    className={`group relative bento-tile p-5 flex flex-col items-start animate-fade-in-up hover-lift`}
-                    style={{ animationDelay: `${index * 100}ms` }}
+                    className="group relative overflow-hidden rounded-2xl border border-white/70 bg-white/78 p-3 text-left shadow-sm shadow-zinc-200/60 transition-all duration-200 hover:-translate-y-0.5 hover:bg-white hover:shadow-md active:scale-[0.99]"
+                    style={{ animationDelay: `${index * 60}ms` }}
                   >
-                    <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${action.gradient} flex items-center justify-center mb-4 shadow-md transition-transform duration-300 group-hover:scale-110`}>
-                      <action.icon className="w-5 h-5 text-white/90" />
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${action.gradient} shadow-sm transition-transform duration-200 group-hover:scale-105`}>
+                        <action.icon className="h-4 w-4 text-white/90" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="block truncate text-sm font-semibold text-zinc-800">
+                          {action.label}
+                        </span>
+                        <span className="mt-0.5 line-clamp-2 text-xs leading-snug text-zinc-400">
+                          {action.desc}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-sm font-semibold text-zinc-800 mb-1 group-hover:text-zinc-900 transition-colors">
-                      {action.label}
-                    </span>
-                    <span className="text-xs text-zinc-400 leading-relaxed">
-                      {action.desc}
-                    </span>
                   </button>
                 ))}
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Input Area */}
-        <div className="border-t border-zinc-200/50 bg-white/80 backdrop-blur-xl p-4">
-          <div className="max-w-3xl mx-auto">
-            {/* Edit Mode Banner */}
+        <footer className="flex-shrink-0 border-t border-white/70 bg-white/78 px-3 py-2.5 backdrop-blur-xl sm:px-4 sm:py-3">
+          <div className="mx-auto max-w-4xl">
             {editingMessageId && (
-              <div className="mb-3 px-4 py-3 glass-panel rounded-xl flex items-center justify-between">
-                <span className="text-sm font-medium text-zinc-700">{t('chat.editingMessage')}</span>
+              <div className="mb-2 flex items-center justify-between rounded-xl border border-zinc-200/70 bg-zinc-50/80 px-3 py-2">
+                <span className="text-xs font-medium text-zinc-600">{t('chat.editingMessage')}</span>
                 <button
                   onClick={handleCancelEdit}
-                  className="p-1.5 hover:bg-zinc-100 rounded-lg transition-colors"
+                  className="rounded-lg p-1 hover:bg-zinc-100"
+                  aria-label={t('common.cancel')}
                 >
-                  <X className="w-4 h-4 text-zinc-500" />
+                  <X className="h-3.5 w-3.5 text-zinc-500" />
                 </button>
               </div>
             )}
 
-            <div className="glass-panel rounded-2xl p-4">
-              {/* Tools Bar */}
-              <div className="flex items-center gap-3 mb-3 pb-3 border-b border-zinc-100/50">
+            <div className="rounded-2xl border border-zinc-200/70 bg-white/90 p-2.5 shadow-lg shadow-zinc-200/50 sm:p-3">
+              <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100/80 pb-2">
                 <ExpertSelector
                   experts={useExpertStore.getState().prompts}
                   activeExpertId={expertId ?? null}
@@ -840,7 +1002,6 @@ const Chat: React.FC = () => {
                 />
               </div>
 
-              {/* Hidden file input */}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -850,29 +1011,27 @@ const Chat: React.FC = () => {
                 onChange={handleFileSelect}
               />
 
-              {/* Attachment previews */}
               {attachments.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-zinc-100/50">
+                <div className="mt-2 flex max-h-16 flex-wrap gap-2 overflow-y-auto border-b border-zinc-100/80 pb-2">
                   {attachments.map(att => (
-                    <div key={att.id} className="relative group flex items-center gap-2 bg-zinc-50/80 border border-zinc-200/50 rounded-xl px-3 py-2">
+                    <div key={att.id} className="group flex items-center gap-2 rounded-xl border border-zinc-200/60 bg-zinc-50/80 px-2 py-1.5">
                       {att.type === 'image' ? (
-                        <img src={att.url} alt={att.name} className="w-10 h-10 rounded-lg object-cover" />
+                        <img src={att.url} alt={att.name} className="h-8 w-8 rounded-lg object-cover" />
                       ) : (
-                        <FileText className="w-5 h-5 text-zinc-400" />
+                        <FileText className="h-4 w-4 text-zinc-400" />
                       )}
-                      <span className="text-sm text-zinc-600 max-w-[120px] truncate">{att.name}</span>
+                      <span className="max-w-[120px] truncate text-xs text-zinc-600">{att.name}</span>
                       <button
                         onClick={() => removeAttachment(att.id)}
-                        className="p-1 hover:bg-zinc-200 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        className="rounded-md p-1 opacity-70 hover:bg-zinc-200 group-hover:opacity-100"
                       >
-                        <X className="w-3.5 h-3.5 text-zinc-400" />
+                        <X className="h-3 w-3 text-zinc-400" />
                       </button>
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Textarea */}
               <textarea
                 ref={editingMessageId ? editInputRef : undefined}
                 value={message}
@@ -883,24 +1042,24 @@ const Chat: React.FC = () => {
                 onKeyDown={editingMessageId ? handleEditKeyDown : handleKeyDown}
                 placeholder={gatewayConnected ? (editingMessageId ? t('chat.editPlaceholder') : t('chat.inputPlaceholder')) : t('chat.connecting')}
                 disabled={isSending || !gatewayConnected}
-                className="w-full min-h-[80px] px-2 py-2 bg-transparent text-sm focus:outline-none resize-none disabled:opacity-50 placeholder:text-zinc-400 text-zinc-700"
+                className={`w-full resize-none bg-transparent px-1 py-2 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 disabled:opacity-50 ${inputMinHeightClass}`}
               />
 
-              {/* Bottom Toolbar */}
-              <div className="flex items-center justify-between mt-3 pt-3 border-t border-zinc-100/50">
+              <div className="flex items-center justify-between border-t border-zinc-100/80 pt-2">
                 <div className="flex items-center gap-1">
                   {!editingMessageId && (
                     <>
-                      <Button variant="ghost" size="sm" className="h-9 w-9 p-0 hover:bg-zinc-100 rounded-xl">
-                        <AtSign className="w-4 h-4 text-zinc-400" />
+                      <Button variant="ghost" size="sm" className="h-8 w-8 rounded-xl p-0 hover:bg-zinc-100" aria-label={t('chat.quickActions.emailEditing')}>
+                        <AtSign className="h-4 w-4 text-zinc-400" />
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 w-9 p-0 hover:bg-zinc-100 rounded-xl"
+                        className="h-8 w-8 rounded-xl p-0 hover:bg-zinc-100"
+                        aria-label={t('common.attach')}
                         onClick={() => fileInputRef.current?.click()}
                       >
-                        <Paperclip className="w-4 h-4 text-zinc-400" />
+                        <Paperclip className="h-4 w-4 text-zinc-400" />
                       </Button>
                     </>
                   )}
@@ -912,49 +1071,50 @@ const Chat: React.FC = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 px-4 hover:bg-zinc-100 rounded-xl"
+                        className="h-8 rounded-xl px-3 hover:bg-zinc-100"
                         onClick={handleCancelEdit}
                       >
                         {t('common.cancel')}
                       </Button>
                       <Button
                         size="sm"
-                        className="h-9 w-9 btn-ice rounded-xl flex items-center justify-center"
+                        className="btn-ice flex h-8 w-8 items-center justify-center rounded-xl"
                         onClick={handleSubmitEdit}
                         disabled={!editContent.trim()}
                       >
-                        <Check className="w-4 h-4" />
+                        <Check className="h-4 w-4" />
                       </Button>
                     </>
                   ) : isSending && activeStreamId ? (
                     <Button
                       size="sm"
-                      className="h-9 w-9 bg-red-500 hover:bg-red-600 rounded-xl flex items-center justify-center"
+                      className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500 hover:bg-red-600"
+                      aria-label={t('chat.stopGeneration')}
                       onClick={handleStopGeneration}
                     >
-                      <Square className="w-4 h-4" />
+                      <Square className="h-4 w-4" />
                     </Button>
                   ) : (
                     <Button
                       size="sm"
-                      className="h-9 w-9 btn-ice rounded-xl flex items-center justify-center"
+                      className="btn-ice flex h-8 w-8 items-center justify-center rounded-xl"
+                      aria-label={t('chat.send')}
                       onClick={() => handleSend()}
                       disabled={(!message.trim() && attachments.length === 0) || isSending || !gatewayConnected}
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Disclaimer */}
-            <p className="text-center text-[11px] text-zinc-400 mt-3">
+            <p className="mt-1.5 text-center text-[10px] text-zinc-400 sm:text-[11px]">
               {t('chat.disclaimer')}
             </p>
           </div>
-        </div>
-      </div>
+        </footer>
+      </section>
     </div>
   );
 };

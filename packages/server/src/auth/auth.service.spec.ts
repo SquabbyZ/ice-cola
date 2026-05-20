@@ -37,6 +37,7 @@ describe('AuthService', () => {
           useValue: {
             findUserByEmail: jest.fn(),
             createUser: jest.fn(),
+            createUserWithPersonalTeam: jest.fn(),
             findUserById: jest.fn(),
             queryOne: jest.fn(),
             updateUserPassword: jest.fn(),
@@ -72,9 +73,10 @@ describe('AuthService', () => {
       ).rejects.toThrow(AppError);
     });
 
-    it('creates user and returns tokens on successful registration', async () => {
+    it('creates user with personal team and returns tokens on successful registration', async () => {
       db.findUserByEmail.mockResolvedValue(null);
-      db.createUser.mockResolvedValue(mockUser);
+      db.createUserWithPersonalTeam.mockResolvedValue(mockUser as any);
+      jest.spyOn(bcrypt, 'hash').mockImplementation(() => Promise.resolve('hashed-password'));
       jwtService.signAsync.mockResolvedValue('token');
 
       const result = await service.register({
@@ -83,7 +85,13 @@ describe('AuthService', () => {
         name: 'Test',
       });
 
+      expect(db.createUserWithPersonalTeam).toHaveBeenCalledWith({
+        email: 'test@example.com',
+        password: 'hashed-password',
+        name: 'Test',
+      });
       expect(result.user.email).toBe('test@example.com');
+      expect(result.user.team?.id).toBe('team-1');
       expect(result.accessToken).toBe('token');
       expect(result.refreshToken).toBe('token');
     });

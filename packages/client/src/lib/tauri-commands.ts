@@ -7,6 +7,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 
+function isTauriRuntimeAvailable(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
 // ==================== Gateway 管理 ====================
 
 /**
@@ -42,6 +46,10 @@ export async function getGatewayPort(): Promise<number> {
 export async function onGatewayReady(
   callback: (port: number) => void
 ): Promise<UnlistenFn> {
+  if (!isTauriRuntimeAvailable()) {
+    return async () => {};
+  }
+
   return await listen<number>('gateway-ready', (event) => {
     console.log('Gateway is ready on port:', event.payload);
     callback(event.payload);
@@ -57,6 +65,10 @@ export async function onGatewayReady(
 export async function onGatewayStartFailed(
   callback: (error?: string) => void
 ): Promise<UnlistenFn> {
+  if (!isTauriRuntimeAvailable()) {
+    return async () => {};
+  }
+
   return await listen<string>('gateway-start-failed', (event) => {
     console.error('Gateway failed to start:', event.payload);
     callback(event.payload);

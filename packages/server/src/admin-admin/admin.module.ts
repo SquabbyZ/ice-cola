@@ -7,6 +7,7 @@ import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
 import { EmailTemplateController } from './email-template.controller';
 import { EmailTemplateService } from '../commons/email-template.service';
+import { getRequiredJwtSecret } from '../config/security-config';
 
 import { AuthModule } from '../auth/auth.module';
 
@@ -15,7 +16,7 @@ import { AuthModule } from '../auth/auth.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: NestConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: getRequiredJwtSecret(configService),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
         },

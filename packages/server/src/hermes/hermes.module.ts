@@ -9,6 +9,7 @@ import { QuotaModule } from '../quota/quota.module';
 import { ConversationModule } from '../conversation/conversation.module';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { HermesCoreModule } from '../hermes-core/hermes-core.module';
+import { getRequiredJwtSecret } from '../config/security-config';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { HermesCoreModule } from '../hermes-core/hermes-core.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: getRequiredJwtSecret(configService),
       }),
       inject: [ConfigService],
     }),

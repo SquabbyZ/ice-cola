@@ -21,7 +21,9 @@ import { useQuotaStore } from '@/stores/quota';
 import { useExpertStore } from '@/stores/experts';
 import { useMCPStore } from '@/stores/mcpStore';
 import { useConversationStore } from '@/stores/conversations';
+import { useAuthStore } from '@/stores/authStore';
 import { QuotaProgressBar } from '@/components/QuotaProgressBar';
+import { getTeamId } from '@/lib/team';
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
@@ -33,6 +35,8 @@ const Dashboard: React.FC = () => {
   const { prompts: experts, loadPrompts } = useExpertStore();
   const { servers, loadServers } = useMCPStore();
   const { conversations, loadConversations } = useConversationStore();
+  const user = useAuthStore(state => state.user);
+  const teamId = getTeamId(user);
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -52,14 +56,14 @@ const Dashboard: React.FC = () => {
           refreshStatus(),
           loadPrompts(),
           loadServers(),
-          loadConversations('default'),
+          ...(teamId ? [loadConversations(teamId)] : []),
         ]);
       } finally {
         setIsLoading(false);
       }
     };
     loadData();
-  }, []);
+  }, [loadConfig, loadPrompts, loadServers, loadConversations, refreshAllStats, refreshStatus, teamId]);
 
   const workspaceActions = [
     {

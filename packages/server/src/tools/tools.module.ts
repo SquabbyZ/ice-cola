@@ -5,6 +5,7 @@ import { ToolRegistryService } from './tool-registry.service';
 import { ToolsController } from './tools.controller';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
+import { getRequiredJwtSecret } from '../config/security-config';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { RolesGuard } from '../common/guards/roles.guard';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: getRequiredJwtSecret(configService),
       }),
       inject: [ConfigService],
     }),

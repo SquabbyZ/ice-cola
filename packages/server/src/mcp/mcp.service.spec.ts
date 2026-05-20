@@ -157,6 +157,15 @@ describe('McpService conversation servers', () => {
     expect(db.removeConversationMCPServer).not.toHaveBeenCalled();
   });
 
+  it('returns an empty MCP config when a conversation has no enabled servers', async () => {
+    db.getConversationMCPServers.mockResolvedValue([]);
+
+    await expect(service.getConversationMCPConfig('conversation-1')).resolves.toEqual({
+      servers: [],
+      mcpServers: [],
+    });
+  });
+
   it('builds Hermes MCP config from enabled conversation servers', async () => {
     const servers = [
       { name: 'Filesystem', server_type: 'stdio', config: { root: '/workspace' } },

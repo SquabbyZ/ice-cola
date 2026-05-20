@@ -33,9 +33,14 @@ describe('ClientAuthService', () => {
           useValue: {
             findUserByEmail: jest.fn(),
             createUser: jest.fn(),
+            createUserWithPersonalTeam: jest.fn(),
             deleteExpiredVerificationCodes: jest.fn(),
             createVerificationCode: jest.fn(),
             findValidVerificationCode: jest.fn(),
+            findVerifiedVerificationCode: jest.fn(),
+            findLatestVerificationCode: jest.fn(),
+            incrementVerificationAttempts: jest.fn(),
+            consumeVerifiedVerificationCode: jest.fn(),
             getVerificationCodeAttempts: jest.fn(),
             markVerificationCodeAsVerified: jest.fn(),
             query: jest.fn(),
@@ -84,7 +89,7 @@ describe('ClientAuthService', () => {
       db.createVerificationCode.mockResolvedValue({} as any);
       emailService.sendVerificationCode.mockResolvedValue(undefined);
 
-      await service.sendVerificationCode('new@example.com', 'captcha-token', ['a', 'b', 'c', 'd']);
+      await service.sendVerificationCode('new@example.com', 'captcha-token', ['a', 'b', 'c', 'd'], '127.0.0.1');
 
       expect(captchaService.verifyCaptcha).toHaveBeenCalledWith('captcha-token', ['a', 'b', 'c', 'd']);
       expect(emailService.sendVerificationCode).toHaveBeenCalled();
@@ -131,21 +136,38 @@ describe('ClientAuthService', () => {
 
     it('throws error when too many attempts', async () => {
       db.findValidVerificationCode.mockResolvedValue(null);
-      db.getVerificationCodeAttempts.mockResolvedValue(3);
+      db.findLatestVerificationCode.mockResolvedValue({ id: 'record-1', attempts: 2 } as any);
+      db.incrementVerificationAttempts.mockResolvedValue({ attempts: 3 } as any);
 
       await expect(
         service.verifyCode('test@example.com', 'wrong')
       ).rejects.toThrow('验证码错误次数过多，请重新获取');
     });
+
+    it('rate limits verification attempts by client IP', async () => {
+      db.findValidVerificationCode.mockResolvedValue(null);
+      db.findLatestVerificationCode.mockResolvedValue(null);
+
+      await service.verifyCode('test@example.com', 'wrong', '127.0.0.1');
+      await service.verifyCode('test@example.com', 'wrong', '127.0.0.1');
+
+      await expect(
+        service.verifyCode('test@example.com', 'wrong', '127.0.0.1')
+      ).rejects.toThrow('注册过于频繁');
+    });
   });
 
   describe('registerWithVerification', () => {
     it('registers successfully with verified email', async () => {
-      // First simulate verification via cache
-      (service as any).verifiedCache.set('new@example.com', { verified: true, codeId: 'code-1' });
-
+      db.consumeVerifiedVerificationCode.mockResolvedValue({ verificationCode: { id: 'code-1' } } as any);
       db.findUserByEmail.mockResolvedValue(null);
-      db.createUser.mockResolvedValue({ ...mockUser, email: 'new@example.com' } as any);
+      db.createUserWithPersonalTeam.mockResolvedValue({
+        ...mockUser,
+        email: 'new@example.com',
+        teamId: 'team-1',
+        team_name: 'Test Team',
+        role: 'OWNER',
+      } as any);
       db.markVerificationCodeAsVerified.mockResolvedValue({} as any);
       jwtService.signAsync.mockResolvedValue('mock-token');
 
@@ -156,13 +178,19 @@ describe('ClientAuthService', () => {
         name: 'New User',
       });
 
+      expect(db.createUserWithPersonalTeam).toHaveBeenCalledWith({
+        email: 'new@example.com',
+        password: expect.any(String),
+        name: 'New User',
+      });
       expect(result.user.email).toBe('new@example.com');
+      expect(result.user.team?.id).toBe('team-1');
       expect(result.accessToken).toBe('mock-token');
     });
 
     it('throws error when email not verified', async () => {
       // No verification in cache
-      (service as any).verifiedCache.clear();
+      db.consumeVerifiedVerificationCode.mockResolvedValue(null);
 
       await expect(
         service.registerWithVerification({
@@ -175,7 +203,7 @@ describe('ClientAuthService', () => {
     });
 
     it('throws error when email already exists', async () => {
-      (service as any).verifiedCache.set('test@example.com', { verified: true, codeId: 'code-1' });
+      db.consumeVerifiedVerificationCode.mockResolvedValue({ verificationCode: { id: 'code-1' } } as any);
       db.findUserByEmail.mockResolvedValue(mockUser);
 
       await expect(

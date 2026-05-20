@@ -31,8 +31,8 @@ cp .env.example .env
 # 数据库配置
 DATABASE_URL=postgresql://postgres:password@localhost:5432/ice_cola
 
-# JWT 配置
-JWT_SECRET=your-secret-key-here
+# JWT 配置（仅本地开发；共享/生产环境必须使用独立强密钥）
+JWT_SECRET=icecola-local-dev-jwt-secret-not-for-production
 JWT_EXPIRES_IN=15m
 
 # Hermes Agent 端点

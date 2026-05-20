@@ -17,6 +17,7 @@ import { TeamsModule } from './teams/teams.module';
 import { McpModule } from './mcp/mcp.module';
 import { AiModelsModule } from './ai-models/ai-models.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
+import { getRequiredJwtSecret } from './config/security-config';
 
 @Module({
   imports: [
@@ -28,7 +29,7 @@ import { MarketplaceModule } from './marketplace/marketplace.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: getRequiredJwtSecret(configService),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
         },

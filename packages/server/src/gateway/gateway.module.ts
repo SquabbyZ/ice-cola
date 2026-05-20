@@ -6,6 +6,7 @@ import { GatewayGateway } from './gateway.gateway';
 import { GatewayService } from './gateway.service';
 import { DatabaseModule } from '../database/database.module';
 import { AiModelsModule } from '../ai-models/ai-models.module';
+import { getRequiredJwtSecret } from '../config/security-config';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { AiModelsModule } from '../ai-models/ai-models.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
+        secret: getRequiredJwtSecret(configService),
         signOptions: {
           expiresIn: configService.get<string>('JWT_EXPIRES_IN', '15m'),
         },

@@ -79,10 +79,11 @@ Ice Cola Server 是一个基于 NestJS 的后端服务，为 OpenClaw Desktop �
 
 ```bash
 # packages/server/.env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/icecola"
-JWT_SECRET="your-secret-key"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5433/icecola?schema=public"
+JWT_SECRET="icecola-local-dev-jwt-secret-not-for-production" # local development only
 JWT_EXPIRES_IN="7d"
 HERMES_ENDPOINT="http://localhost:9119"
+RESEND_API_KEY="" # set locally; never commit real keys
 
 # packages/hermes-agent/.env
 OPENROUTER_API_KEY="your-openrouter-api-key"

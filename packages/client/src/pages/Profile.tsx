@@ -25,7 +25,7 @@ import {
 
 const Profile: React.FC = () => {
   const { t } = useTranslation();
-  const { user } = useAuthStore();
+  const { user, refreshSession } = useAuthStore();
   const [teams, setTeams] = useState<Team[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -93,14 +93,17 @@ const Profile: React.FC = () => {
     try {
       const name = newTeamName.trim();
       const team = await teamService.createTeam(name);
-      setTeams([...teams, team]);
+      setTeams((prevTeams) => [...prevTeams, team]);
       setSelectedTeam(team);
       setShowCreateTeam(false);
       setNewTeamName('');
       toast.success(t('profile.createTeamSuccess'));
 
-      const updatedUser = { ...user!, team: { id: team.id, name: team.name, role: 'OWNER' } };
-      useAuthStore.setState({ user: updatedUser as any });
+      try {
+        await refreshSession();
+      } catch (refreshError) {
+        console.error('Failed to refresh session after creating team:', refreshError);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || t('profile.createTeamFailed'));
     } finally {
@@ -121,7 +124,7 @@ const Profile: React.FC = () => {
     try {
       const teamId = selectedTeam.id;
       await teamService.removeMember(teamId, memberToRemove.id);
-      setMembers(members.filter(m => m.id !== memberToRemove.id));
+      setMembers((prevMembers) => prevMembers.filter((m) => m.id !== memberToRemove.id));
       toast.success(t('profile.removeSuccess'));
     } catch (error: any) {
       toast.error(error.response?.data?.message || t('profile.removeFailed'));
@@ -144,18 +147,24 @@ const Profile: React.FC = () => {
     try {
       const teamId = selectedTeam.id;
       await teamService.leaveTeam(teamId);
-      const remainingTeams = teams.filter(t => t.id !== teamId);
-      setTeams(remainingTeams);
+      const remainingTeams = teams.filter((t) => t.id !== teamId);
+      setTeams(() => remainingTeams);
       setSelectedTeam(remainingTeams.length > 0 ? remainingTeams[0] : null);
       toast.success(t('profile.leaveSuccess'));
-      const updatedUser = { ...user!, team: null };
-      useAuthStore.setState({ user: updatedUser as any });
+
+      try {
+        await refreshSession();
+      } catch (refreshError) {
+        console.error('Failed to refresh session after leaving team:', refreshError);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.message || t('profile.leaveFailed'));
     } finally {
       setActionLoading(false);
     }
   };
+
+  const currentTeamRole = selectedTeam?.role ?? user?.team?.role ?? '';
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -434,11 +443,11 @@ const Profile: React.FC = () => {
                 <div>
                   <h3 className="font-semibold text-zinc-900 text-lg">{selectedTeam.name}</h3>
                   <p className="text-sm text-zinc-500 mt-1">
-                    {t('profile.teamRole')}: {getRoleBadge(selectedTeam.role || user?.team?.role || "")}
+                    {t('profile.teamRole')}: {getRoleBadge(currentTeamRole)}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  {user?.team?.role === 'OWNER' && (
+                  {currentTeamRole === 'OWNER' && (
                     <>
                       <Button
                         variant="outline"
@@ -461,7 +470,7 @@ const Profile: React.FC = () => {
                       </Button>
                     </>
                   )}
-                  {user?.team?.role === 'MEMBER' && (
+                  {currentTeamRole === 'MEMBER' && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -499,7 +508,7 @@ const Profile: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2">
                         {getRoleBadge(member.role)}
-                        {member.id !== user?.id && (user?.team?.role === 'OWNER' || user?.team?.role === 'ADMIN') && member.role !== 'OWNER' && (
+                        {member.id !== user?.id && (currentTeamRole === 'OWNER' || currentTeamRole === 'ADMIN') && member.role !== 'OWNER' && (
                           <Button
                             variant="ghost"
                             size="sm"

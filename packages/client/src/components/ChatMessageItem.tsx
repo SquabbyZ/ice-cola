@@ -162,6 +162,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onEdit, onDe
               className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
               onClick={() => onEdit(message.id, message.content)}
               title="编辑消息"
+              aria-label="编辑消息"
             >
               <Pencil className="w-3.5 h-3.5 text-gray-500" />
             </button>
@@ -171,6 +172,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onEdit, onDe
               className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
               onClick={() => onDelete(message.id)}
               title="删除消息"
+              aria-label="删除消息"
             >
               <Trash2 className="w-3.5 h-3.5 text-gray-500" />
             </button>
@@ -182,6 +184,7 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onEdit, onDe
                   className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
                   onClick={onRegenerate}
                   title="重新生成"
+                  aria-label="重新生成"
                 >
                   <RefreshCw className="w-3.5 h-3.5 text-gray-500" />
                 </button>
@@ -190,13 +193,14 @@ const ChatMessageItem: React.FC<ChatMessageItemProps> = ({ message, onEdit, onDe
                 className="p-1.5 hover:bg-gray-100 rounded-md transition-colors"
                 onClick={() => navigator.clipboard.writeText(message.content)}
                 title="复制消息"
+                aria-label="复制消息"
               >
                 <Copy className="w-3.5 h-3.5 text-gray-500" />
               </button>
-              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="有用">
+              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="有用" aria-label="有用">
                 <ThumbsUp className="w-3.5 h-3.5 text-gray-500" />
               </button>
-              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="无用">
+              <button className="p-1.5 hover:bg-gray-100 rounded-md transition-colors" title="无用" aria-label="无用">
                 <ThumbsDown className="w-3.5 h-3.5 text-gray-500" />
               </button>
             </>

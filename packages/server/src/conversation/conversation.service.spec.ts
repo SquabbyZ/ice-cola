@@ -42,6 +42,7 @@ describe('ConversationService', () => {
             findConversationsByTeamId: jest.fn(),
             countConversationsByTeamId: jest.fn(),
             findConversationById: jest.fn(),
+            findConversationBySessionId: jest.fn(),
             findMessagesByConversationId: jest.fn(),
             createMessage: jest.fn(),
             updateConversation: jest.fn(),
@@ -139,6 +140,26 @@ describe('ConversationService', () => {
       db.findConversationById.mockResolvedValue(null);
 
       await expect(service.getById('team-1', 'nonexistent'))
+        .rejects.toThrow(AppError);
+    });
+  });
+
+  describe('getBySessionId', () => {
+    it('returns conversation by session id', async () => {
+      db.findConversationBySessionId.mockResolvedValue(mockConversation);
+      db.findConversationById.mockResolvedValue(mockConversation);
+      db.findMessagesByConversationId.mockResolvedValue([mockMessage]);
+
+      const result = await service.getBySessionId('team-1', 'conv-1');
+
+      expect(db.findConversationBySessionId).toHaveBeenCalledWith('team-1', 'conv-1');
+      expect(result.id).toBe('conv-1');
+    });
+
+    it('throws AppError when session is not found', async () => {
+      db.findConversationBySessionId.mockResolvedValue(null);
+
+      await expect(service.getBySessionId('team-1', 'missing-session'))
         .rejects.toThrow(AppError);
     });
   });

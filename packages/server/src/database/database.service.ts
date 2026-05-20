@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
 
@@ -36,6 +37,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return (result.rows[0] as T) || null;
   }
 
+  private async queryOneWithClient<T = any>(client: PoolClient, text: string, params?: any[]): Promise<T | null> {
+    const result = await client.query(text, params);
+    return (result.rows[0] as T) || null;
+  }
+
   async transaction<T>(callback: (client: PoolClient) => Promise<T>): Promise<T> {
     const client = await this.pool.connect();
     try {
@@ -54,14 +60,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   // User methods
   async findUserByEmail(email: string) {
     return this.queryOne(
-      'SELECT * FROM users WHERE email = $1',
+      `SELECT u.*, t.name as team_name
+       FROM users u
+       LEFT JOIN teams t ON u."teamId" = t.id
+       WHERE u.email = $1`,
       [email]
     );
   }
 
   async findUserById(id: string) {
     return this.queryOne(
-      'SELECT u.*, t.id as team_id, t.name as team_name FROM users u LEFT JOIN teams t ON u."teamId" = t.id WHERE u.id = $1',
+      `SELECT u.*, t.name as team_name
+       FROM users u
+       LEFT JOIN teams t ON u."teamId" = t.id
+       WHERE u.id = $1`,
       [id]
     );
   }
@@ -78,6 +90,47 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
        RETURNING *`,
       [id, data.email, data.password, data.name || null]
     );
+  }
+
+  async createUserWithPersonalTeam(data: {
+    email: string;
+    password: string;
+    name?: string;
+  }) {
+    return this.transaction(async (client) => {
+      const teamId = this.generateUUID();
+      const userId = this.generateUUID();
+      const quotaId = this.generateUUID();
+      const teamName = `${data.name || data.email.split('@')[0]}的团队`;
+
+      await client.query(
+        `INSERT INTO teams (id, name, "createdAt", "updatedAt")
+         VALUES ($1, $2, NOW(), NOW())`,
+        [teamId, teamName]
+      );
+
+      await client.query(
+        `INSERT INTO users (id, email, password, name, "teamId", role, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3, $4, $5, 'OWNER', NOW(), NOW())`,
+        [userId, data.email, data.password, data.name || null, teamId]
+      );
+
+      await client.query(
+        `INSERT INTO quotas (id, "teamId", "totalAmt", "usedAmt", "period", "resetDay", "createdAt", "updatedAt")
+         VALUES ($1, $2, 1000, 0, 30, 1, NOW(), NOW())`,
+        [quotaId, teamId]
+      );
+
+      const result = await client.query(
+        `SELECT u.*, t.name as team_name
+         FROM users u
+         LEFT JOIN teams t ON u."teamId" = t.id
+         WHERE u.id = $1`,
+        [userId]
+      );
+
+      return result.rows[0] || null;
+    });
   }
 
   // Team methods
@@ -208,6 +261,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
        RETURNING *`,
       [id, data.teamId, data.userId, data.platform || 'hermes', data.sessionId || null, data.title]
+    );
+  }
+
+  async findConversationBySessionId(teamId: string, sessionId: string) {
+    return this.queryOne(
+      'SELECT * FROM conversations WHERE "teamId" = $1 AND ("sessionId" = $2 OR id = $2)',
+      [teamId, sessionId]
     );
   }
 
@@ -794,11 +854,50 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  async findLatestVerificationCode(email: string, type: string = 'register') {
+    return this.queryOne(
+      `SELECT * FROM client_verification_codes
+       WHERE email = $1 AND type = $2 AND expires_at > NOW()
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [email, type]
+    );
+  }
+
+  async findVerifiedVerificationCode(email: string, code: string, type: string = 'register') {
+    return this.queryOne(
+      `SELECT * FROM client_verification_codes
+       WHERE email = $1 AND code = $2 AND type = $3 AND verified = true AND expires_at > NOW()
+       ORDER BY "createdAt" DESC LIMIT 1`,
+      [email, code, type]
+    );
+  }
+
   async markVerificationCodeAsVerified(id: string) {
     return this.queryOne(
       `UPDATE client_verification_codes SET verified = true WHERE id = $1 RETURNING *`,
       [id]
     );
+  }
+
+  async consumeVerifiedVerificationCode(email: string, code: string, type: string = 'register') {
+    return this.transaction(async (client) => {
+      const result = await client.query(
+        `WITH target AS (
+           SELECT id
+           FROM client_verification_codes
+           WHERE email = $1 AND code = $2 AND type = $3 AND verified = true AND expires_at > NOW()
+           ORDER BY "createdAt" DESC
+           LIMIT 1
+         )
+         DELETE FROM client_verification_codes
+         WHERE id IN (SELECT id FROM target)
+         RETURNING *`,
+        [email, code, type]
+      );
+
+      const verificationCode = result.rows[0] || null;
+      return verificationCode ? { verificationCode } : null;
+    });
   }
 
   async incrementVerificationAttempts(id: string) {
@@ -995,10 +1094,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
+    return randomUUID();
   }
 }

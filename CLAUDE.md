@@ -166,16 +166,16 @@ docker exec -it <container_name> psql -U postgres -c "\l"
 
 ### 环境变量
 
-数据库连接通过 `DATABASE_URL` 环境变量配置：
+数据库连接通过 `DATABASE_URL` 环境变量配置。以下默认值仅用于本地开发，生产或共享环境必须使用独立强密码并放在未提交的 `.env` 或密钥管理系统中：
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/icecola
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/icecola?schema=public
 ```
 
 或使用 Docker 容器网络：
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@172.19.0.3:5432/icecola
+DATABASE_URL=postgresql://postgres:postgres@postgres:5432/icecola?schema=public
 ```
 
 ## 目录结构
@@ -250,3 +250,29 @@ import ConfirmDialog from '@/components/ConfirmDialog';
 - `rules/common/` - 通用开发规范
 - `rules/typescript/` - TypeScript 开发规范
 - `rules/zh/` - 中文开发规范
+
+## PM2 Services
+
+| Port | Name | Type |
+|------|------|------|
+| 1992 | ice-cola-admin-1992 | Vite Admin |
+| 1420 | ice-cola-client-1420 | Vite Client |
+
+**Docker Services:** server:3000, websocket:3001, postgres:5433, hermes-dashboard:9119.
+
+**Terminal Commands:**
+```bash
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ecosystem.config.cjs   # First time
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ecosystem.config.cjs --update-env
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 restart ecosystem.config.cjs --update-env
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop all
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ice-cola-admin-1992
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop ice-cola-admin-1992
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ice-cola-client-1420
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop ice-cola-client-1420
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 logs
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 status
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 monit
+pm2 save                         # Save process list
+pm2 resurrect                    # Restore saved list
+```

@@ -10,7 +10,7 @@ import { QuotaService } from './quota.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
-import { CurrentUser, JwtPayload } from '../common/decorators/current-user.decorator';
+import { CurrentAuthUser, CurrentUser } from '../common/decorators/current-user.decorator';
 import { TeamRole } from './quota.service';
 
 @Controller('teams/:teamId/quota')
@@ -29,7 +29,7 @@ export class QuotaController {
   async recharge(
     @Param('teamId') teamId: string,
     @Body() body: { amount: string; note?: string },
-    @CurrentUser() user: JwtPayload,
+    @CurrentUser() user: CurrentAuthUser,
   ) {
     const result = await this.quotaService.recharge(
       teamId,

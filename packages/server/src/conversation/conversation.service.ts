@@ -113,6 +113,16 @@ export class ConversationService {
     };
   }
 
+  async getBySessionId(teamId: string, sessionId: string) {
+    const conversation = await this.db.findConversationBySessionId(teamId, sessionId) as ConversationRow | null;
+
+    if (!conversation) {
+      throw new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404);
+    }
+
+    return this.getById(teamId, conversation.id);
+  }
+
   async addMessage(
     teamId: string,
     conversationId: string,

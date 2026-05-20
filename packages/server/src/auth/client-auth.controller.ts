@@ -1,4 +1,5 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { ClientAuthService } from './client-auth.service';
 import { CaptchaService } from '../commons/captcha.service';
 import { SendCodeDto, VerifyCodeDto, ClientRegisterDto } from './client-dto/client-auth.dto';
@@ -33,8 +34,13 @@ export class ClientAuthController {
    */
   @Post('send-code')
   @HttpCode(HttpStatus.OK)
-  async sendCode(@Body() dto: SendCodeDto) {
-    await this.clientAuthService.sendVerificationCode(dto.email, dto.captchaToken, dto.captchaAnswer);
+  async sendCode(@Body() dto: SendCodeDto, @Req() req: Request) {
+    await this.clientAuthService.sendVerificationCode(
+      dto.email,
+      dto.captchaToken,
+      dto.captchaAnswer,
+      req.ip,
+    );
     return {
       success: true,
       message: '验证码已发送',
@@ -47,8 +53,8 @@ export class ClientAuthController {
    */
   @Post('verify-code')
   @HttpCode(HttpStatus.OK)
-  async verifyCode(@Body() dto: VerifyCodeDto) {
-    const isValid = await this.clientAuthService.verifyCode(dto.email, dto.code);
+  async verifyCode(@Body() dto: VerifyCodeDto, @Req() req: Request) {
+    const isValid = await this.clientAuthService.verifyCode(dto.email, dto.code, req.ip);
     if (!isValid) {
       return {
         success: false,
@@ -66,8 +72,11 @@ export class ClientAuthController {
    * POST /client/auth/register
    */
   @Post('register')
-  async register(@Body() dto: ClientRegisterDto) {
-    const result = await this.clientAuthService.registerWithVerification(dto);
+  async register(@Body() dto: ClientRegisterDto, @Req() req: Request) {
+    const result = await this.clientAuthService.registerWithVerification(
+      dto,
+      req.ip,
+    );
     return {
       success: true,
       data: result,

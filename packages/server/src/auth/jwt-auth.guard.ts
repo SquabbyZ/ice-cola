@@ -2,15 +2,31 @@ import { Injectable, ExecutionContext, CanActivate } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
+import { DatabaseService } from '../database/database.service';
+import { CurrentAuthUser } from '../common/decorators/current-user.decorator';
+import { getRequiredJwtSecret } from '../config/security-config';
+
+interface AccessTokenPayload {
+  sub?: string;
+  type?: string;
+}
+
+interface AuthUserRow {
+  id: string;
+  email: string;
+  teamId: string | null;
+  role: string;
+}
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly db: DatabaseService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractTokenFromHeader(request);
 
@@ -19,10 +35,25 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = this.jwtService.verify(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
+      const payload = this.jwtService.verify<AccessTokenPayload>(token, {
+        secret: getRequiredJwtSecret(this.configService),
       });
-      (request as any).user = { id: payload.sub, ...payload };
+      if (payload.type !== 'access' || !payload.sub) {
+        return false;
+      }
+
+      const user = await this.db.findUserById(payload.sub) as AuthUserRow | null;
+      if (!user) {
+        return false;
+      }
+
+      (request as any).user = {
+        sub: user.id,
+        id: user.id,
+        email: user.email,
+        teamId: user.teamId,
+        role: user.role,
+      } satisfies CurrentAuthUser;
       return true;
     } catch {
       return false;

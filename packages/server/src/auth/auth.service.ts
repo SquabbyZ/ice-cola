@@ -9,6 +9,7 @@ import {
   RefreshTokenDto,
 } from './dto/auth.dto';
 import { AppError } from '../common/interfaces/errors';
+import { getRequiredJwtSecret } from '../config/security-config';
 
 export interface AuthTokens {
   accessToken: string;
@@ -43,7 +44,7 @@ export class AuthService {
 
     const password = await bcrypt.hash(dto.password, 10);
 
-    const user = await this.db.createUser({
+    const user = await this.db.createUserWithPersonalTeam({
       email: dto.email,
       password,
       name: dto.name,
@@ -52,12 +53,7 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id, user.teamId, user.role);
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        createdAt: new Date(),
-      },
+      user: this.toAuthUser(user),
       ...tokens,
     };
   }
@@ -78,18 +74,7 @@ export class AuthService {
     const tokens = await this.generateTokens(user.id, user.teamId, user.role);
 
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        team: user.teamId
-          ? {
-              id: user.teamId,
-              name: user.team_name,
-              role: user.role,
-            }
-          : null,
-      },
+      user: this.toAuthUser(user),
       ...tokens,
     };
   }
@@ -97,7 +82,7 @@ export class AuthService {
   async refreshToken(dto: RefreshTokenDto) {
     try {
       const payload = this.jwtService.verify(dto.refreshToken, {
-        secret: this.configService.get('JWT_SECRET'),
+        secret: getRequiredJwtSecret(this.configService),
       });
 
       if (payload.type !== 'refresh') {
@@ -149,19 +134,23 @@ export class AuthService {
   }
 
   async getCurrentUser(userId: string) {
-    const user = await this.db.findUserById(userId);
+    const user = await this.db.findUserById(userId) as UserRow | null;
     if (!user) {
       throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
     }
+    return this.toAuthUser(user);
+  }
+
+  private toAuthUser(user: UserRow) {
     return {
-      id: (user as any).id,
-      email: (user as any).email,
-      name: (user as any).name,
-      team: (user as any).teamId
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      team: user.teamId
         ? {
-            id: (user as any).teamId,
-            name: (user as any).team_name,
-            role: (user as any).role,
+            id: user.teamId,
+            name: user.team_name,
+            role: user.role,
           }
         : null,
     };

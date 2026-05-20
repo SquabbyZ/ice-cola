@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { getRequiredAiEncryptionKey } from '../config/security-config';
 
 @Injectable()
 export class EncryptionService {
@@ -11,10 +12,7 @@ export class EncryptionService {
   private encryptionKey: Buffer;
 
   constructor(private configService: ConfigService) {
-    const keyHex = this.configService.get<string>('AI_ENCRYPTION_KEY');
-    if (!keyHex) {
-      throw new Error('AI_ENCRYPTION_KEY environment variable is not set');
-    }
+    const keyHex = getRequiredAiEncryptionKey(this.configService);
     this.encryptionKey = Buffer.from(keyHex, 'hex');
     if (this.encryptionKey.length !== this.keyLength) {
       throw new Error('AI_ENCRYPTION_KEY must be 32 bytes (64 hex characters)');
