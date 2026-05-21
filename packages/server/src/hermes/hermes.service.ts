@@ -1,9 +1,4 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
-
-interface ErrorLike {
-  message: string;
-  code?: string;
-}
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { ChatRequestDto, ChatResponseDto, HermesStatusDto } from './dto/hermes.dto';
@@ -21,37 +16,54 @@ export class HermesService {
     private readonly quotaService: QuotaService,
     private readonly conversationService: ConversationService,
   ) {
-    this.hermesEndpoint = this.configService.get<string>('HERMES_ENDPOINT', 'http://hermes-agent:9119');
+    this.hermesEndpoint = this.normalizeInternalServiceUrl(
+      this.configService.get<string>('HERMES_ENDPOINT') || process.env.HERMES_ENDPOINT || 'http://hermes-agent:9119',
+      'HERMES_ENDPOINT',
+    );
   }
 
   async chat(userId: string, teamId: string, dto: ChatRequestDto): Promise<ChatResponseDto> {
     const conversation = dto.sessionId
       ? await this.conversationService.getBySessionId(teamId, dto.sessionId)
-      : null;
+      : await this.conversationService.create(
+        teamId,
+        'New conversation',
+        userId,
+      );
 
-    const activeConversation = conversation || await this.conversationService.create(
-      teamId,
-      'New conversation',
-      userId,
-    );
-
-    // 4. Add user message
-    await this.conversationService.addMessage(teamId, activeConversation.id, {
-      role: 'user',
-      content: dto.message,
+    const estimate = await this.quotaService.estimateLingqiCost(teamId, {
+      transactionType: 'chat_message',
+      modelId: dto.model,
+      context: { conversationId: conversation.id },
     });
 
-    await this.quotaService.consumeQuota(teamId, 1);
+    if (!estimate.canAfford) {
+      throw new HttpException(
+        {
+          success: false,
+          error: estimate.reason || 'LINGQI_INSUFFICIENT_BALANCE',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
+    const executionModel = await this.quotaService.getSelectedModelForExecution(teamId, dto.model, conversation.id);
+    await this.prepayLingqiCharge(teamId, userId, conversation.id, estimate.estimatedCost, dto.model);
 
     try {
-      const response = await this.callHermesAgent({
-        message: dto.message,
-        sessionId: activeConversation.id,
-        context: dto.context,
-        model: dto.model,
+      await this.conversationService.addMessage(teamId, conversation.id, {
+        role: 'user',
+        content: dto.message,
       });
 
-      await this.conversationService.addMessage(teamId, activeConversation.id, {
+      const response = await this.callHermesAgent({
+        message: dto.message,
+        sessionId: conversation.id,
+        context: dto.context,
+        model: executionModel.modelName,
+      });
+
+      await this.conversationService.addMessage(teamId, conversation.id, {
         role: 'assistant',
         content: response.response,
         model: response.model,
@@ -60,27 +72,15 @@ export class HermesService {
 
       return response;
     } catch (error: unknown) {
-      const hermesError = error as ErrorLike;
-      this.logger.error(`Hermes chat failed: ${hermesError.message}`);
+      const errorMessage = this.getErrorMessage(error);
+      this.logger.error(`Hermes agent execution failed: ${errorMessage}`);
 
-      if (hermesError.code === 'ECONNREFUSED' || hermesError.code === 'ETIMEDOUT') {
-        const demoResponse = this.getDemoResponse(dto.message);
-        await this.conversationService.addMessage(teamId, activeConversation.id, {
-          role: 'assistant',
-          content: demoResponse,
-        });
-        return {
-          success: true,
-          response: demoResponse,
-          sessionId: activeConversation.id,
-          model: 'demo',
-        };
-      }
+      await this.refundLingqiCharge(teamId, userId, conversation.id, estimate.estimatedCost, dto.model);
 
       throw new HttpException(
         {
           success: false,
-          error: 'Hermes 服务调用失败',
+          error: 'Hermes 服务暂时不可用，请稍后重试',
         },
         HttpStatus.BAD_GATEWAY,
       );
@@ -90,7 +90,7 @@ export class HermesService {
   async getStatus(): Promise<HermesStatusDto> {
     try {
       const response = await this.httpService
-        .get(`${this.hermesEndpoint}/health`, { timeout: 5000 })
+        .get(`${this.hermesEndpoint}/health`, { timeout: 5000, maxRedirects: 0 })
         .toPromise();
       return {
         status: 'online',
@@ -100,8 +100,7 @@ export class HermesService {
         provider: response.data?.provider || 'unknown',
       };
     } catch (error: unknown) {
-      const hermesError = error as ErrorLike;
-      this.logger.warn(`Hermes status check failed: ${hermesError.message}`);
+      this.logger.warn(`Hermes status check failed: ${this.getErrorMessage(error)}`);
       return {
         status: 'offline',
         version: 'unknown',
@@ -121,10 +120,77 @@ export class HermesService {
     return this.conversationService.getById(teamId, conversation.id);
   }
 
+  private async prepayLingqiCharge(
+    teamId: string,
+    userId: string,
+    conversationId: string,
+    amount: number,
+    modelId?: string,
+  ): Promise<void> {
+    await this.quotaService.consumeLingqi(teamId, userId, {
+      amount,
+      transactionType: 'chat_message',
+      sourceType: 'chat',
+      sourceId: conversationId,
+      description: '聊天模型调用',
+      metadata: { modelId: modelId || null },
+      idempotencyKey: `charge:chat:${conversationId}`,
+    });
+  }
+
+  private async refundLingqiCharge(
+    teamId: string,
+    userId: string,
+    conversationId: string,
+    amount: number,
+    modelId?: string,
+  ): Promise<void> {
+    await this.quotaService.refundLingqi(teamId, userId, {
+      amount,
+      transactionType: 'chat_message',
+      sourceType: 'chat_refund',
+      sourceId: conversationId,
+      description: '聊天模型调用失败退款',
+      metadata: { modelId: modelId || null },
+      idempotencyKey: `refund:chat:${conversationId}`,
+      refundOfIdempotencyKey: `charge:chat:${conversationId}`,
+    });
+  }
+
+  private getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    return 'Unexpected error';
+  }
+
+  private normalizeInternalServiceUrl(value: string | undefined, name: string): string {
+    if (!value) {
+      throw new Error(`${name} is required`);
+    }
+
+    const parsed = new URL(value);
+    const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal', 'hermes-agent']);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !allowedHosts.has(parsed.hostname)) {
+      throw new Error(`${name} must point to a trusted internal service`);
+    }
+
+    return parsed.origin;
+  }
+
+  private isConnectionFailure(error: unknown): boolean {
+    if (!error || typeof error !== 'object' || !('code' in error)) {
+      return false;
+    }
+
+    return error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT';
+  }
+
   private async callHermesAgent(params: {
     message: string;
     sessionId: string;
-    context?: Record<string, any>;
+    context?: Record<string, unknown>;
     model?: string;
   }): Promise<ChatResponseDto> {
     const response = await this.httpService
@@ -141,6 +207,7 @@ export class HermesService {
             'Content-Type': 'application/json',
           },
           timeout: 120000,
+          maxRedirects: 0,
         },
       )
       .toPromise();

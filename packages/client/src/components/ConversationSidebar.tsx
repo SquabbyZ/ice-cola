@@ -53,7 +53,7 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   };
 
   const confirmDelete = async () => {
-    if (!pendingDeleteId) return;
+    if (!pendingDeleteId || !teamId) return;
 
     setDeletingId(pendingDeleteId);
     try {
@@ -73,11 +73,11 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
   };
 
   const saveTitle = async (conversationId: string) => {
-    if (!editingTitle.trim()) {
+    if (!editingTitle.trim() || !teamId) {
       setEditingId(null);
       return;
     }
-    
+
     try {
       await renameConversation(teamId, conversationId, editingTitle.trim());
       setEditingId(null);
@@ -113,10 +113,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       className={`
         relative flex flex-col h-full transition-all duration-500 cubic-bezier(0.4, 0, 0.2, 1)
         ${isCollapsed ? 'w-[68px]' : 'w-[260px]'}
-        bg-gradient-to-b from-slate-50/80 via-white to-slate-50/60
-        border-r border-slate-200/50
+        pavilion-shell
+        border-r
         backdrop-blur-xl
-        shadow-[4px_0_24px_rgba(0,0,0,0.02)]
+        shadow-[4px_0_28px_rgba(70,42,18,0.06)]
       `}
     >
       {/* Collapse Toggle Button - Floating Design */}
@@ -124,34 +124,28 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
         <button
           onClick={onToggleCollapse}
           className="absolute -right-3 top-8 z-20 w-7 h-7 rounded-full 
-            bg-white/90 backdrop-blur-md border border-slate-200/60 
-            shadow-[0_2px_12px_rgba(0,0,0,0.08)] 
-            hover:shadow-[0_4px_16px_rgba(0,0,0,0.12)] hover:border-primary/30 
+            bg-amber-50/95 backdrop-blur-md border border-amber-200/70
+            shadow-[0_2px_12px_rgba(120,78,28,0.12)]
+            hover:shadow-[0_4px_16px_rgba(120,78,28,0.16)] hover:border-teal-300/60
             hover:scale-110 active:scale-95
             transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)
             flex items-center justify-center group"
           title={isCollapsed ? '展开侧边栏 (Cmd+B)' : '折叠侧边栏 (Cmd+B)'}
         >
           {isCollapsed ? (
-            <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-primary transition-colors" />
+            <ChevronRight className="w-4 h-4 text-stone-500 group-hover:text-teal-700 transition-colors" />
           ) : (
-            <ChevronLeft className="w-4 h-4 text-slate-500 group-hover:text-primary transition-colors" />
+            <ChevronLeft className="w-4 h-4 text-stone-500 group-hover:text-teal-700 transition-colors" />
           )}
         </button>
       )}
 
       {/* Header with Gradient Accent */}
-      <div className={`p-3 border-b border-slate-200/40 ${isCollapsed ? 'flex justify-center' : ''}`}>
+      <div className={`p-3 border-b border-amber-200/50 ${isCollapsed ? 'flex justify-center' : ''}`}>
         {isCollapsed ? (
           <Button
             onClick={onNewConversation}
-            className="w-11 h-11 p-0 rounded-2xl 
-              bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 
-              hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600
-              text-white shadow-[0_4px_16px_rgba(99,102,241,0.3)] 
-              hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)]
-              hover:scale-105 active:scale-95
-              transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)"
+            className="h-11 w-11 rounded-2xl btn-ice p-0 transition-all duration-300 hover:scale-105 active:scale-95"
             size="icon"
             title="新建对话"
           >
@@ -159,30 +153,20 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
           </Button>
         ) : (
           <>
-            {/* Branding */}
             <div className="mb-3 px-1">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 flex items-center justify-center shadow-lg">
-                  <Sparkles className="w-4 h-4 text-white" />
+                <div className="w-8 h-8 rounded-xl pavilion-orb flex items-center justify-center shadow-lg">
+                  <Sparkles className="w-4 h-4 text-amber-50" />
                 </div>
-                <span className="text-sm font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
+                <span className="text-sm font-bold pavilion-text-gradient">
                   对话历史
                 </span>
               </div>
             </div>
-            
-            {/* New Chat Button */}
+
             <Button
               onClick={onNewConversation}
-              className="w-full gap-2 
-                bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 
-                hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600
-                text-white 
-                shadow-[0_4px_16px_rgba(99,102,241,0.3)] 
-                hover:shadow-[0_6px_24px_rgba(99,102,241,0.4)]
-                hover:scale-[1.02] active:scale-[0.98]
-                transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)
-                rounded-xl font-semibold text-sm"
+              className="w-full gap-2 rounded-xl btn-ice text-sm font-semibold transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
               size="sm"
             >
               <Plus className="w-4 h-4" />
@@ -196,22 +180,22 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
       {!isCollapsed && (
         <div className="px-3 py-2">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Search className="absolute left-3 top-1/2 -transtone-y-1/2 w-4 h-4 text-stone-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索对话..."
-              className="w-full pl-9 pr-8 py-2 text-sm bg-slate-100/60 border border-slate-200/40 rounded-xl
-                focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300
-                placeholder:text-slate-400 transition-all duration-200"
+              className="w-full pl-9 pr-8 py-2 text-sm bg-amber-50/70 border border-amber-200/60 rounded-xl text-stone-700
+                focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-300
+                placeholder:text-stone-400 transition-all duration-200"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:bg-slate-200/60 rounded-md transition-colors"
+                className="absolute right-2.5 top-1/2 -transtone-y-1/2 p-0.5 hover:bg-stone-200/60 rounded-md transition-colors"
               >
-                <X className="w-3.5 h-3.5 text-slate-400" />
+                <X className="w-3.5 h-3.5 text-stone-400" />
               </button>
             )}
           </div>
@@ -220,29 +204,29 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
       {/* Conversation List with Custom Scrollbar */}
       <div className="flex-1 overflow-y-auto 
-        scrollbar-thin scrollbar-thumb-slate-300/60 scrollbar-track-transparent 
-        hover:scrollbar-thumb-slate-400/60
+        scrollbar-thin scrollbar-thumb-stone-300/60 scrollbar-track-transparent 
+        hover:scrollbar-thumb-stone-400/60
         pr-1.5">
         {isLoading ? (
           <div className="p-4 space-y-3">
             {[...Array(5)].map((_, i) => (
               <div key={i} className="animate-pulse">
-                <div className="h-11 bg-gradient-to-r from-slate-200/60 to-slate-100/60 rounded-xl w-full mb-1"></div>
-                <div className="h-3 bg-slate-200/40 rounded-lg w-2/3"></div>
+                <div className="h-11 bg-gradient-to-r from-stone-200/60 to-stone-100/60 rounded-xl w-full mb-1"></div>
+                <div className="h-3 bg-stone-200/40 rounded-lg w-2/3"></div>
               </div>
             ))}
           </div>
         ) : displayConversations.length === 0 ? (
           <div className={`p-6 text-center ${isCollapsed ? 'hidden' : ''}`}>
             <div className="w-20 h-20 mx-auto mb-4 rounded-3xl 
-              bg-gradient-to-br from-slate-100 via-white to-slate-50 
-              border border-slate-200/60
+              bg-gradient-to-br from-stone-100 via-white to-stone-50 
+              border border-stone-200/60
               flex items-center justify-center
               shadow-[0_8px_24px_rgba(0,0,0,0.04)]">
-              <MessageSquare className="w-9 h-9 text-slate-300" />
+              <MessageSquare className="w-9 h-9 text-stone-300" />
             </div>
-            <p className="text-sm font-semibold text-slate-600">{searchQuery ? '无匹配结果' : '暂无对话'}</p>
-            <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">{searchQuery ? '尝试其他关键词' : '点击"新建对话"开始聊天'}</p>
+            <p className="text-sm font-semibold text-stone-600">{searchQuery ? '无匹配结果' : '暂无对话'}</p>
+            <p className="text-xs text-stone-400 mt-1.5 leading-relaxed">{searchQuery ? '尝试其他关键词' : '点击"新建对话"开始聊天'}</p>
           </div>
         ) : (
           <div className="p-2.5 space-y-2">
@@ -263,10 +247,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     animate-in fade-in slide-in-from-bottom-2
                     ${isCollapsed ? 'flex justify-center' : ''}
                     ${isActive
-                      ? 'bg-white shadow-[0_4px_16px_rgba(0,0,0,0.08)] border-2 border-indigo-200/60'
+                      ? 'bg-amber-50/90 shadow-[0_4px_16px_rgba(120,78,28,0.12)] border-2 border-amber-200/80'
                       : isHovered
-                        ? 'bg-slate-50/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-slate-200/40'
-                        : 'hover:bg-slate-50/50 border border-transparent'
+                        ? 'bg-amber-50/60 shadow-[0_2px_8px_rgba(120,78,28,0.08)] border border-amber-200/50'
+                        : 'hover:bg-amber-50/50 border border-transparent'
                     }
                   `}
                 >
@@ -279,14 +263,14 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                     >
                       <div className={`
                         w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-300
-                        ${isActive 
-                          ? 'bg-gradient-to-br from-indigo-500/20 to-purple-500/20 shadow-inner' 
-                          : 'group-hover:bg-slate-100'
+                        ${isActive
+                          ? 'bg-gradient-to-br from-teal-500/20 to-amber-500/20 shadow-inner'
+                          : 'group-hover:bg-amber-100/70'
                         }
                       `}>
                         <MessageSquare
                           className={`w-5 h-5 transition-all duration-300 ${
-                            isActive ? 'text-indigo-600 scale-110' : 'text-slate-400 group-hover:text-slate-600'
+                            isActive ? 'text-teal-700 scale-110' : 'text-stone-400 group-hover:text-stone-600'
                           }`}
                         />
                       </div>
@@ -300,14 +284,14 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                       <div className="flex items-start gap-3">
                         <div className={`
                           w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300
-                          ${isActive 
-                            ? 'bg-gradient-to-br from-indigo-500/15 via-purple-500/15 to-pink-500/15 shadow-[0_2px_8px_rgba(99,102,241,0.15)]' 
-                            : 'bg-slate-100/60 group-hover:bg-slate-200/60'
+                          ${isActive
+                            ? 'bg-gradient-to-br from-teal-500/15 via-amber-500/15 to-lime-500/15 shadow-[0_2px_8px_rgba(120,78,28,0.12)]'
+                            : 'bg-amber-50/70 group-hover:bg-amber-100/70'
                           }
                         `}>
                           <MessageSquare
                             className={`w-[18px] h-[18px] transition-all duration-300 ${
-                              isActive ? 'text-indigo-600 scale-110' : 'text-slate-400'
+                              isActive ? 'text-teal-700 scale-110' : 'text-stone-400'
                             }`}
                           />
                         </div>
@@ -321,8 +305,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                                 onKeyDown={(e) => handleKeyDown(e, conv.id)}
                                 onBlur={() => saveTitle(conv.id)}
                                 autoFocus
-                                className="flex-1 px-3 py-2 text-sm border-2 border-indigo-300/50 rounded-xl 
-                                  focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 
+                                className="flex-1 px-3 py-2 text-sm border-2 border-amber-300/60 rounded-xl
+                                  focus:outline-none focus:ring-4 focus:ring-teal-500/10 focus:border-teal-500
                                   bg-white shadow-sm transition-all duration-200"
                                 onClick={(e) => e.stopPropagation()}
                                 placeholder="输入标题..."
@@ -332,10 +316,10 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                                   e.stopPropagation();
                                   saveTitle(conv.id);
                                 }}
-                                className="p-2 hover:bg-emerald-50 rounded-xl transition-all duration-200 group/btn hover:scale-110"
+                                className="p-2 hover:bg-teal-50 rounded-xl transition-all duration-200 group/btn hover:scale-110"
                                 title="保存"
                               >
-                                <Check className="w-4 h-4 text-emerald-600" />
+                                <Check className="w-4 h-4 text-teal-600" />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -352,13 +336,13 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                             <>
                               <p
                                 className={`text-sm font-semibold truncate transition-all duration-200 ${
-                                  isActive ? 'text-indigo-700' : 'text-slate-700 group-hover:text-slate-900'
+                                  isActive ? 'text-teal-800' : 'text-stone-700 group-hover:text-stone-900'
                                 }`}
                               >
                                 {conv.title || '未命名对话'}
                               </p>
-                              <p className="text-xs text-slate-400 mt-1.5 font-medium flex items-center gap-1.5">
-                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                              <p className="text-xs text-stone-400 mt-1.5 font-medium flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-stone-300"></span>
                                 {formatTime(conv.lastMessageAt)}
                               </p>
                             </>
@@ -372,17 +356,17 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                   {!isEditing && !isCollapsed && (
                     <div
                       className={`
-                        absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1.5
+                        absolute right-2.5 top-1/2 -transtone-y-1/2 flex items-center gap-1.5
                         transition-all duration-300 cubic-bezier(0.4, 0, 0.2, 1)
-                        ${isHovered || isActive ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-3'}
+                        ${isHovered || isActive ? 'opacity-100 transtone-x-0' : 'opacity-0 transtone-x-3'}
                       `}
                     >
                       <button
                         onClick={(e) => startEditing(conv.id, conv.title, e)}
-                        className="p-2 hover:bg-slate-200/60 rounded-xl transition-all duration-200 group/btn hover:scale-110"
+                        className="p-2 hover:bg-stone-200/60 rounded-xl transition-all duration-200 group/btn hover:scale-110"
                         title="重命名"
                       >
-                        <Edit2 className="w-3.5 h-3.5 text-slate-500 group-hover/btn:text-indigo-600 transition-colors" />
+                        <Edit2 className="w-3.5 h-3.5 text-stone-500 group-hover/btn:text-teal-700 transition-colors" />
                       </button>
                       <button
                         onClick={(e) => handleDelete(conv.id, e)}
@@ -393,8 +377,8 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
                         <Trash2
                           className={`w-3.5 h-3.5 transition-all ${
                             isDeleting 
-                              ? 'text-slate-400' 
-                              : 'text-slate-500 group-hover/btn:text-red-600'
+                              ? 'text-stone-400' 
+                              : 'text-stone-500 group-hover/btn:text-red-600'
                           }`}
                         />
                       </button>
@@ -409,16 +393,16 @@ export const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
 
       {/* Footer with Stats */}
       {!isCollapsed && (
-        <div className="p-3 border-t border-slate-200/40">
+        <div className="p-3 border-t border-stone-200/40">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-indigo-500 to-purple-500 animate-pulse"></div>
-              <p className="text-xs font-semibold text-slate-500">
+              <div className="w-2 h-2 rounded-full bg-gradient-to-r from-teal-500 to-amber-500 animate-pulse"></div>
+              <p className="text-xs font-semibold text-stone-500">
                 {searchQuery ? `${displayConversations.length} / ${conversations.length}` : conversations.length} 个对话
               </p>
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
+            <div className="flex items-center gap-1.5 text-xs text-stone-400 font-medium">
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
               <span>在线</span>
             </div>
           </div>

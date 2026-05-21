@@ -1,23 +1,34 @@
 import { AppError } from '../common/interfaces/errors';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
+import { of } from 'rxjs';
 import { HermesService } from './hermes.service';
 import { QuotaService } from '../quota/quota.service';
 import { ConversationService } from '../conversation/conversation.service';
 
 describe('HermesService chat', () => {
   let service: HermesService;
-  let httpService: jest.Mocked<Pick<HttpService, 'post'>>;
-  let quotaService: jest.Mocked<Pick<QuotaService, 'checkQuota' | 'consumeQuota'>>;
+  let httpService: jest.Mocked<Pick<HttpService, 'post' | 'get'>>;
+  let quotaService: jest.Mocked<Pick<QuotaService, 'checkQuota' | 'consumeQuota' | 'estimateLingqiCost' | 'consumeLingqi' | 'refundLingqi' | 'getSelectedModelForExecution'>>;
   let conversationService: jest.Mocked<Pick<ConversationService, 'create' | 'addMessage' | 'getList' | 'getById' | 'getBySessionId'>>;
 
   beforeEach(() => {
     httpService = {
       post: jest.fn(),
+      get: jest.fn(),
     };
     quotaService = {
       checkQuota: jest.fn().mockResolvedValue({ hasQuota: true, unlimited: false, remaining: 10 }),
       consumeQuota: jest.fn().mockResolvedValue(undefined),
+      estimateLingqiCost: jest.fn().mockResolvedValue({
+        estimatedCost: 18,
+        balanceAfterEstimate: 982,
+        canAfford: true,
+        reason: null,
+      }),
+      consumeLingqi: jest.fn().mockResolvedValue({ balance: 982, totalConsumed: 18 }),
+      refundLingqi: jest.fn().mockResolvedValue({ balance: 1000, totalConsumed: 0 }),
+      getSelectedModelForExecution: jest.fn().mockResolvedValue({ id: 'model-1', modelName: 'demo-advanced' }),
     };
     conversationService = {
       create: jest.fn().mockResolvedValue({ id: 'conversation-1' }),
@@ -39,7 +50,7 @@ describe('HermesService chat', () => {
       toPromise: jest.fn().mockResolvedValue({
         data: {
           response: 'ordinary chat response',
-          model: 'hermes-agent',
+          model: 'demo-advanced',
           usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
         },
       }),
@@ -48,7 +59,7 @@ describe('HermesService chat', () => {
     const result = await service.chat('user-1', 'team-1', {
       message: '整理这个需求',
       context: { file: 'README.md' },
-      model: 'general-model',
+      model: 'model-1',
     });
 
     expect(httpService.post).toHaveBeenCalledWith(
@@ -57,15 +68,15 @@ describe('HermesService chat', () => {
         message: '整理这个需求',
         session_id: 'conversation-1',
         context: { file: 'README.md' },
-        model: 'general-model',
+        model: 'demo-advanced',
       },
-      expect.objectContaining({ timeout: 120000 }),
+      expect.objectContaining({ timeout: 120000, maxRedirects: 0 }),
     );
     expect(result).toEqual({
       success: true,
       response: 'ordinary chat response',
       sessionId: 'conversation-1',
-      model: 'hermes-agent',
+      model: 'demo-advanced',
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3 },
     });
   });
@@ -76,7 +87,7 @@ describe('HermesService chat', () => {
       toPromise: jest.fn().mockResolvedValue({
         data: {
           response: 'continued chat response',
-          model: 'hermes-agent',
+          model: 'demo-advanced',
         },
       }),
     } as any);
@@ -84,6 +95,7 @@ describe('HermesService chat', () => {
     const result = await service.chat('user-1', 'team-1', {
       message: '继续上次对话',
       sessionId: 'client-session-1',
+      model: 'model-1',
     });
 
     expect(conversationService.create).not.toHaveBeenCalled();
@@ -91,34 +103,36 @@ describe('HermesService chat', () => {
     expect(httpService.post).toHaveBeenCalledWith(
       'http://hermes-agent:9119/api/chat',
       expect.objectContaining({ session_id: 'existing-conversation' }),
-      expect.objectContaining({ timeout: 120000 }),
+      expect.objectContaining({ timeout: 120000, maxRedirects: 0 }),
     );
     expect(result.sessionId).toBe('existing-conversation');
   });
 
-  it('keeps quota consumption and conversation persistence for ordinary chat', async () => {
-    httpService.post.mockReturnValue({
-      toPromise: jest.fn().mockResolvedValue({ data: { message: 'assistant reply', model: 'hermes-agent' } }),
-    } as any);
+  it('prepays Lingqi before Hermes agent chat execution succeeds', async () => {
+    httpService.post.mockReturnValue(of({ data: { response: 'hi', model: 'demo-advanced' } }) as any);
 
-    await service.chat('user-1', 'team-1', { message: 'hello' });
+    await service.chat('user-1', 'team-1', { message: 'hello', model: 'model-1' });
 
-    expect(quotaService.checkQuota).not.toHaveBeenCalled();
-    expect(quotaService.consumeQuota).toHaveBeenCalledWith('team-1', 1);
-    expect(conversationService.create).toHaveBeenCalledWith('team-1', 'New conversation', 'user-1');
-    expect(conversationService.addMessage).toHaveBeenNthCalledWith(1, 'team-1', 'conversation-1', {
-      role: 'user',
-      content: 'hello',
+    expect(quotaService.estimateLingqiCost).toHaveBeenCalledWith('team-1', {
+      transactionType: 'chat_message',
+      modelId: 'model-1',
+      context: { conversationId: 'conversation-1' },
     });
-    expect(conversationService.addMessage).toHaveBeenNthCalledWith(2, 'team-1', 'conversation-1', {
-      role: 'assistant',
-      content: 'assistant reply',
-      model: 'hermes-agent',
-      usage: undefined,
-    });
+    expect(quotaService.consumeLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
+      amount: 18,
+      transactionType: 'chat_message',
+      sourceType: 'chat',
+      sourceId: 'conversation-1',
+    }));
+    expect(quotaService.estimateLingqiCost.mock.invocationCallOrder[0]).toBeLessThan(
+      quotaService.consumeLingqi.mock.invocationCallOrder[0],
+    );
+    expect(quotaService.consumeLingqi.mock.invocationCallOrder[0]).toBeLessThan(
+      httpService.post.mock.invocationCallOrder[0],
+    );
   });
 
-  it('does not consume quota when session validation fails', async () => {
+  it('does not consume Lingqi when session validation fails', async () => {
     conversationService.getBySessionId.mockRejectedValue(new AppError('CONVERSATION_NOT_FOUND', '会话不存在', 404));
 
     await expect(service.chat('user-1', 'team-1', {
@@ -126,24 +140,55 @@ describe('HermesService chat', () => {
       sessionId: 'missing-session',
     })).rejects.toBeInstanceOf(AppError);
 
-    expect(quotaService.consumeQuota).not.toHaveBeenCalled();
+    expect(quotaService.consumeLingqi).not.toHaveBeenCalled();
     expect(conversationService.create).not.toHaveBeenCalled();
     expect(conversationService.addMessage).not.toHaveBeenCalled();
     expect(httpService.post).not.toHaveBeenCalled();
   });
 
-  it('blocks Hermes side effects when quota is exhausted after user message persistence', async () => {
-    quotaService.consumeQuota.mockRejectedValue(new AppError('QUOTA_INSUFFICIENT', '配额不足，还剩 0 次', 403));
+  it('rejects chat with 403 when Lingqi estimate is unaffordable', async () => {
+    quotaService.estimateLingqiCost.mockResolvedValue({
+      estimatedCost: 18,
+      balanceAfterEstimate: -8,
+      canAfford: false,
+      reason: 'LINGQI_INSUFFICIENT_BALANCE',
+    } as Awaited<ReturnType<QuotaService['estimateLingqiCost']>>);
 
-    await expect(service.chat('user-1', 'team-1', { message: 'hello' })).rejects.toBeInstanceOf(AppError);
-
-    expect(conversationService.create).toHaveBeenCalledWith('team-1', 'New conversation', 'user-1');
-    expect(conversationService.addMessage).toHaveBeenCalledWith('team-1', 'conversation-1', {
-      role: 'user',
-      content: 'hello',
+    await expect(service.chat('user-1', 'team-1', { message: 'hello', model: 'model-1' })).rejects.toMatchObject({
+      response: {
+        success: false,
+        error: 'LINGQI_INSUFFICIENT_BALANCE',
+      },
+      status: 403,
     });
-    expect(quotaService.consumeQuota).toHaveBeenCalledWith('team-1', 1);
+
+    expect(quotaService.consumeLingqi).not.toHaveBeenCalled();
+    expect(quotaService.getSelectedModelForExecution).not.toHaveBeenCalled();
+    expect(conversationService.addMessage).not.toHaveBeenCalled();
     expect(httpService.post).not.toHaveBeenCalled();
+  });
+
+  it('refunds prepaid Lingqi when Hermes agent execution fails', async () => {
+    httpService.post.mockImplementation(() => {
+      throw new Error('upstream failed');
+    });
+
+    await expect(service.chat('user-1', 'team-1', { message: 'hello', model: 'model-1' })).rejects.toMatchObject({
+      response: {
+        success: false,
+        error: 'Hermes 服务暂时不可用，请稍后重试',
+      },
+      status: 502,
+    });
+
+    expect(quotaService.refundLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
+      amount: 18,
+      transactionType: 'chat_message',
+      sourceType: 'chat_refund',
+      sourceId: 'conversation-1',
+      idempotencyKey: 'refund:chat:conversation-1',
+      refundOfIdempotencyKey: 'charge:chat:conversation-1',
+    }));
   });
 
   it('lists Hermes sessions through conversation list', async () => {
@@ -155,21 +200,19 @@ describe('HermesService chat', () => {
     expect(conversationService.getList).toHaveBeenCalledWith('team-1');
   });
 
-  it('falls back to demo response without planner execution when Hermes is unavailable', async () => {
-    const networkError = new Error('connect ECONNREFUSED') as NodeJS.ErrnoException;
-    networkError.code = 'ECONNREFUSED';
-    httpService.post.mockReturnValue({
-      toPromise: jest.fn().mockRejectedValue(networkError),
-    } as any);
+  it('checks Hermes status without following redirects', async () => {
+    httpService.get.mockReturnValue(of({ data: { version: '1.0.0' } }) as any);
 
-    const result = await service.chat('user-1', 'team-1', { message: 'hello' });
+    await expect(service.getStatus()).resolves.toMatchObject({ status: 'online', version: '1.0.0' });
+    expect(httpService.get).toHaveBeenCalledWith('http://hermes-agent:9119/health', expect.objectContaining({ maxRedirects: 0 }));
+  });
 
-    expect(result.success).toBe(true);
-    expect(result.model).toBe('demo');
-    expect(result.response).toContain('Hermes Agent 服务当前不可用');
-    expect(conversationService.addMessage).toHaveBeenNthCalledWith(2, 'team-1', 'conversation-1', {
-      role: 'assistant',
-      content: result.response,
-    });
+  it('rejects untrusted Hermes endpoints during initialization', () => {
+    expect(() => new HermesService(
+      { get: jest.fn().mockReturnValue('https://attacker.example') } as unknown as ConfigService,
+      httpService as unknown as HttpService,
+      quotaService as unknown as QuotaService,
+      conversationService as unknown as ConversationService,
+    )).toThrow('HERMES_ENDPOINT must point to a trusted internal service');
   });
 });

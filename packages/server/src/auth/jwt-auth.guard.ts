@@ -20,11 +20,15 @@ interface AuthUserRow {
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly jwtSecret: string;
+
   constructor(
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    configService: ConfigService,
     private readonly db: DatabaseService,
-  ) {}
+  ) {
+    this.jwtSecret = getRequiredJwtSecret(configService);
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -36,7 +40,7 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = this.jwtService.verify<AccessTokenPayload>(token, {
-        secret: getRequiredJwtSecret(this.configService),
+        secret: this.jwtSecret,
       });
       if (payload.type !== 'access' || !payload.sub) {
         return false;

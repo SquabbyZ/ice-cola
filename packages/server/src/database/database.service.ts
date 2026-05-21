@@ -355,24 +355,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Usage stats methods
-  async getUsageStats(period: 'day' | 'week' | 'month') {
+  async getUsageStats(period: 'day' | 'week' | 'month', teamId: string) {
     const now = new Date();
     let startDate: Date;
-    let groupBy: string;
 
     switch (period) {
       case 'day':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        groupBy = 'hour';
         break;
       case 'week':
         startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        groupBy = 'day';
         break;
       case 'month':
       default:
         startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        groupBy = 'day';
         break;
     }
 
@@ -383,17 +379,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
               COALESCE(SUM(usg.input_tokens + usg.output_tokens), 0) as total_tokens,
               COUNT(*) as request_count
        FROM usage usg
-       WHERE usg."createdAt" >= $1`,
-      [startStr]
+       WHERE usg."createdAt" >= $1 AND usg."teamId" = $2`,
+      [startStr, teamId]
     );
 
     const breakdownResult = await this.query<{ model: string; cost: string; tokens: string }>(
       `SELECT model, COALESCE(SUM(cost), 0) as cost,
               COALESCE(SUM(input_tokens + output_tokens), 0) as tokens
        FROM usage
-       WHERE "createdAt" >= $1
+       WHERE "createdAt" >= $1 AND "teamId" = $2
        GROUP BY model`,
-      [startStr]
+      [startStr, teamId]
     );
 
     return {

@@ -32,7 +32,7 @@ const TRUSTED_MODEL_HOSTS = new Set([
   'api.x.ai',
 ]);
 
-function normalizeBaseUrl(baseUrl: string): string {
+export function normalizeTrustedModelProviderBaseUrl(baseUrl: string): string {
   const url = new URL(baseUrl);
   if (url.protocol !== 'https:') {
     throw new Error(`Unsupported model provider URL: ${baseUrl}`);
@@ -48,7 +48,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 function providerEndpoint(baseUrl: string, path: string): string {
-  return `${normalizeBaseUrl(baseUrl)}${path}`;
+  return `${normalizeTrustedModelProviderBaseUrl(baseUrl)}${path}`;
 }
 
 @Injectable()

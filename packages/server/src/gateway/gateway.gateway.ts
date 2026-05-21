@@ -6,6 +6,24 @@ interface GatewayClientContext {
   userId?: string;
   teamId?: string;
   role?: string;
+  expiresAt?: number;
+}
+
+interface HermesAttachmentParams {
+  type: string;
+  name: string;
+  mimeType: string;
+  data?: string;
+}
+
+interface HermesSendParams {
+  sessionId: string;
+  message: string;
+  conversationId?: string;
+  expertId?: string;
+  model?: string;
+  messageId?: string;
+  attachments?: HermesAttachmentParams[];
 }
 
 interface GatewayMessage {
@@ -27,6 +45,7 @@ interface GatewayMessage {
 
 export class GatewayGateway implements OnModuleInit {
   private readonly logger = new Logger(GatewayGateway.name);
+  private readonly MAX_RAW_MESSAGE_BYTES = 15 * 1024 * 1024;
   private wss: WebSocketServer | null = null;
   private clients: Map<WebSocket, GatewayClientContext> = new Map();
   private gatewayService: GatewayService | null = null;
@@ -72,11 +91,17 @@ export class GatewayGateway implements OnModuleInit {
 
     ws.on('close', () => {
       this.logger.log(`Client disconnected: ${clientId}`);
+      this.gatewayService?.abortStreamsForSocket(ws).catch(error => {
+        this.logger.error(`Failed to abort active streams for disconnected client ${clientId}:`, error);
+      });
       this.clients.delete(ws);
     });
 
     ws.on('error', (error) => {
       this.logger.error(`WebSocket error for ${clientId}:`, error);
+      this.gatewayService?.abortStreamsForSocket(ws).catch(abortError => {
+        this.logger.error(`Failed to abort active streams for errored client ${clientId}:`, abortError);
+      });
       this.clients.delete(ws);
     });
   }
@@ -86,9 +111,23 @@ export class GatewayGateway implements OnModuleInit {
       this.logger.error('gatewayService is undefined! DI not working properly.');
       return;
     }
+    let oversizedMessageId: string | undefined;
+    if (data.length > this.MAX_RAW_MESSAGE_BYTES) {
+      const payloadPrefix = data.subarray(0, 1024).toString();
+      const idMatch = payloadPrefix.match(/"id"\s*:\s*"([^"]+)"/);
+      oversizedMessageId = idMatch?.[1];
+      this.logger.warn(`Rejected oversized WebSocket message: ${data.length} bytes`);
+      this.sendResponse(ws, oversizedMessageId, null, {
+        code: -32001,
+        message: 'Message too large',
+      });
+      return;
+    }
+
+    const rawPayload = data.toString();
     let message: GatewayMessage;
     try {
-      message = JSON.parse(data.toString());
+      message = JSON.parse(rawPayload);
     } catch (error) {
       this.logger.error('Failed to parse message:', error);
       return;
@@ -122,36 +161,43 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.refresh(params);
           break;
         case 'quota.get':
-          result = await this.gatewayService.getQuota(params);
+          result = await this.gatewayService.getQuota({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'conversation.list':
-          result = await this.gatewayService.listConversations(params);
+          result = await this.gatewayService.listConversations({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'conversation.create':
-          result = await this.gatewayService.createConversation(params);
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.createConversation({
+              ...params,
+              teamId: clientInfo.teamId,
+              userId: clientInfo.userId,
+            });
+          }
           break;
         case 'conversation.get':
-          result = await this.gatewayService.getConversation(params);
+          result = await this.gatewayService.getConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'conversation.update':
-          result = await this.gatewayService.updateConversation(params);
+          result = await this.gatewayService.updateConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'conversation.delete':
-          result = await this.gatewayService.deleteConversation(params);
+          result = await this.gatewayService.deleteConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'conversation.messages':
-          result = await this.gatewayService.getMessages(params);
+          result = await this.gatewayService.getMessages({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'config.get':
-          this.requireAdminContext(ws);
+          this.requirePlatformAdminContext(ws);
           result = await this.gatewayService.getConfig(params);
           break;
         case 'config.patch':
-          this.requireAdminContext(ws);
+          this.requirePlatformAdminContext(ws);
           result = await this.gatewayService.patchConfig(params);
           break;
         case 'config.set':
-          this.requireAdminContext(ws);
+          this.requirePlatformAdminContext(ws);
           result = await this.gatewayService.setConfig(params);
           // Emit config-changed event if restart is needed
           if (result?.needsRestart) {
@@ -165,26 +211,27 @@ export class GatewayGateway implements OnModuleInit {
         case 'hermes.send':
           {
             const clientInfo = this.requireClientContext(ws);
+            const hermesParams = this.validateHermesSendParams(params);
             result = await this.gatewayService.sendHermesMessage(
-              { ...params, teamId: clientInfo.teamId },
+              { ...hermesParams, teamId: clientInfo.teamId, userId: clientInfo.userId },
               ws,
             );
           }
           break;
         case 'hermes.abort':
-          result = this.gatewayService.abortHermesMessage(params, ws);
+          result = await this.gatewayService.abortHermesMessage(params, ws);
           break;
         case 'hermes.agentStatus':
           result = await this.gatewayService.getHermesAgentStatus();
           break;
         case 'usage.status':
-          result = await this.gatewayService.getUsageStatus(params);
+          result = await this.gatewayService.getUsageStatus({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'quota.getConfig':
-          result = await this.gatewayService.getQuotaConfig(params);
+          result = await this.gatewayService.getQuotaConfig({ ...params, teamId: this.requireClientContext(ws).teamId });
           break;
         case 'quota.updateConfig':
-          result = await this.gatewayService.updateQuotaConfig(params);
+          result = await this.gatewayService.updateQuotaConfig({ ...params, teamId: this.requireAdminContext(ws).teamId });
           break;
         case 'experts.list':
           result = await this.gatewayService.listExperts({ ...params, teamId: this.requireClientContext(ws).teamId });
@@ -295,12 +342,40 @@ export class GatewayGateway implements OnModuleInit {
       this.logger.error(`Error handling ${method}:`, error);
       this.sendResponse(ws, id, null, {
         code: -32603,
-        message: error instanceof Error ? error.message : 'Internal error',
+        message: this.getPublicErrorMessage(error),
       });
     }
   }
 
-  private storeClientContext(ws: WebSocket, result: { user?: { id: string; team?: { id: string; role: string } } }): void {
+  private getPublicErrorMessage(error: unknown): string {
+    if (!(error instanceof Error)) {
+      return 'Internal error';
+    }
+
+    const publicMessages = new Set([
+      'Authentication required',
+      'Admin privileges required',
+      'teamId is required',
+      'No active stream',
+      'Unauthorized',
+      'Invalid hermes send params',
+      'Invalid hermes send message',
+      'Invalid hermes send sessionId',
+      'Invalid hermes send conversationId',
+      'Invalid hermes send expertId',
+      'Invalid hermes send model',
+      'Invalid hermes send messageId',
+      'Invalid hermes send attachments',
+      'Invalid hermes send attachment',
+      'Invalid hermes send attachment type',
+      'Invalid hermes send attachment MIME type',
+      'Invalid hermes send attachment data',
+    ]);
+
+    return publicMessages.has(error.message) ? error.message : 'Internal error';
+  }
+
+  private storeClientContext(ws: WebSocket, result: { expiresAt?: number; user?: { id: string; team?: { id: string; role: string } | null } }): void {
     if (!result.user) return;
 
     const clientInfo = this.clients.get(ws);
@@ -308,18 +383,16 @@ export class GatewayGateway implements OnModuleInit {
       clientInfo.userId = result.user.id;
       clientInfo.teamId = result.user.team?.id;
       clientInfo.role = result.user.team?.role;
+      clientInfo.expiresAt = result.expiresAt;
     }
   }
 
   private requireUserContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId'>> {
-    const clientInfo = this.clients.get(ws);
-    if (!clientInfo?.userId) {
-      throw new Error('Authentication required');
-    }
+    const clientInfo = this.getAuthenticatedClientContext(ws);
     return { userId: clientInfo.userId };
   }
 
-  private requireAdminContext(ws: WebSocket): Required<GatewayClientContext> {
+  private requireAdminContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'teamId' | 'role'>> {
     const clientInfo = this.requireClientContext(ws);
     if (clientInfo.role !== 'OWNER' && clientInfo.role !== 'ADMIN') {
       throw new Error('Admin privileges required');
@@ -327,9 +400,14 @@ export class GatewayGateway implements OnModuleInit {
     return clientInfo;
   }
 
-  private requireClientContext(ws: WebSocket): Required<GatewayClientContext> {
-    const clientInfo = this.clients.get(ws);
-    if (!clientInfo?.userId || !clientInfo.teamId || !clientInfo.role) {
+  private requirePlatformAdminContext(ws: WebSocket): never {
+    this.requireAdminContext(ws);
+    throw new Error('Platform admin privileges required');
+  }
+
+  private requireClientContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'teamId' | 'role'>> {
+    const clientInfo = this.getAuthenticatedClientContext(ws);
+    if (!clientInfo.teamId || !clientInfo.role) {
       throw new Error('Authentication required');
     }
     return {
@@ -337,6 +415,92 @@ export class GatewayGateway implements OnModuleInit {
       teamId: clientInfo.teamId,
       role: clientInfo.role,
     };
+  }
+
+  private getAuthenticatedClientContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'expiresAt'>> & Pick<GatewayClientContext, 'teamId' | 'role'> {
+    const clientInfo = this.clients.get(ws);
+    if (!clientInfo?.userId || !clientInfo.expiresAt || clientInfo.expiresAt <= Date.now()) {
+      throw new Error('Authentication required');
+    }
+    return {
+      userId: clientInfo.userId,
+      teamId: clientInfo.teamId,
+      role: clientInfo.role,
+      expiresAt: clientInfo.expiresAt,
+    };
+  }
+
+  private validateHermesSendParams(params: unknown): HermesSendParams {
+    if (!this.isRecord(params)) {
+      throw new Error('Invalid hermes send params');
+    }
+
+    const message = this.requireBoundedString(params.message, 'message', 1, 20000);
+    const result: HermesSendParams = {
+      sessionId: this.optionalBoundedString(params.sessionId, 'sessionId', 1, 256) ?? 'default',
+      message,
+    };
+
+    for (const key of ['conversationId', 'expertId', 'model', 'messageId'] as const) {
+      const value = params[key];
+      if (value !== undefined) {
+        result[key] = this.requireBoundedString(value, key, 1, 256);
+      }
+    }
+
+    if (params.attachments !== undefined) {
+      if (!Array.isArray(params.attachments) || params.attachments.length > 5) {
+        throw new Error('Invalid hermes send attachments');
+      }
+      result.attachments = params.attachments.map((attachment) => this.validateHermesAttachment(attachment));
+    }
+
+    return result;
+  }
+
+  private validateHermesAttachment(attachment: unknown): HermesAttachmentParams {
+    if (!this.isRecord(attachment)) {
+      throw new Error('Invalid hermes send attachment');
+    }
+
+    const type = this.requireBoundedString(attachment.type, 'attachment.type', 1, 32);
+    const name = this.requireBoundedString(attachment.name, 'attachment.name', 1, 255);
+    const mimeType = this.requireBoundedString(attachment.mimeType, 'attachment.mimeType', 1, 128);
+    if (type !== 'image' && type !== 'file') {
+      throw new Error('Invalid hermes send attachment type');
+    }
+    if (!/^[\w.+-]+\/[\w.+-]+$/.test(mimeType)) {
+      throw new Error('Invalid hermes send attachment MIME type');
+    }
+
+    const data = attachment.data;
+    if (data !== undefined) {
+      const validatedData = this.requireBoundedString(data, 'attachment.data', 1, 14 * 1024 * 1024);
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(validatedData)) {
+        throw new Error('Invalid hermes send attachment data');
+      }
+      return { type, name, mimeType, data: validatedData };
+    }
+
+    return { type, name, mimeType };
+  }
+
+  private requireBoundedString(value: unknown, field: string, minLength: number, maxLength: number): string {
+    if (typeof value !== 'string' || value.length < minLength || value.length > maxLength) {
+      throw new Error(`Invalid hermes send ${field}`);
+    }
+    return value;
+  }
+
+  private optionalBoundedString(value: unknown, field: string, minLength: number, maxLength: number): string | undefined {
+    if (value === undefined) {
+      return undefined;
+    }
+    return this.requireBoundedString(value, field, minLength, maxLength);
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private sendResponse(ws: WebSocket, id: string | undefined, payload: any, error?: { code: number; message: string }) {

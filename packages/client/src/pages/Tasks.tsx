@@ -136,7 +136,7 @@ const Tasks: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="搜索任务..."
+              placeholder="搜索练功安排..."
               className="w-full pl-12 pr-4 py-3 bg-white border border-zinc-200/50 rounded-xl text-sm focus:outline-none focus:border-zinc-400 focus:ring-4 focus:ring-zinc-500/10"
             />
           </div>
@@ -169,10 +169,10 @@ const Tasks: React.FC = () => {
             <div className="w-16 h-16 mx-auto mb-6 rounded-2xl bg-zinc-100/80 flex items-center justify-center">
               <Clock className="w-8 h-8 text-zinc-400" />
             </div>
-            <h3 className="text-lg font-semibold text-zinc-900 mb-2">暂无任务</h3>
-            <p className="text-zinc-500 mb-6 text-sm">点击上方按钮创建你的第一个自动化任务</p>
+            <h3 className="text-lg font-semibold text-zinc-900 mb-2">暂无练功安排</h3>
+            <p className="text-zinc-500 mb-6 text-sm">点击上方按钮创建你的第一个自动化练功安排</p>
             <Button variant="outline" className="border-zinc-200 hover:bg-zinc-50 rounded-xl px-6" onClick={() => setCreateOpen(true)}>
-              <Plus className="w-4 h-4 mr-2" /> 创建任务
+              <Plus className="w-4 h-4 mr-2" /> 创建练功安排
             </Button>
           </div>
         ) : (
@@ -246,8 +246,8 @@ const Tasks: React.FC = () => {
                   <Plus className="w-5 h-5 text-indigo-600" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-zinc-900">创建任务</h3>
-                  <p className="text-xs text-zinc-500">新建一个自动化任务</p>
+                  <h3 className="font-bold text-zinc-900">创建练功安排</h3>
+                  <p className="text-xs text-zinc-500">新建一个自动化练功安排</p>
                 </div>
               </div>
               <button onClick={() => setCreateOpen(false)} className="p-2 rounded-lg hover:bg-zinc-100">
@@ -256,7 +256,7 @@ const Tasks: React.FC = () => {
             </div>
             <div className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-700 mb-1">任务名称 *</label>
+                <label className="block text-sm font-medium text-zinc-700 mb-1">练功名称 *</label>
                 <input
                   type="text"
                   value={createForm.name}
@@ -272,7 +272,7 @@ const Tasks: React.FC = () => {
                   onChange={e => setCreateForm({ ...createForm, description: e.target.value })}
                   rows={3}
                   className="w-full px-3 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
-                  placeholder="描述这个任务的功能"
+                  placeholder="描述这次练功安排的目标"
                 />
               </div>
               <div>
@@ -303,7 +303,7 @@ const Tasks: React.FC = () => {
         open={deleteConfirm.open}
         onOpenChange={(open) => setDeleteConfirm({ ...deleteConfirm, open })}
         title="确认删除"
-        description={`确定要删除任务 "${deleteConfirm.taskName}" 吗？此操作不可撤销。`}
+        description={`确定要删除练功安排 "${deleteConfirm.taskName}" 吗？此操作不可撤销。`}
         confirmText="删除"
         cancelText="取消"
         onConfirm={() => {

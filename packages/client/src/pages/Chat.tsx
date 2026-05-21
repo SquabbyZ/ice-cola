@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
@@ -32,6 +32,9 @@ import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { TimeoutManager } from '@/lib/timeout-manager';
 import { conversationService } from '@/services/conversation-service';
 import { useConversationCapabilities } from '@/hooks/useConversationCapabilities';
+import { LingqiModelSelector } from '@/components/LingqiModelSelector';
+import { LingqiCostPreview } from '@/components/LingqiCostPreview';
+import { useLingqiStore } from '@/stores/lingqi';
 import { getTeamId } from '@/lib/team';
 
 type StreamContext = {
@@ -39,12 +42,39 @@ type StreamContext = {
   teamId: string;
   expertId?: string;
   mcpServerIds: string[];
+  modelId?: string;
   content: string;
   attachments: Attachment[];
 };
 
 type LocationState = {
   presetMessage?: string;
+};
+
+type HermesMessageEvent = {
+  messageId?: string;
+  runId?: string;
+};
+
+type HermesDeltaEvent = HermesMessageEvent & {
+  delta?: string;
+};
+
+type HermesFinalEvent = HermesMessageEvent & {
+  content?: string;
+};
+
+type HermesErrorEvent = HermesMessageEvent & {
+  error?: string;
+};
+
+type HermesToolEvent = HermesMessageEvent & {
+  toolCallId: string;
+  toolName: string;
+  input?: string;
+  output?: string;
+  imageUrl?: string;
+  status?: 'running' | 'complete' | 'error';
 };
 
 const COMPACT_CHAT_MEDIA_QUERY = '(max-width: 1180px), (max-height: 700px)';
@@ -58,6 +88,22 @@ function readFileAsBase64(file: File): Promise<string> {
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
+  });
+}
+
+const LINGQI_ESTIMATE_DEBOUNCE_MS = 250;
+
+function formatLingqiAmount(value: number): string {
+  return new Intl.NumberFormat('zh-CN').format(value);
+}
+
+function appendLocalErrorMessage(content: string): void {
+  useChatStore.getState().addMessage({
+    id: crypto.randomUUID(),
+    role: 'assistant',
+    content,
+    timestamp: Date.now(),
+    status: 'error',
   });
 }
 
@@ -109,10 +155,25 @@ const Chat: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const teamId = getTeamId(user);
   const hasTeamAccess = !!teamId;
+  const {
+    status: lingqiStatus,
+    models: lingqiModels,
+    selectedModel,
+    estimate: lingqiEstimate,
+    error: lingqiError,
+    loadLingqi,
+    selectModel,
+    estimateCost,
+    refreshStatus,
+    clearEstimate,
+    clearError,
+    clearSelectedModel,
+  } = useLingqiStore();
 
   useEffect(() => {
+    const manager = timeoutManager.current;
     return () => {
-      timeoutManager.current.clearAll();
+      manager.clearAll();
     };
   }, []);
 
@@ -125,6 +186,44 @@ const Chat: React.FC = () => {
       loadConversations(teamId);
     }
   }, [gatewayConnected, teamId, loadConversations]);
+
+  useEffect(() => {
+    if (!teamId) {
+      clearEstimate();
+      return;
+    }
+
+    loadLingqi(teamId).catch(() => {
+      // loadLingqi records the error in the Lingqi store for user-facing display
+    });
+  }, [teamId, loadLingqi, clearEstimate]);
+
+  useEffect(() => {
+    if (lingqiError) {
+      const timeoutId = window.setTimeout(() => clearError(), 5000);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [lingqiError, clearError]);
+
+  useEffect(() => {
+    const trimmedMessage = message.trim();
+    if (!teamId || !trimmedMessage || !selectedModel) {
+      clearEstimate();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      estimateCost(teamId, {
+        transactionType: 'chat_message',
+        modelId: selectedModel.id,
+        context: { conversationId: currentConversationId || undefined },
+      }).catch(() => {
+        // estimateCost records the error in the Lingqi store for user-facing display
+      });
+    }, LINGQI_ESTIMATE_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [teamId, message, selectedModel, currentConversationId, estimateCost, clearEstimate]);
 
   const handleMCPSelectionChange = async (serverIds: string[]) => {
     try {
@@ -210,9 +309,47 @@ const Chat: React.FC = () => {
   }, [routeConversationId, currentConversationId, setCurrentConversationId, setMessages, teamId]);
 
   useEffect(() => {
+    if (!teamId) {
+      clearEstimate();
+      return;
+    }
+
+    loadLingqi(teamId).catch(() => {
+      // loadLingqi records the error in the Lingqi store for user-facing display
+    });
+  }, [teamId, loadLingqi, clearEstimate]);
+
+  useEffect(() => {
+    if (lingqiError) {
+      const timeoutId = window.setTimeout(() => clearError(), 5000);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [lingqiError, clearError]);
+
+  useEffect(() => {
+    const trimmedMessage = message.trim();
+    if (!teamId || !trimmedMessage || !selectedModel) {
+      clearEstimate();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      estimateCost(teamId, {
+        transactionType: 'chat_message',
+        modelId: selectedModel.id,
+        context: { conversationId: currentConversationId || undefined },
+      }).catch(() => {
+        // estimateCost records the error in the Lingqi store for user-facing display
+      });
+    }, LINGQI_ESTIMATE_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [teamId, message, selectedModel, currentConversationId, estimateCost, clearEstimate]);
+
+  useEffect(() => {
     if (chatListenerRegisteredRef.current) return;
 
-    const handleHermesDelta = (data: any) => {
+    const handleHermesDelta = (data: HermesDeltaEvent) => {
       const msgId = data.messageId || data.runId;
       if (!msgId) return;
 
@@ -241,7 +378,7 @@ const Chat: React.FC = () => {
       timeoutManager.current.clear(msgId);
     };
 
-    const handleHermesFinal = (data: any) => {
+    const handleHermesFinal = (data: HermesFinalEvent) => {
       const msgId = data.messageId || data.runId;
       if (!msgId || timedOutStreamIdsRef.current.has(msgId)) return;
 
@@ -262,7 +399,9 @@ const Chat: React.FC = () => {
           conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
             role: 'assistant',
             content: finalContent,
-          }).catch(() => {});
+          }).catch(() => {
+            appendLocalErrorMessage('回复已生成，但同步到会话历史失败，请稍后刷新确认。');
+          });
         }
       } else if (finalContent) {
         const existingById = currentMessages.find(msg => msg.id === msgId);
@@ -281,8 +420,16 @@ const Chat: React.FC = () => {
           conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
             role: 'assistant',
             content: finalContent,
-          }).catch(() => {});
+          }).catch(() => {
+            appendLocalErrorMessage('回复已生成，但同步到会话历史失败，请稍后刷新确认。');
+          });
         }
+      }
+
+      if (streamContext?.teamId) {
+        refreshStatus(streamContext.teamId).catch(() => {
+          // refreshStatus records the error in the Lingqi store for user-facing display
+        });
       }
 
       delete deltaAccumulatorRef.current[msgId];
@@ -291,7 +438,7 @@ const Chat: React.FC = () => {
       useChatStore.getState().setActiveStreamId(null);
     };
 
-    const handleHermesError = (data: any) => {
+    const handleHermesError = (data: HermesErrorEvent) => {
       const msgId = data.messageId || data.runId;
       if (!msgId) return;
 
@@ -321,7 +468,7 @@ const Chat: React.FC = () => {
       useChatStore.getState().setActiveStreamId(null);
     };
 
-    const handleHermesTool = (data: any) => {
+    const handleHermesTool = (data: HermesToolEvent) => {
       const msgId = data.messageId || data.runId;
       if (!msgId) return;
 
@@ -361,7 +508,7 @@ const Chat: React.FC = () => {
       unsubscribeHermesTool();
       chatListenerRegisteredRef.current = false;
     };
-  }, [on, currentConversationId, teamId, t]);
+  }, [on, currentConversationId, t, refreshStatus]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -373,10 +520,10 @@ const Chat: React.FC = () => {
 
   const MAX_RETRIES = 3;
 
-  const getErrorMessage = (error: any, isConnected: boolean): string => {
+  const getErrorMessage = useCallback((error: unknown, isConnected: boolean): string => {
     if (!isConnected) return t('chat.errorDisconnected');
 
-    const errorMsg = error.message || String(error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
 
     if (errorMsg.includes('timeout') || errorMsg.includes('超时')) {
       return t('chat.errorTimeout');
@@ -389,12 +536,12 @@ const Chat: React.FC = () => {
       return t('chat.errorReconnecting');
     }
     return t('chat.errorSendFailed');
-  };
+  }, [t]);
 
-  const handleSendWithContent = async (
+  const handleSendWithContent = useCallback(async (
     content: string,
     retryCount = 0,
-    pendingSnapshot?: Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'attachments'>,
+    pendingSnapshot?: Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'modelId' | 'attachments'>,
     options?: { skipLocalMessage?: boolean; messageId?: string },
   ): Promise<boolean> => {
     let conversationId = pendingSnapshot?.conversationId ?? currentConversationId ?? undefined;
@@ -405,6 +552,7 @@ const Chat: React.FC = () => {
       return false;
     }
     const targetMcpServerIds = pendingSnapshot?.mcpServerIds ?? [...selectedMCPServerIds];
+    const targetModelId = pendingSnapshot?.modelId ?? selectedModel?.id;
     const targetAttachments = pendingSnapshot?.attachments
       ? pendingSnapshot.attachments.map((attachment) => ({
           id: crypto.randomUUID(),
@@ -420,6 +568,37 @@ const Chat: React.FC = () => {
 
     if ((!content && targetAttachments.length === 0) || isSending) return false;
 
+    if (targetModelId) {
+      try {
+        const estimate = await estimateCost(targetTeamId, {
+          transactionType: 'chat_message',
+          modelId: targetModelId,
+          context: { conversationId },
+        });
+
+        if (!estimate.canAfford) {
+          const currentBalance = lingqiStatus?.balance ?? Math.max(0, (estimate.balanceAfterEstimate ?? 0) + estimate.estimatedCost);
+          addMessage({
+            id: crypto.randomUUID(),
+            role: 'assistant' as const,
+            content: `灵气不足，预计消耗 ${formatLingqiAmount(estimate.estimatedCost)} 灵气，当前余额 ${formatLingqiAmount(currentBalance)} 灵气。请先兑换灵气或切换为消耗更低的模型。`,
+            timestamp: Date.now(),
+            status: 'error' as const,
+          });
+          return false;
+        }
+      } catch {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: '灵气费用预估失败，请稍后重试。',
+          timestamp: Date.now(),
+          status: 'error' as const,
+        });
+        return false;
+      }
+    }
+
     if (!conversationId && !pendingSnapshot) {
       try {
         const conversation = await createConversation(targetTeamId, '');
@@ -431,6 +610,13 @@ const Chat: React.FC = () => {
           await setConversationMcpServers(targetMcpServerIds);
         }
       } catch {
+        addMessage({
+          id: crypto.randomUUID(),
+          role: 'assistant' as const,
+          content: '新建对话失败，请稍后重试。',
+          timestamp: Date.now(),
+          status: 'error' as const,
+        });
         return false;
       }
     }
@@ -448,7 +634,56 @@ const Chat: React.FC = () => {
       addMessage(userMessage);
       setMessage('');
     }
+
+    const runId = crypto.randomUUID();
+    streamContextsRef.current[runId] = {
+      conversationId,
+      teamId: targetTeamId,
+      expertId: currentExpertId,
+      mcpServerIds: [...targetMcpServerIds],
+      modelId: targetModelId,
+      content: userMessage.content,
+      attachments: targetAttachments,
+    };
+
+    const placeholderMessage = {
+      id: runId,
+      role: 'assistant' as const,
+      content: '',
+      timestamp: Date.now(),
+      status: 'streaming' as const,
+      runId,
+    };
+    addMessage(placeholderMessage);
+    setActiveStreamId(runId);
     setSending(true);
+
+    timeoutManager.current.set(runId, () => {
+      const currentMessages = messagesRef.current;
+      const messageIndex = currentMessages.findIndex(msg => msg.runId === runId);
+      const streamContext = streamContextsRef.current[runId];
+
+      timedOutStreamIdsRef.current.add(runId);
+      send('hermes.abort', { messageId: runId }).catch(() => {
+        appendLocalErrorMessage('请求已超时，但服务端中止失败，请稍后刷新灵气余额确认。');
+      });
+      if (messageIndex >= 0) {
+        useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
+          content: currentMessages[messageIndex].content || t('chat.timeoutRetry'),
+          status: 'error',
+        });
+      }
+      delete streamContextsRef.current[runId];
+      if (streamContext?.conversationId) {
+        conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
+          role: 'assistant',
+          content: currentMessages[messageIndex]?.content || t('chat.timeoutRetry'),
+        }).catch(() => {
+          appendLocalErrorMessage('请求已超时，但超时状态同步到会话历史失败，请稍后刷新确认。');
+        });
+      }
+      useChatStore.getState().setSending(false);
+    }, 30000);
 
     try {
       const sessionId = sessionKey || 'default';
@@ -457,6 +692,8 @@ const Chat: React.FC = () => {
         message: userMessage.content,
         conversationId,
         expertId: currentExpertId,
+        model: targetModelId,
+        messageId: runId,
         attachments: targetAttachments.length > 0 ? targetAttachments.map((a) => ({
           type: a.type,
           name: a.name,
@@ -465,66 +702,34 @@ const Chat: React.FC = () => {
         })) : undefined,
       });
       if (!response?.ok) {
-        useChatStore.getState().updateMessage(userMessage.id, {
+        timeoutManager.current.clear(runId);
+        delete streamContextsRef.current[runId];
+        useChatStore.getState().updateMessage(runId, {
+          content: `❌ ${response?.error || t('chat.errorSendFailed')}`,
           status: 'error',
-          content: t('chat.errorSendFailed'),
         });
         setSending(false);
+        setActiveStreamId(null);
         return false;
+      }
+
+      if (teamId) {
+        refreshStatus(teamId).catch(() => {
+          // refreshStatus records the error in the Lingqi store for user-facing display
+        });
       }
 
       if (!pendingSnapshot) {
         setAttachments([]);
       }
 
-      const runId = response.runId || response.messageId;
-      streamContextsRef.current[runId] = {
-        conversationId,
-        teamId: targetTeamId,
-        expertId: currentExpertId,
-        mcpServerIds: [...targetMcpServerIds],
-        content: userMessage.content,
-        attachments: targetAttachments,
-      };
-
-      const placeholderMessage = {
-        id: runId,
-        role: 'assistant' as const,
-        content: '',
-        timestamp: Date.now(),
-        status: 'streaming' as const,
-        runId: runId,
-      };
-      addMessage(placeholderMessage);
-      setActiveStreamId(runId);
-
-      timeoutManager.current.set(runId, () => {
-        const currentMessages = messagesRef.current;
-        const messageIndex = currentMessages.findIndex(msg => msg.runId === runId);
-        const streamContext = streamContextsRef.current[runId];
-
-        timedOutStreamIdsRef.current.add(runId);
-        if (messageIndex >= 0) {
-          useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
-            content: currentMessages[messageIndex].content || t('chat.timeoutRetry'),
-            status: 'error',
-          });
-        }
-        delete streamContextsRef.current[runId];
-        if (streamContext?.conversationId) {
-          conversationService.addMessage(streamContext.teamId, streamContext.conversationId, {
-            role: 'assistant',
-            content: currentMessages[messageIndex]?.content || t('chat.timeoutRetry'),
-          }).catch(() => {});
-        }
-        useChatStore.getState().setSending(false);
-      }, 30000);
-
       if (conversationId) {
         conversationService.addMessage(targetTeamId, conversationId, {
           role: 'user',
           content: userMessage.content,
-        }).catch(() => {});
+        }).catch(() => {
+          appendLocalErrorMessage('消息已发送，但同步到会话历史失败，请稍后刷新确认。');
+        });
 
         const currentConv = conversations.find(c => c.id === conversationId);
         if (currentConv && !currentConv.title) {
@@ -535,7 +740,12 @@ const Chat: React.FC = () => {
 
       return true;
     } catch (error) {
+      timeoutManager.current.clear(runId);
+      delete streamContextsRef.current[runId];
+      setActiveStreamId(null);
+
       if (!gatewayConnected && retryCount < MAX_RETRIES) {
+        useChatStore.getState().deleteMessage(runId);
         if (!options?.skipLocalMessage) {
           addToPendingQueue({
             id: userMessage.id,
@@ -546,6 +756,7 @@ const Chat: React.FC = () => {
             teamId: targetTeamId,
             expertId: currentExpertId,
             mcpServerIds: [...targetMcpServerIds],
+            modelId: targetModelId,
             attachments: targetAttachments.map((attachment) => ({
               type: attachment.type,
               name: attachment.name,
@@ -561,20 +772,38 @@ const Chat: React.FC = () => {
         setSending(false);
       } else {
         const errorMessage = getErrorMessage(error, gatewayConnected);
-        const errorMessageObj = {
-          id: crypto.randomUUID(),
-          role: 'assistant' as const,
+        useChatStore.getState().updateMessage(runId, {
           content: `❌ ${errorMessage}`,
-          timestamp: Date.now(),
-          status: 'error' as const,
-        };
-        addMessage(errorMessageObj);
+          status: 'error',
+        });
         setSending(false);
       }
 
       return false;
     }
-  };
+  }, [
+    currentConversationId,
+    selectedMCPServerIds,
+    selectedModel,
+    attachments,
+    isSending,
+    teamId,
+    estimateCost,
+    lingqiStatus,
+    addMessage,
+    setMessage,
+    setActiveStreamId,
+    setSending,
+    sessionKey,
+    send,
+    refreshStatus,
+    conversations,
+    renameConversation,
+    gatewayConnected,
+    addToPendingQueue,
+    getErrorMessage,
+    t,
+  ]);
 
   useEffect(() => {
     if (!gatewayConnected || isSending) return;
@@ -591,6 +820,7 @@ const Chat: React.FC = () => {
         teamId: pendingMsg.teamId,
         expertId: pendingMsg.expertId,
         mcpServerIds: pendingMsg.mcpServerIds,
+        modelId: pendingMsg.modelId,
         attachments: pendingMsg.attachments,
       },
       {
@@ -617,6 +847,43 @@ const Chat: React.FC = () => {
 
   const handleSend = () => handleSendWithContent(message.trim());
 
+  const handleModelSelect = async (modelId: string) => {
+    if (!teamId) {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: '请先加入或创建宗门后再选择灵气模型。',
+        timestamp: Date.now(),
+        status: 'error' as const,
+      });
+      return;
+    }
+
+    try {
+      clearEstimate();
+      await selectModel(teamId, modelId, currentConversationId || undefined);
+      const trimmedMessage = message.trim();
+      if (!trimmedMessage) {
+        clearEstimate();
+        return;
+      }
+
+      await estimateCost(teamId, {
+        transactionType: 'chat_message',
+        modelId,
+        context: { conversationId: currentConversationId || undefined },
+      });
+    } catch {
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: '灵气模型切换失败，请稍后重试。',
+        timestamp: Date.now(),
+        status: 'error' as const,
+      });
+    }
+  };
+
   const handleRegenerate = () => {
     if (isSending) return;
 
@@ -640,21 +907,32 @@ const Chat: React.FC = () => {
     }
   };
 
-  const handleStopGeneration = () => {
+  const handleStopGeneration = async () => {
     if (!activeStreamId) return;
 
-    const currentStreamMessage = useChatStore.getState().messages.find((msg) => msg.id === activeStreamId);
-    send('hermes.abort', { messageId: activeStreamId });
-    timeoutManager.current.clear(activeStreamId);
-    if (currentStreamMessage) {
-      useChatStore.getState().updateMessage(activeStreamId, {
-        content: currentStreamMessage.content || t('chat.timeoutRetry'),
-        status: 'complete',
-      });
+    const messageId = activeStreamId;
+    const currentStreamMessage = useChatStore.getState().messages.find((msg) => msg.id === messageId);
+
+    try {
+      const response = await send('hermes.abort', { messageId });
+      if (!response?.ok) {
+        appendLocalErrorMessage(`停止生成失败：${response?.error || '请稍后重试。'}`);
+        return;
+      }
+
+      timeoutManager.current.clear(messageId);
+      if (currentStreamMessage) {
+        useChatStore.getState().updateMessage(messageId, {
+          content: currentStreamMessage.content || t('chat.timeoutRetry'),
+          status: 'complete',
+        });
+      }
+      delete streamContextsRef.current[messageId];
+      setActiveStreamId(null);
+      setSending(false);
+    } catch {
+      appendLocalErrorMessage('停止生成失败，请稍后重试。');
     }
-    delete streamContextsRef.current[activeStreamId];
-    setActiveStreamId(null);
-    setSending(false);
   };
 
   const generateTitle = (content: string): string => {
@@ -666,6 +944,13 @@ const Chat: React.FC = () => {
   const handleNewConversation = async () => {
     if (!teamId) {
       useChatStore.getState().setError('请先加入或创建团队后再开始聊天');
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: '请先加入或创建宗门后再开启新的灵气对话。',
+        timestamp: Date.now(),
+        status: 'error' as const,
+      });
       return;
     }
 
@@ -673,10 +958,17 @@ const Chat: React.FC = () => {
       const conversation = await createConversation(teamId, '');
       setMessages([]);
       setCurrentConversationId(conversation.id);
+      clearSelectedModel();
       if (isCompactLayout) setIsSidebarOpen(false);
       navigate(`/chat/${conversation.id}`);
     } catch {
-      // create conversation failed
+      addMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant' as const,
+        content: '新建对话失败，请稍后重试。',
+        timestamp: Date.now(),
+        status: 'error' as const,
+      });
     }
   };
 
@@ -690,7 +982,9 @@ const Chat: React.FC = () => {
     navigate(`/chat/${conversationId}`);
 
     if (conversationId === currentConversationId) return;
+
     setCurrentConversationId(conversationId);
+    clearSelectedModel();
     setIsLoadingHistory(true);
 
     try {
@@ -723,7 +1017,9 @@ const Chat: React.FC = () => {
       deleteMessage(id);
       setDeleteConfirmId(null);
       if (currentConversationId && teamId) {
-        conversationService.deleteMessage(teamId, currentConversationId, id).catch(() => {});
+        conversationService.deleteMessage(teamId, currentConversationId, id).catch(() => {
+          appendLocalErrorMessage('消息已从本地删除，但服务端同步失败，请稍后刷新确认。');
+        });
       }
     } else {
       setDeleteConfirmId(id);
@@ -785,7 +1081,9 @@ const Chat: React.FC = () => {
     if (currentConversationId && teamId) {
       conversationService.updateMessage(teamId, currentConversationId, editingMessageId, {
         content: editContent.trim(),
-      }).catch(() => {});
+      }).catch(() => {
+        appendLocalErrorMessage('消息已在本地更新，但服务端同步失败，请稍后刷新确认。');
+      });
     }
   };
 
@@ -987,6 +1285,47 @@ const Chat: React.FC = () => {
                 </button>
               </div>
             )}
+
+            <section
+              aria-labelledby="lingqi-model-heading"
+              className="mb-3 rounded-2xl border border-emerald-100/70 bg-gradient-to-br from-white via-emerald-50/60 to-amber-50/50 p-4 shadow-sm shadow-emerald-100/50"
+            >
+              <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 id="lingqi-model-heading" className="text-sm font-semibold text-zinc-800">
+                    灵气模型
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    按当前会话选择模型，并在发送前预估灵气消耗。
+                  </p>
+                </div>
+                {lingqiStatus && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="rounded-full border border-amber-100 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700"
+                  >
+                    余额 {formatLingqiAmount(lingqiStatus.balance)} 灵气
+                  </p>
+                )}
+              </div>
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                <LingqiModelSelector
+                  models={lingqiModels}
+                  selectedModelId={selectedModel?.id}
+                  onSelect={handleModelSelect}
+                />
+                <div className="sm:min-w-[220px]">
+                  <LingqiCostPreview estimate={lingqiEstimate} />
+                  {lingqiError && (
+                    <p role="alert" className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700">
+                      {lingqiError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </section>
 
             <div className="rounded-2xl border border-zinc-200/70 bg-white/90 p-2.5 shadow-lg shadow-zinc-200/50 sm:p-3">
               <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100/80 pb-2">

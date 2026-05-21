@@ -7,6 +7,7 @@ import { GatewayService } from './gateway.service';
 import { DatabaseModule } from '../database/database.module';
 import { AiModelsModule } from '../ai-models/ai-models.module';
 import { getRequiredJwtSecret } from '../config/security-config';
+import { QuotaModule } from '../quota/quota.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { getRequiredJwtSecret } from '../config/security-config';
       proxy: false,
     }),
     AiModelsModule,
+    QuotaModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

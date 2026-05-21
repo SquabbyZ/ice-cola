@@ -69,4 +69,12 @@ describe('JwtAuthGuard', () => {
 
     await expect(guard.canActivate(createContext())).resolves.toBe(false);
   });
+
+  it('fails closed when JWT secret is missing', () => {
+    expect(() => new JwtAuthGuard(
+      jwtService as unknown as JwtService,
+      { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService,
+      db as unknown as DatabaseService,
+    )).toThrow('JWT_SECRET environment variable is not set');
+  });
 });

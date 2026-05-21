@@ -280,8 +280,8 @@ const Skills: React.FC = () => {
                 className="mt-1"
               />
               <span>
-                <span className="block font-medium text-zinc-900">所有团队成员可用</span>
-                <span className="text-xs text-zinc-500">团队发布通过后，当前团队所有成员都能使用。</span>
+                <span className="block font-medium text-zinc-900">所有宗门成员可用</span>
+                <span className="text-xs text-zinc-500">宗门发布通过后，当前宗门所有成员都能使用。</span>
               </span>
             </label>
             <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
@@ -316,7 +316,7 @@ const Skills: React.FC = () => {
               />
               <span className="flex-1">
                 <span className="block font-medium text-zinc-900">按最小角色可用</span>
-                <span className="text-xs text-zinc-500">只有达到所选团队角色的成员才能使用。</span>
+                <span className="text-xs text-zinc-500">只有达到所选宗门角色的成员才能使用。</span>
                 {publishAccessMode === 'role' && (
                   <select
                     value={publishMinimumRole}
@@ -338,10 +338,10 @@ const Skills: React.FC = () => {
       <ConfirmDialog
         open={teamApprovalConfirm.open}
         onOpenChange={(open) => setTeamApprovalConfirm({ ...teamApprovalConfirm, open })}
-        title={teamApprovalConfirm.action === 'approve' ? '通过团队发布' : '拒绝团队发布'}
+        title={teamApprovalConfirm.action === 'approve' ? '通过宗门发布' : '拒绝宗门发布'}
         description={teamApprovalConfirm.action === 'approve'
-          ? `确认将 "${teamApprovalConfirm.skillName}" 发布到团队？`
-          : `确认拒绝 "${teamApprovalConfirm.skillName}" 的团队发布申请？`}
+          ? `确认将 "${teamApprovalConfirm.skillName}" 发布到宗门？`
+          : `确认拒绝 "${teamApprovalConfirm.skillName}" 的宗门发布申请？`}
         confirmText={teamApprovalConfirm.action === 'approve' ? '通过' : '拒绝'}
         cancelText={t('common.cancel')}
         variant={teamApprovalConfirm.action === 'reject' ? 'destructive' : 'default'}
@@ -368,8 +368,8 @@ const Skills: React.FC = () => {
       <ConfirmDialog
         open={marketplaceConfirm.open}
         onOpenChange={(open) => setMarketplaceConfirm({ ...marketplaceConfirm, open })}
-        title="提交到 Skill 市场"
-        description={`确认将团队 Skill "${marketplaceConfirm.skillName}" 提交到市场审批？`}
+        title="提交到秘籍市场"
+        description={`确认将宗门秘籍 "${marketplaceConfirm.skillName}" 提交到市场审批？`}
         confirmText="提交审批"
         cancelText={t('common.cancel')}
         onConfirm={async () => {

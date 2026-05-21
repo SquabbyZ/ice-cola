@@ -51,17 +51,18 @@ export const WorkorderTable: React.FC = () => {
   const filterStatus = useWorkordersStore(state => state.filterStatus);
 
   const pendingWorkorders = workorders.filter(w => w.status === 'pending');
-  const allSelected = pendingWorkorders.length > 0 && selectedIds.length === pendingWorkorders.length;
+  const pendingWorkorderIds = pendingWorkorders.map(w => w.id);
+  const allSelected = pendingWorkorderIds.length > 0 && pendingWorkorderIds.every(id => selectedIds.includes(id));
 
   const handleAction = (workorderId: string, workorderName: string, action: 'approve' | 'reject') => {
     setActionDialog({ open: true, action, workorderId, workorderName });
   };
 
-  const handleConfirm = (comment?: string) => {
+  const handleConfirm = async (comment?: string) => {
     if (actionDialog.action === 'approve') {
-      approve(actionDialog.workorderId, comment);
+      await approve(actionDialog.workorderId, comment);
     } else {
-      reject(actionDialog.workorderId, comment || t('workorders.rejectReasonPlaceholder'));
+      await reject(actionDialog.workorderId, comment || t('workorders.rejectReasonPlaceholder'));
     }
   };
 
@@ -88,7 +89,7 @@ export const WorkorderTable: React.FC = () => {
             <input
               type="checkbox"
               checked={allSelected}
-              onChange={() => allSelected ? clearSelection() : selectAll()}
+              onChange={() => allSelected ? clearSelection() : selectAll(pendingWorkorderIds)}
               className="w-4 h-4 rounded border-zinc-300 bg-white cursor-pointer accent-zinc-700"
             />
           </div>
@@ -108,7 +109,7 @@ export const WorkorderTable: React.FC = () => {
             <div className="w-5 h-5 rounded-md bg-rose-50 flex items-center justify-center">
               <User className="w-3 h-3 text-rose-500" />
             </div>
-            {t('profile.teamMembers')}
+            {t('workorders.table.applicant')}
           </div>
           <div className="col-span-2 flex items-center gap-1.5 text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
             <div className="w-5 h-5 rounded-md bg-violet-50 flex items-center justify-center">

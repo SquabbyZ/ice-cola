@@ -39,6 +39,7 @@ type EventHandler = (data: any) => void;
 export interface GatewayConfig {
   url: string;
   token?: string;              // 认证 Token (可选)
+  getToken?: () => string | null | undefined;
   reconnectInterval?: number;  // 重连间隔 (ms)
   requestTimeout?: number;     // 请求超时 (ms)
   maxRetries?: number;         // 最大重试次数
@@ -488,6 +489,7 @@ export class GatewayClient {
     }
 
     const id = this.generateRequestId();
+    const token = this.config.getToken?.() ?? this.config.token;
     const handshakeMessage = {
       type: 'req',
       id,
@@ -503,9 +505,9 @@ export class GatewayClient {
           mode: 'ui',  // 使用预定义的 mode: ui/webchat/cli/backend/node/probe/test
         },
         // 如果有 token，添加到 auth 中
-        ...(this.config.token && {
+        ...(token && {
           auth: {
-            token: this.config.token,
+            token,
           },
         }),
         // Control UI 需要的 scopes（包含 admin 权限以支持 config.patch）
@@ -513,8 +515,7 @@ export class GatewayClient {
       },
     };
 
-    console.log('🤝 Sending handshake:', JSON.stringify(handshakeMessage, null, 2));
-    console.log('🔑 Token configured:', this.config.token ? 'YES' : 'NO');
+    console.log('🤝 Sending handshake:', { id, hasToken: Boolean(token) });
 
     return new Promise((resolve, reject) => {
       // 设置超时

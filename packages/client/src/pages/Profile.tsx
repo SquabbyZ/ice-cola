@@ -442,9 +442,10 @@ const Profile: React.FC = () => {
               <div className="flex items-center justify-between p-5 bg-zinc-50/50 rounded-xl">
                 <div>
                   <h3 className="font-semibold text-zinc-900 text-lg">{selectedTeam.name}</h3>
-                  <p className="text-sm text-zinc-500 mt-1">
-                    {t('profile.teamRole')}: {getRoleBadge(currentTeamRole)}
-                  </p>
+                  <div className="mt-1 flex items-center gap-2 text-sm text-zinc-500">
+                    <span>{t('profile.teamRole')}:</span>
+                    {getRoleBadge(currentTeamRole)}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   {currentTeamRole === 'OWNER' && (
@@ -479,7 +480,7 @@ const Profile: React.FC = () => {
                       className="rounded-xl border-red-200/50 text-red-500 hover:bg-red-50 hover:border-red-300"
                     >
                       <LogOut className="w-4 h-4 mr-2" />
-                      退出团队
+                      退出宗门
                     </Button>
                   )}
                 </div>

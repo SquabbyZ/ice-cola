@@ -76,10 +76,8 @@ export class ServiceContainer {
     this.quotaController = new QuotaController(this.usageRepo, configStore);
     this.usageMetering = new UsageMeteringEngine(this.usageRepo, this.quotaController);
 
-    // 从配置文件读取 Gateway Token
-    const gatewayToken = this.readGatewayToken();
     this.gatewayClient = new GatewayClient({
-      token: gatewayToken,
+      getToken: () => localStorage.getItem('accessToken'),
       onConnected: () => {
         console.log('🔧 ServiceContainer: Gateway connected');
       },
@@ -88,7 +86,7 @@ export class ServiceContainer {
       },
     });
 
-    console.log('✅ ServiceContainer initialized', gatewayToken ? 'with token' : 'without token');
+    console.log('✅ ServiceContainer initialized');
   }
 
   /**
@@ -128,34 +126,6 @@ export class ServiceContainer {
     } catch (error) {
       console.error('❌ Failed to initialize services:', error);
       throw error;
-    }
-  }
-
-  /**
-   * 从配置文件读取 Gateway Token
-   *
-   * @returns Gateway Token (如果存在)
-   */
-  private readGatewayToken(): string | undefined {
-    try {
-      // 尝试从 localStorage 读取配置
-      const stored = localStorage.getItem('openclaw_gateway_config');
-      if (stored) {
-        const config = JSON.parse(stored);
-        if (config.token) {
-          console.log('✅ Loaded Gateway token from localStorage');
-          return config.token;
-        }
-      }
-
-      // 如果没有配置，使用默认 token（开发环境）
-      // TODO: 生产环境应该从安全的配置源读取
-      const defaultToken = 'ff905ffe94711d52ba7ca34cc56399f5788caaf8ec67027c';
-      console.log('⚠️ Using default Gateway token (dev mode)');
-      return defaultToken;
-    } catch (error) {
-      console.error('❌ Failed to read Gateway token:', error);
-      return undefined;
     }
   }
 

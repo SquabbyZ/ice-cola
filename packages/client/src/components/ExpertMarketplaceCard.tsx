@@ -317,7 +317,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
                 disabled={isInstalling}
                 className="bg-zinc-700 hover:bg-zinc-800"
               >
-                {isInstalling ? t('common.loading', '添加中...') : t('experts.addExpert', '添加此专家')}
+                {isInstalling ? t('common.loading', '添加中...') : t('experts.addExpert', '添加此宗主')}
               </Button>
             ) : (
               <Button

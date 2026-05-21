@@ -4,6 +4,14 @@ import type { WebSocket } from 'ws';
 
 type GatewayServiceFixture = jest.Mocked<Pick<GatewayService,
   | 'connect'
+  | 'refresh'
+  | 'getQuota'
+  | 'listConversations'
+  | 'createConversation'
+  | 'getConversation'
+  | 'updateConversation'
+  | 'deleteConversation'
+  | 'getMessages'
   | 'sendHermesMessage'
   | 'listSkills'
   | 'createSkill'
@@ -22,6 +30,9 @@ type GatewayServiceFixture = jest.Mocked<Pick<GatewayService,
   | 'updateExpert'
   | 'deleteExpert'
   | 'recordExpertUsage'
+  | 'getUsageStatus'
+  | 'getQuotaConfig'
+  | 'updateQuotaConfig'
 >>;
 
 type SocketMessageHandler = (data: Buffer) => Promise<void>;
@@ -40,7 +51,7 @@ describe('GatewayGateway Skills authorization', () => {
   const connectResult = {
     ok: true,
     protocol: 1,
-    expiresAt: 1,
+    expiresAt: Date.now() + 60_000,
     user: {
       id: 'user-1',
       email: 'user@example.com',
@@ -52,6 +63,14 @@ describe('GatewayGateway Skills authorization', () => {
   beforeEach(() => {
     service = {
       connect: jest.fn(),
+      refresh: jest.fn(),
+      getQuota: jest.fn(),
+      listConversations: jest.fn(),
+      createConversation: jest.fn(),
+      getConversation: jest.fn(),
+      updateConversation: jest.fn(),
+      deleteConversation: jest.fn(),
+      getMessages: jest.fn(),
       sendHermesMessage: jest.fn(),
       listSkills: jest.fn(),
       createSkill: jest.fn(),
@@ -70,6 +89,9 @@ describe('GatewayGateway Skills authorization', () => {
       updateExpert: jest.fn(),
       deleteExpert: jest.fn(),
       recordExpertUsage: jest.fn(),
+      getUsageStatus: jest.fn(),
+      getQuotaConfig: jest.fn(),
+      updateQuotaConfig: jest.fn(),
     };
     socket = {
       on: jest.fn((event: string, handler: SocketMessageHandler) => {
@@ -89,14 +111,37 @@ describe('GatewayGateway Skills authorization', () => {
     gateway['handleConnection'](socket as unknown as WebSocket);
   });
 
+  it('rejects oversized unauthenticated websocket payloads with an explicit error response', async () => {
+    if (!messageHandler) {
+      throw new Error('Gateway message handler was not registered');
+    }
+
+    await messageHandler(Buffer.from(JSON.stringify({
+      type: 'req',
+      id: 'oversized-1',
+      method: 'connect',
+      params: { payload: 'x'.repeat(16 * 1024 * 1024) },
+    })));
+
+    expect(service.connect).not.toHaveBeenCalled();
+    expect(service.sendHermesMessage).not.toHaveBeenCalled();
+    expect(sentMessages).toEqual([
+      expect.objectContaining({
+        id: 'oversized-1',
+        ok: false,
+        error: expect.objectContaining({ message: 'Message too large' }),
+      }),
+    ]);
+  });
+
   it('injects authenticated team scope into hermes send requests', async () => {
     service.connect.mockResolvedValue(connectResult);
-    service.sendHermesMessage.mockResolvedValue({ ok: true });
+    service.sendHermesMessage.mockResolvedValue({ ok: true, messageId: 'message-1' });
 
     await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
     await sendRequest('2', 'hermes.send', { teamId: 'team-2', message: 'hello' });
 
-    expect(service.sendHermesMessage).toHaveBeenCalledWith({ teamId: 'team-1', message: 'hello' }, socket);
+    expect(service.sendHermesMessage).toHaveBeenCalledWith({ teamId: 'team-1', userId: 'user-1', sessionId: 'default', message: 'hello' }, socket);
   });
 
   it('rejects unauthenticated hermes send requests', async () => {
@@ -108,6 +153,130 @@ describe('GatewayGateway Skills authorization', () => {
       ok: false,
       error: expect.objectContaining({ message: 'Authentication required' }),
     }));
+  });
+
+  it('rejects protected requests after the websocket access token expires', async () => {
+    service.connect.mockResolvedValue({
+      ...connectResult,
+      expiresAt: Date.now() - 1,
+    });
+
+    await sendRequest('1', 'connect', { auth: { token: 'expired-token' } });
+    await sendRequest('2', 'hermes.send', { teamId: 'team-2', message: 'hello' });
+
+    expect(service.sendHermesMessage).not.toHaveBeenCalled();
+    expect(sentMessages).toContainEqual(expect.objectContaining({
+      id: '2',
+      ok: false,
+      error: expect.objectContaining({ message: 'Authentication required' }),
+    }));
+  });
+
+  it('does not update websocket authorization context after auth refresh', async () => {
+    service.refresh.mockResolvedValue({
+      ok: true,
+      accessToken: 'new-access-token',
+      refreshToken: 'new-refresh-token',
+      expiresIn: 900,
+      expiresAt: Date.now() + 120_000,
+      user: {
+        id: 'user-2',
+        team: { id: 'team-2', role: 'ADMIN' },
+      },
+    } as any);
+    service.getQuota.mockResolvedValue({ ok: true, quota: null } as any);
+
+    await sendRequest('1', 'auth.refresh', { refreshToken: 'refresh-token' });
+    await sendRequest('2', 'quota.get', { teamId: 'team-1' });
+
+    expect(service.refresh).toHaveBeenCalledWith({ refreshToken: 'refresh-token' });
+    expect(service.getQuota).not.toHaveBeenCalled();
+    expect(sentMessages).toContainEqual(expect.objectContaining({
+      id: '2',
+      ok: false,
+      error: expect.objectContaining({ message: 'Authentication required' }),
+    }));
+  });
+
+  it('rejects invalid hermes send payloads before execution', async () => {
+    service.connect.mockResolvedValue(connectResult);
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'hermes.send', { message: '' });
+    await sendRequest('3', 'hermes.send', { message: 'hello', model: 123 });
+    await sendRequest('4', 'hermes.send', { message: 'hello', attachments: [{ type: 'image', name: 'bad.png', mimeType: 'image/png', data: 'not base64!' }] });
+
+    expect(service.sendHermesMessage).not.toHaveBeenCalled();
+    expect(sentMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: '2', ok: false, error: expect.objectContaining({ message: 'Invalid hermes send message' }) }),
+      expect.objectContaining({ id: '3', ok: false, error: expect.objectContaining({ message: 'Invalid hermes send model' }) }),
+      expect.objectContaining({ id: '4', ok: false, error: expect.objectContaining({ message: 'Invalid hermes send attachment data' }) }),
+    ]));
+  });
+
+  it('passes validated hermes send attachments with authenticated team scope', async () => {
+    service.connect.mockResolvedValue(connectResult);
+    service.sendHermesMessage.mockResolvedValue({ ok: true, messageId: 'message-1' });
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'hermes.send', {
+      message: 'hello',
+      sessionId: 'session-1',
+      model: 'model-1',
+      attachments: [{ type: 'image', name: 'avatar.png', mimeType: 'image/png', data: 'aGVsbG8=' }],
+    });
+
+    expect(service.sendHermesMessage).toHaveBeenCalledWith({
+      teamId: 'team-1',
+      userId: 'user-1',
+      message: 'hello',
+      sessionId: 'session-1',
+      model: 'model-1',
+      attachments: [{ type: 'image', name: 'avatar.png', mimeType: 'image/png', data: 'aGVsbG8=' }],
+    }, socket);
+  });
+
+  it('injects authenticated team scope into quota and conversation requests', async () => {
+    service.connect.mockResolvedValue(connectResult);
+    service.getQuota.mockResolvedValue({ ok: true, quota: null } as any);
+    service.listConversations.mockResolvedValue({ ok: true, conversations: [], total: 0 } as any);
+    service.createConversation.mockResolvedValue({ ok: true, conversation: { id: 'conversation-1' } } as any);
+    service.getConversation.mockResolvedValue({ ok: true, conversation: { id: 'conversation-1' } } as any);
+    service.updateConversation.mockResolvedValue({ ok: true, conversation: { id: 'conversation-1' } } as any);
+    service.deleteConversation.mockResolvedValue({ ok: true } as any);
+    service.getMessages.mockResolvedValue({ ok: true, messages: [] } as any);
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'quota.get', { teamId: 'team-2' });
+    await sendRequest('3', 'conversation.list', { teamId: 'team-2' });
+    await sendRequest('4', 'conversation.create', { teamId: 'team-2', userId: 'user-2', title: 'Chat' });
+    await sendRequest('5', 'conversation.get', { teamId: 'team-2', conversationId: 'conversation-1' });
+    await sendRequest('6', 'conversation.update', { teamId: 'team-2', conversationId: 'conversation-1', title: 'Updated' });
+    await sendRequest('7', 'conversation.delete', { teamId: 'team-2', conversationId: 'conversation-1' });
+    await sendRequest('8', 'conversation.messages', { teamId: 'team-2', conversationId: 'conversation-1' });
+
+    expect(service.getQuota).toHaveBeenCalledWith({ teamId: 'team-1' });
+    expect(service.listConversations).toHaveBeenCalledWith({ teamId: 'team-1' });
+    expect(service.createConversation).toHaveBeenCalledWith({ teamId: 'team-1', userId: 'user-1', title: 'Chat' });
+    expect(service.getConversation).toHaveBeenCalledWith({ teamId: 'team-1', conversationId: 'conversation-1' });
+    expect(service.updateConversation).toHaveBeenCalledWith({ teamId: 'team-1', conversationId: 'conversation-1', title: 'Updated' });
+    expect(service.deleteConversation).toHaveBeenCalledWith({ teamId: 'team-1', conversationId: 'conversation-1' });
+    expect(service.getMessages).toHaveBeenCalledWith({ teamId: 'team-1', conversationId: 'conversation-1' });
+  });
+
+  it('rejects unauthenticated quota and conversation requests', async () => {
+    await sendRequest('1', 'quota.get', { teamId: 'team-2' });
+    await sendRequest('2', 'conversation.list', { teamId: 'team-2' });
+    await sendRequest('3', 'conversation.messages', { teamId: 'team-2', conversationId: 'conversation-1' });
+
+    expect(service.getQuota).not.toHaveBeenCalled();
+    expect(service.listConversations).not.toHaveBeenCalled();
+    expect(service.getMessages).not.toHaveBeenCalled();
+    expect(sentMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: '1', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+      expect.objectContaining({ id: '2', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+      expect.objectContaining({ id: '3', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+    ]));
   });
 
   it('injects authenticated team scope into skills list requests', async () => {
@@ -250,36 +419,97 @@ describe('GatewayGateway Skills authorization', () => {
     }));
   });
 
-  it('allows team admins to use config requests', async () => {
+  it('rejects team admins from global config requests', async () => {
     service.connect.mockResolvedValue({
       ...connectResult,
       user: { ...connectResult.user, team: { ...connectResult.user.team, role: 'ADMIN' } },
     });
-    service.getConfig.mockResolvedValue({ ok: true, config: {}, parsed: {}, hash: 'hash', path: 'config.json' });
-    service.patchConfig.mockResolvedValue({ ok: true, message: 'Config updated' });
-    service.setConfig.mockResolvedValue({ ok: true, needsRestart: false, message: 'Config saved successfully' });
 
     await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
     await sendRequest('2', 'config.get', {});
     await sendRequest('3', 'config.patch', { key: 'model', value: 'claude' });
     await sendRequest('4', 'config.set', { raw: '{}' });
 
-    expect(service.getConfig).toHaveBeenCalledWith({});
-    expect(service.patchConfig).toHaveBeenCalledWith({ key: 'model', value: 'claude' });
-    expect(service.setConfig).toHaveBeenCalledWith({ raw: '{}' });
+    expect(service.getConfig).not.toHaveBeenCalled();
+    expect(service.patchConfig).not.toHaveBeenCalled();
+    expect(service.setConfig).not.toHaveBeenCalled();
+    expect(sentMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: '2', ok: false, error: expect.objectContaining({ message: 'Internal error' }) }),
+      expect.objectContaining({ id: '3', ok: false, error: expect.objectContaining({ message: 'Internal error' }) }),
+      expect.objectContaining({ id: '4', ok: false, error: expect.objectContaining({ message: 'Internal error' }) }),
+    ]));
   });
 
-  it('allows team owners to use config requests', async () => {
+  it('rejects team owners from global config requests', async () => {
     service.connect.mockResolvedValue({
       ...connectResult,
       user: { ...connectResult.user, team: { ...connectResult.user.team, role: 'OWNER' } },
     });
-    service.getConfig.mockResolvedValue({ ok: true, config: {}, parsed: {}, hash: 'hash', path: 'config.json' });
 
     await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
     await sendRequest('2', 'config.get', {});
 
-    expect(service.getConfig).toHaveBeenCalledWith({});
+    expect(service.getConfig).not.toHaveBeenCalled();
+    expect(sentMessages).toContainEqual(expect.objectContaining({
+      id: '2',
+      ok: false,
+      error: expect.objectContaining({ message: 'Internal error' }),
+    }));
+  });
+
+  it('injects authenticated team scope into usage and quota config reads', async () => {
+    service.connect.mockResolvedValue(connectResult);
+    service.getUsageStatus.mockResolvedValue({ ok: true } as any);
+    service.getQuotaConfig.mockResolvedValue({ ok: true } as any);
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'usage.status', { teamId: 'team-2', period: 'day' });
+    await sendRequest('3', 'quota.getConfig', { teamId: 'team-2' });
+
+    expect(service.getUsageStatus).toHaveBeenCalledWith({ teamId: 'team-1', period: 'day' });
+    expect(service.getQuotaConfig).toHaveBeenCalledWith({ teamId: 'team-1' });
+  });
+
+  it('requires admin context for quota config updates', async () => {
+    service.connect.mockResolvedValue(connectResult);
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'quota.updateConfig', { teamId: 'team-2', monthlyBudget: 100 });
+
+    expect(service.updateQuotaConfig).not.toHaveBeenCalled();
+    expect(sentMessages).toContainEqual(expect.objectContaining({
+      id: '2',
+      ok: false,
+      error: expect.objectContaining({ message: 'Admin privileges required' }),
+    }));
+  });
+
+  it('injects authenticated admin team scope into quota config updates', async () => {
+    service.connect.mockResolvedValue({
+      ...connectResult,
+      user: { ...connectResult.user, team: { ...connectResult.user.team, role: 'ADMIN' } },
+    });
+    service.updateQuotaConfig.mockResolvedValue({ ok: true, message: 'Quota config updated' });
+
+    await sendRequest('1', 'connect', { auth: { token: 'access-token' } });
+    await sendRequest('2', 'quota.updateConfig', { teamId: 'team-2', monthlyBudget: 100 });
+
+    expect(service.updateQuotaConfig).toHaveBeenCalledWith({ teamId: 'team-1', monthlyBudget: 100 });
+  });
+
+  it('rejects unauthenticated usage and quota config requests', async () => {
+    await sendRequest('1', 'usage.status', { teamId: 'team-2' });
+    await sendRequest('2', 'quota.getConfig', { teamId: 'team-2' });
+    await sendRequest('3', 'quota.updateConfig', { teamId: 'team-2' });
+
+    expect(service.getUsageStatus).not.toHaveBeenCalled();
+    expect(service.getQuotaConfig).not.toHaveBeenCalled();
+    expect(service.updateQuotaConfig).not.toHaveBeenCalled();
+    expect(sentMessages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: '1', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+      expect.objectContaining({ id: '2', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+      expect.objectContaining({ id: '3', ok: false, error: expect.objectContaining({ message: 'Authentication required' }) }),
+    ]));
   });
 
   it('injects authenticated user scope into extension requests', async () => {

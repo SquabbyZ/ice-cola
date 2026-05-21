@@ -7,6 +7,7 @@ import { getRequiredJwtSecret } from '../config/security-config';
 
 interface JwtPayload {
   sub?: string;
+  type?: string;
 }
 
 interface AuthUserRow {
@@ -30,6 +31,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   async validate(payload: JwtPayload) {
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException('Invalid token type');
+    }
+
     if (!payload.sub) {
       throw new UnauthorizedException('Invalid token subject');
     }

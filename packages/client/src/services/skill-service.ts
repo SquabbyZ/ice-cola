@@ -52,16 +52,11 @@ export class SkillService {
    * 获取所有技能
    */
   async getAllSkills(teamId: string): Promise<Skill[]> {
-    try {
-      const result = await this.getClient().send('skills.list', { teamId });
-      if (result && Array.isArray(result)) {
-        return result;
-      }
-      return [];
-    } catch (error) {
-      console.error('Failed to get skills:', error);
-      return [];
+    const result = await this.getClient().send('skills.list', { teamId });
+    if (Array.isArray(result)) {
+      return result;
     }
+    return [];
   }
 
   /**
@@ -132,16 +127,11 @@ export class SkillService {
    * 获取市场技能 (从 marketplace_items 表)
    */
   async getMarketplaceSkills(): Promise<Skill[]> {
-    try {
-      const result = await this.getClient().send('marketplace_skills.list', {});
-      if (result && Array.isArray(result)) {
-        return result;
-      }
-      return [];
-    } catch (error) {
-      console.error('Failed to get marketplace skills:', error);
-      return [];
+    const result = await this.getClient().send('marketplace_skills.list', {});
+    if (Array.isArray(result)) {
+      return result;
     }
+    return [];
   }
 
   /**

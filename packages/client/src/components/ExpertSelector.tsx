@@ -55,7 +55,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
         ) : (
           <>
             <Bot className="w-4 h-4 text-zinc-400" />
-            <span className="flex-1 text-sm text-zinc-500">{t('experts.selectExpert', '选择专家')}</span>
+            <span className="flex-1 text-sm text-zinc-500">{t('experts.selectExpert', '选择宗主')}</span>
           </>
         )}
         <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
@@ -66,7 +66,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
           {/* Header */}
           <div className="px-4 py-3 border-b border-zinc-100/50 bg-gradient-to-r from-zinc-50/80 via-zinc-50/50 to-zinc-50/80">
             <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
-              {t('experts.expertSelector', '专家选择')}
+              {t('experts.expertSelector', '宗主选择')}
             </p>
           </div>
 
@@ -97,7 +97,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
             {experts.length === 0 ? (
               <div className="px-4 py-6 text-center">
                 <Sparkles className="w-8 h-8 text-zinc-300 mx-auto mb-2" />
-                <p className="text-sm text-zinc-400">{t('experts.noExperts', '暂无专家')}</p>
+                <p className="text-sm text-zinc-400">{t('experts.noExperts', '暂无宗主')}</p>
               </div>
             ) : (
               experts.map((expert) => (
@@ -138,7 +138,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
           {/* Footer hint */}
           <div className="px-4 py-2 border-t border-zinc-100/50 bg-zinc-50/30">
             <p className="text-[10px] text-zinc-400 text-center">
-              {t('experts.expertSelectorHint', '专家可自定义AI助手的角色和行为')}
+              {t('experts.expertSelectorHint', '宗主可自定义 AI 助手的角色和行为')}
             </p>
           </div>
         </div>

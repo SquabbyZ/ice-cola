@@ -26,7 +26,7 @@ describe('JwtStrategy', () => {
       role: 'OWNER',
     } as any);
 
-    await expect(strategy.validate({ sub: 'user-1', teamId: '', role: 'MEMBER' } as any)).resolves.toEqual({
+    await expect(strategy.validate({ sub: 'user-1', type: 'access', teamId: '', role: 'MEMBER' } as any)).resolves.toEqual({
       sub: 'user-1',
       id: 'user-1',
       email: 'user@example.com',
@@ -43,20 +43,37 @@ describe('JwtStrategy', () => {
       role: 'MEMBER',
     } as any);
 
-    await expect(strategy.validate({ sub: 'user-1', teamId: 'old-team', role: 'OWNER' } as any)).resolves.toMatchObject({
+    await expect(strategy.validate({ sub: 'user-1', type: 'access', teamId: 'old-team', role: 'OWNER' } as any)).resolves.toMatchObject({
       teamId: null,
       role: 'MEMBER',
     });
   });
 
   it('rejects tokens without a valid subject', async () => {
-    await expect(strategy.validate({ teamId: 'team-1', role: 'MEMBER' } as any)).rejects.toThrow(UnauthorizedException);
+    await expect(strategy.validate({ type: 'access', teamId: 'team-1', role: 'MEMBER' } as any)).rejects.toThrow(UnauthorizedException);
     expect(db.findUserById).not.toHaveBeenCalled();
   });
 
   it('rejects tokens when the user no longer exists', async () => {
     db.findUserById.mockResolvedValue(null);
 
-    await expect(strategy.validate({ sub: 'user-1', teamId: 'team-1', role: 'MEMBER' } as any)).rejects.toThrow(UnauthorizedException);
+    await expect(strategy.validate({ sub: 'user-1', type: 'access', teamId: 'team-1', role: 'MEMBER' } as any)).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('rejects refresh tokens', async () => {
+    await expect(strategy.validate({
+      sub: 'user-1',
+      teamId: 'team-1',
+      role: 'MEMBER',
+      type: 'refresh',
+    } as any)).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(db.findUserById).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when JWT secret is missing', () => {
+    expect(() => new JwtStrategy(
+      { get: jest.fn().mockReturnValue(undefined) } as unknown as ConfigService,
+      db as unknown as DatabaseService,
+    )).toThrow('JWT_SECRET environment variable is not set');
   });
 });

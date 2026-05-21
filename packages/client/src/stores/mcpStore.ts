@@ -7,6 +7,8 @@
 import { create } from 'zustand';
 import { authService } from '@/services/auth-service';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export interface MCPServer {
   id: string;
   name: string;
@@ -148,7 +150,7 @@ export const useMCPStore = create<MCPState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       // Use marketplace API instead of MCP API
-      const response = await fetch('/api/marketplace/items?type=mcp', {
+      const response = await fetch(`${API_BASE}/marketplace/items?type=mcp`, {
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeader(),
@@ -174,7 +176,7 @@ export const useMCPStore = create<MCPState>((set, get) => ({
 
   loadConnectedServers: async () => {
     try {
-      const response = await fetch('/api/mcp/connections/connected', {
+      const response = await fetch(`${API_BASE}/mcp/connections/connected`, {
         headers: {
           'Content-Type': 'application/json',
           ...getAuthHeader(),
@@ -201,14 +203,14 @@ export const useMCPStore = create<MCPState>((set, get) => ({
           servers: updatedServers,
         };
       });
-    } catch (err) {
-      console.error('Failed to load connected servers:', err);
+    } catch {
+      set({ connectedServers: [] });
     }
   },
 
   connectServer: async (id, config) => {
     try {
-      const response = await fetch('/api/mcp/connect', {
+      const response = await fetch(`${API_BASE}/mcp/connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -240,7 +242,7 @@ export const useMCPStore = create<MCPState>((set, get) => ({
 
   disconnectServer: async (id) => {
     try {
-      const response = await fetch('/api/mcp/disconnect', {
+      const response = await fetch(`${API_BASE}/mcp/disconnect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
