@@ -166,6 +166,18 @@ export class AiModelsService implements OnModuleInit {
     );
   }
 
+  async findExecutableModelByModelId(modelId: string) {
+    return this.db.queryOne(
+      `SELECT m.*, p.name as provider_name, p.code as provider_code
+       FROM ai_models m
+       JOIN ai_providers p ON m.provider_id = p.id
+       WHERE m.model_id = $1 AND m.status = 'active'
+       ORDER BY p.sort_order ASC, m.sort_order ASC, m.name ASC
+       LIMIT 1`,
+      [modelId],
+    );
+  }
+
   async updateModel(id: string, data: UpdateModelDto) {
     const fields: string[] = [];
     const values: any[] = [];

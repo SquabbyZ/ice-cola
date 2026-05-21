@@ -12,6 +12,7 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,
+    forbidNonWhitelisted: true,
     transform: true,
   }));
 
@@ -19,8 +20,14 @@ async function bootstrap() {
   const port = configService.get<number>('PORT', 3000);
   console.log(`Configured port: ${port}`);
 
+  const corsOrigins = configService
+    .get<string>('CORS_ORIGINS', 'http://localhost:1420,http://127.0.0.1:1420')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
   app.enableCors({
-    origin: ['http://localhost:1420', 'http://127.0.0.1:1420'],
+    origin: corsOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],

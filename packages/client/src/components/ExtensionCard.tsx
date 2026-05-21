@@ -62,12 +62,12 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
       {/* 顶部渐变装饰条 */}
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
       
-      {/* 已安装状态徽章 */}
+      {/* 已装配状态徽章 */}
       {extension.installed && (
         <div className="absolute top-4 right-4 z-10">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-semibold rounded-full shadow-lg shadow-emerald-500/25">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            已安装
+            已装配
           </div>
         </div>
       )}
@@ -147,7 +147,7 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
               onClick={() => onInstall(extension.id)}
             >
               <Download className="w-4 h-4" />
-              <span className="font-semibold">安装扩展</span>
+              <span className="font-semibold">装配法器</span>
             </Button>
           ) : (
             <>
@@ -170,7 +170,7 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
                 variant="ghost" 
                 className="h-10 w-10 text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
                 onClick={handleConfig}
-                title="配置扩展"
+                title="调校法器"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -222,7 +222,7 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">{extension.name}</h3>
-                  <p className="text-xs text-gray-500">扩展配置</p>
+                  <p className="text-xs text-gray-500">法器配置</p>
                 </div>
               </div>
               <button
@@ -306,7 +306,7 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
         open={showUninstallConfirm}
         onOpenChange={setShowUninstallConfirm}
         title="确认卸载"
-        description={`确定要卸载 "${extension.name}" 吗？\n\n此操作将移除该扩展及其所有配置数据。`}
+        description={`确定要卸载 "${extension.name}" 吗？\n\n此操作将移除该法器及其所有配置数据。`}
         confirmText="卸载"
         cancelText="取消"
         onConfirm={confirmUninstall}

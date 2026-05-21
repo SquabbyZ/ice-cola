@@ -3,12 +3,26 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 
+function getJwtSecret(configService: ConfigService): string {
+  const secret = configService.get<string>('JWT_SECRET');
+
+  if (!secret) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+
+  return secret;
+}
+
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly jwtSecret: string;
+
   constructor(
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
-  ) {}
+    configService: ConfigService,
+  ) {
+    this.jwtSecret = getJwtSecret(configService);
+  }
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
@@ -20,8 +34,11 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       const payload = this.jwtService.verify(token, {
-        secret: this.configService.get<string>('JWT_SECRET'),
+        secret: this.jwtSecret,
       });
+      if (payload.type !== 'access') {
+        return false;
+      }
       (request as any).user = { id: payload.sub, ...payload };
       return true;
     } catch {

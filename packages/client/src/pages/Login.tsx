@@ -26,27 +26,26 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50/50 p-4">
-      {/* Background decoration */}
+    <div className="min-h-screen flex items-center justify-center pavilion-page p-4">
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-zinc-200/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-zinc-300/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-teal-300/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-amber-300/20 rounded-full blur-3xl" />
       </div>
 
       <div className="w-full max-w-md relative z-10">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-8 animate-fade-in-up">
-          <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center shadow-lg">
-            <Activity className="w-8 h-8 text-white" />
+          <div className="w-14 h-14 pavilion-orb rounded-2xl flex items-center justify-center shadow-lg">
+            <Activity className="w-8 h-8 text-amber-50" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">{t('login.appName')}</h1>
+            <h1 className="text-2xl font-bold tracking-tight pavilion-text-gradient">灵气阁</h1>
             <p className="text-sm text-zinc-500">{t('login.appSubtitle')}</p>
           </div>
         </div>
 
         {/* Login Card */}
-        <div className="bento-tile p-8 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
+        <div className="pavilion-card rounded-3xl p-8 animate-fade-in-up" style={{ animationDelay: '100ms' }}>
           <h2 className="text-xl font-semibold text-zinc-900 mb-6">{t('login.title')}</h2>
 
           {error && (

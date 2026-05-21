@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -20,6 +20,9 @@ import { useConversationStore } from '@/stores/conversations';
 import { useAuthStore } from '@/stores/authStore';
 import { useChatStore } from '@/stores/chat';
 import SettingsModal from './SettingsModal';
+import { LingqiStatusCard } from './LingqiStatusCard';
+import { useLingqiStore } from '@/stores/lingqi';
+import { getTeamId } from '@/lib/team';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +39,7 @@ const menuItems = [
   { path: '/experts', icon: Bot, labelKey: 'nav.experts', descKey: 'nav.experts' },
   { path: '/tasks', icon: Clock, labelKey: 'nav.tasks', descKey: 'nav.tasks' },
   { path: '/skills', icon: Sparkles, labelKey: 'nav.skills', descKey: 'nav.skills' },
+  { path: '/lingqi', icon: Sparkles, label: '灵气阁', desc: '余额与模型' },
   { path: '/mcp', icon: Cog, labelKey: 'nav.mcp', descKey: 'nav.mcp' },
   { path: '/workorders', icon: Inbox, labelKey: 'nav.workorders', descKey: 'nav.workorders' },
 ];
@@ -50,8 +54,17 @@ const Sidebar: React.FC = () => {
   const { createConversation } = useConversationStore();
   const { user, logout } = useAuthStore();
   const { setMessages } = useChatStore();
+  const { status: lingqiStatus, loadLingqi } = useLingqiStore();
 
-  const teamId = user?.team?.id || 'default';
+  const currentTeamId = getTeamId(user);
+
+  useEffect(() => {
+    if (!currentTeamId) {
+      return;
+    }
+
+    void loadLingqi(currentTeamId);
+  }, [currentTeamId, loadLingqi]);
 
   const isPathActive = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -60,11 +73,16 @@ const Sidebar: React.FC = () => {
 
   const handleNewConversation = async () => {
     try {
-      await createConversation(teamId, '');
+      if (!currentTeamId) {
+        navigate('/profile');
+        return;
+      }
+
+      await createConversation(currentTeamId, '');
       setMessages([]);
       navigate('/chat');
     } catch {
-      // Handle error silently
+      navigate('/chat');
     }
   };
 
@@ -77,17 +95,36 @@ const Sidebar: React.FC = () => {
     navigate('/profile');
   };
 
+  const getNavLabel = (item: typeof menuItems[number]) => {
+    if ('label' in item) {
+      return item.label;
+    }
+
+    return t(item.labelKey);
+  };
+
+  const getNavDescription = (item: typeof menuItems[number]) => {
+    if ('desc' in item) {
+      return item.desc;
+    }
+
+    return t(item.descKey);
+  };
+
   const renderNavItem = (item: typeof menuItems[number]) => {
     const isActive = isPathActive(item.path);
+    const navLabel = getNavLabel(item);
+    const navDescription = getNavDescription(item);
     const navLink = (
       <NavLink
         key={item.path}
         to={item.path}
         end={item.path === '/'}
-        className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
+        aria-label={navLabel}
+        className={`group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 ${
           isActive
-            ? 'bg-white text-zinc-900 shadow-sm shadow-zinc-200/80'
-            : 'text-zinc-500 hover:text-zinc-900 hover:bg-white/60'
+            ? 'bg-amber-50/90 text-stone-950 shadow-sm shadow-amber-900/10 ring-1 ring-amber-200/80'
+            : 'text-stone-500 hover:text-stone-950 hover:bg-amber-50/60'
         } ${isCollapsed ? 'justify-center px-0' : ''}`}
       >
         {isActive && (
@@ -99,9 +136,9 @@ const Sidebar: React.FC = () => {
         />
         {!isCollapsed && (
           <div className="flex flex-col min-w-0">
-            <span className="truncate">{t(item.labelKey)}</span>
+            <span className="truncate">{navLabel}</span>
             <span className="text-[10px] text-zinc-400 font-normal truncate">
-              {t(item.descKey)}
+              {navDescription}
             </span>
           </div>
         )}
@@ -115,7 +152,7 @@ const Sidebar: React.FC = () => {
             {navLink}
           </TooltipTrigger>
           <TooltipContent side="right" className="bg-zinc-900 text-white border-0">
-            <p>{t(item.descKey)}</p>
+            <p>{navDescription}</p>
           </TooltipContent>
         </Tooltip>
       );
@@ -129,7 +166,7 @@ const Sidebar: React.FC = () => {
       <aside
         className={`${
           isCollapsed ? 'w-16' : 'w-60'
-        } bg-zinc-50/50 border-r border-zinc-200/60 flex flex-col transition-all duration-300 ease-out`}
+        } pavilion-shell border-r flex flex-col transition-all duration-300 ease-out`}
       >
         {/* Header: New Chat + Collapse Toggle (right side) */}
         <div className="p-3 relative">
@@ -137,14 +174,15 @@ const Sidebar: React.FC = () => {
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleNewConversation}
-                className="flex-1 gap-2 btn-ice rounded-xl h-10 shadow-lg shadow-zinc-200/50 transition-all duration-200 active:scale-[0.98]"
+                className="flex-1 gap-2 btn-ice rounded-xl h-10 shadow-lg shadow-zinc-200/50 transition-all duration-200 active:scale-[0.98] focus-visible:ring-emerald-300"
               >
                 <Plus className="w-4 h-4" strokeWidth={2.5} />
                 <span className="text-sm font-medium">{t('nav.newChat')}</span>
               </Button>
               <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
-                className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-100/80 text-zinc-600 hover:bg-zinc-200/80 transition-all duration-200"
+                aria-label="收起侧边栏"
+                className="h-10 w-10 flex items-center justify-center rounded-xl bg-zinc-100/80 text-zinc-600 hover:bg-zinc-200/80 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
               >
                 <svg
                   className="w-4 h-4"
@@ -165,7 +203,8 @@ const Sidebar: React.FC = () => {
                 <TooltipTrigger asChild>
                   <button
                     onClick={handleNewConversation}
-                    className="w-full h-10 flex items-center justify-center rounded-xl btn-ice shadow-lg shadow-zinc-200/50 transition-all duration-200 active:scale-[0.98]"
+                    aria-label="新建对话"
+                    className="w-full h-10 flex items-center justify-center rounded-xl btn-ice shadow-lg shadow-zinc-200/50 transition-all duration-200 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
                   >
                     <Plus className="w-4 h-4" strokeWidth={2.5} />
                   </button>
@@ -178,7 +217,8 @@ const Sidebar: React.FC = () => {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
-                    className="w-full h-10 flex items-center justify-center rounded-xl bg-zinc-100/80 text-zinc-600 hover:bg-zinc-200/80 transition-all duration-200"
+                    aria-label="展开侧边栏"
+                    className="w-full h-10 flex items-center justify-center rounded-xl bg-zinc-100/80 text-zinc-600 hover:bg-zinc-200/80 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2"
                   >
                     <svg
                       className="w-4 h-4"
@@ -201,6 +241,14 @@ const Sidebar: React.FC = () => {
           )}
         </div>
 
+        <div className="px-2.5 pb-3">
+          <LingqiStatusCard
+            status={lingqiStatus}
+            isCollapsed={isCollapsed}
+            onOpen={() => navigate('/lingqi')}
+          />
+        </div>
+
         {/* Navigation */}
         <nav className="flex-1 px-2.5 space-y-0.5 overflow-y-auto">
           {menuItems.map(renderNavItem)}
@@ -212,7 +260,8 @@ const Sidebar: React.FC = () => {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/60 transition-all duration-200 ${
+                aria-label="打开用户菜单"
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/60 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300 focus-visible:ring-offset-2 ${
                   isCollapsed ? 'justify-center' : ''
                 }`}
               >

@@ -1,4 +1,5 @@
 import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ToolsController } from './tools.controller';
 import { ToolRegistryService } from './tool-registry.service';
@@ -57,7 +58,10 @@ describe('ToolsController', () => {
   it('compiles with real guard dependencies', async () => {
     await expect(Test.createTestingModule({
       imports: [ToolsModule],
-    }).compile()).resolves.toBeDefined();
+    })
+      .overrideProvider(ConfigService)
+      .useValue({ get: jest.fn((key: string) => key === 'JWT_SECRET' ? 'test-secret' : undefined) })
+      .compile()).resolves.toBeDefined();
   });
 
   it('returns tool stats through the service', async () => {

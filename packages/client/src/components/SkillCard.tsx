@@ -85,8 +85,8 @@ const [showMenu, setShowMenu] = useState(false);
 
   const statusLabels: Record<string, { text: string; color: string }> = {
     personal: { text: '个人', color: 'bg-gray-100 text-gray-600' },
-    team_pending: { text: '待团队审批', color: 'bg-yellow-100 text-yellow-700' },
-    team: { text: '团队已发布', color: 'bg-blue-100 text-blue-700' },
+    team_pending: { text: '待宗门审批', color: 'bg-yellow-100 text-yellow-700' },
+    team: { text: '宗门已发布', color: 'bg-blue-100 text-blue-700' },
     marketplace_pending: { text: '待市场审批', color: 'bg-orange-100 text-orange-700' },
     marketplace: { text: '已发布市场', color: 'bg-emerald-100 text-emerald-700' },
   };
@@ -193,7 +193,7 @@ const [showMenu, setShowMenu] = useState(false);
                         <Clock className="w-4 h-4" /> 版本历史
                       </button>
                       <button onClick={() => { onPublish?.(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2 text-indigo-600">
-                        <Upload className="w-4 h-4" /> 发布到团队
+                        <Upload className="w-4 h-4" /> 发布到宗门
                       </button>
                     </>
                   )}
@@ -201,12 +201,12 @@ const [showMenu, setShowMenu] = useState(false);
                     <>
                       {onApproveTeam && (
                         <button onClick={() => { onApproveTeam(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-emerald-50 flex items-center gap-2 text-emerald-600">
-                          <Upload className="w-4 h-4" /> 通过团队发布
+                          <Upload className="w-4 h-4" /> 通过宗门发布
                         </button>
                       )}
                       {onRejectTeam && (
                         <button onClick={() => { onRejectTeam(skill.id); setShowMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-red-50 flex items-center gap-2 text-red-600">
-                          <X className="w-4 h-4" /> 拒绝团队发布
+                          <X className="w-4 h-4" /> 拒绝宗门发布
                         </button>
                       )}
                     </>
@@ -235,7 +235,7 @@ const [showMenu, setShowMenu] = useState(false);
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br from-indigo-50 to-purple-50">{skill.icon}</div>
-                <div><h3 className="font-bold">{skill.name}</h3><p className="text-xs text-gray-500">Skill 配置</p></div>
+                <div><h3 className="font-bold">{skill.name}</h3><p className="text-xs text-gray-500">秘籍配置</p></div>
               </div>
               <button onClick={() => setShowConfig(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
             </div>
@@ -256,7 +256,7 @@ const [showMenu, setShowMenu] = useState(false);
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br from-indigo-50 to-purple-50">{editForm.icon || '🛠️'}</div>
-                <div><h3 className="font-bold">编辑 Skill</h3><p className="text-xs text-gray-500">{skill.name}</p></div>
+                <div><h3 className="font-bold">编辑秘籍</h3><p className="text-xs text-gray-500">{skill.name}</p></div>
               </div>
               <button onClick={() => setShowEdit(false)} className="p-2 rounded-lg hover:bg-gray-100"><X className="w-5 h-5 text-gray-500" /></button>
             </div>

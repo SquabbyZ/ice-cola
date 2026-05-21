@@ -6,6 +6,8 @@ import { useWorkordersStore } from '@/stores/workordersStore';
 import { WorkorderTable } from '@/components/workorder/WorkorderTable';
 import { WorkorderHistoryTable } from '@/components/workorder/WorkorderHistoryTable';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useAuthStore } from '@/stores/authStore';
+import { getTeamId } from '@/lib/team';
 
 const TYPE_FILTERS = [
   { key: 'all', labelKey: 'workorders.all' },
@@ -34,11 +36,15 @@ const Workorders: React.FC = () => {
     selectedIds,
     clearSelection,
   } = useWorkordersStore();
+  const user = useAuthStore(state => state.user);
+  const teamId = getTeamId(user);
 
   useEffect(() => {
-    loadWorkorders();
-    loadHistory();
-  }, [loadWorkorders, loadHistory]);
+    if (!teamId) return;
+
+    loadWorkorders(teamId);
+    loadHistory(teamId);
+  }, [loadWorkorders, loadHistory, teamId]);
 
   const pendingCount = workorders.filter(w => w.status === 'pending').length;
   const approvedCount = workorders.filter(w => w.status === 'approved').length;

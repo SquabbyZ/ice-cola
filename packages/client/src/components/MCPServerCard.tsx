@@ -208,7 +208,7 @@ export const MCPServerCard: React.FC<MCPServerCardProps> = ({
                 variant="ghost"
                 className="h-10 w-10 text-gray-400 hover:text-primary hover:bg-primary/5 transition-colors"
                 onClick={() => setShowConfig(true)}
-                title="配置服务器"
+                title="调校法宝"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -251,7 +251,7 @@ export const MCPServerCard: React.FC<MCPServerCardProps> = ({
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900">{server.name}</h3>
-                  <p className="text-xs text-gray-500">服务器配置</p>
+                  <p className="text-xs text-gray-500">法宝配置</p>
                 </div>
               </div>
               <button
@@ -365,7 +365,7 @@ export const MCPServerCard: React.FC<MCPServerCardProps> = ({
                 onClick={performConnect}
                 disabled={server.configSchema && Object.keys(server.configSchema).some(key => server.configSchema?.[key]?.required && !configValues[key])}
               >
-                {server.connected ? '保存配置' : '连接服务器'}
+                {server.connected ? '保存配置' : '连接法宝'}
               </Button>
             </div>
           </div>

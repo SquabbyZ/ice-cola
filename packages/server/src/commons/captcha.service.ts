@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
 interface CaptchaEntry {
@@ -7,9 +7,10 @@ interface CaptchaEntry {
 }
 
 @Injectable()
-export class CaptchaService {
+export class CaptchaService implements OnModuleDestroy {
   // In-memory storage for captcha tokens
   private captchaStore = new Map<string, CaptchaEntry>();
+  private readonly cleanupInterval: NodeJS.Timeout;
 
   // Characters for captcha (Chinese characters for click captcha style)
   private readonly chars = '天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏';
@@ -17,7 +18,12 @@ export class CaptchaService {
 
   // Clean up expired captchas every 5 minutes
   constructor() {
-    setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), 5 * 60 * 1000);
+    this.cleanupInterval.unref();
+  }
+
+  onModuleDestroy(): void {
+    clearInterval(this.cleanupInterval);
   }
 
   /**

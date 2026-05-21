@@ -38,6 +38,7 @@ export interface PendingMessage {
   teamId?: string;
   expertId?: string;
   mcpServerIds?: string[];
+  modelId?: string;
   attachments?: Array<{
     type: 'image' | 'file';
     name: string;

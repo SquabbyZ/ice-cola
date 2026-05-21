@@ -6,7 +6,7 @@ interface WorkorderActionDialogProps {
   onOpenChange: (open: boolean) => void;
   action: 'approve' | 'reject';
   workorderName: string;
-  onConfirm: (comment?: string) => void;
+  onConfirm: (comment?: string) => Promise<void>;
 }
 
 export const WorkorderActionDialog: React.FC<WorkorderActionDialogProps> = ({
@@ -18,11 +18,11 @@ export const WorkorderActionDialog: React.FC<WorkorderActionDialogProps> = ({
 }) => {
   const [comment, setComment] = useState('');
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (action === 'reject' && comment.trim().length < 10) {
       return;
     }
-    onConfirm(comment.trim() || undefined);
+    await onConfirm(comment.trim() || undefined);
     setComment('');
     onOpenChange(false);
   };
@@ -41,8 +41,8 @@ export const WorkorderActionDialog: React.FC<WorkorderActionDialogProps> = ({
       title={action === 'approve' ? '确认通过' : '确认拒绝'}
       description={
         action === 'approve'
-          ? `确定要通过工单 "${workorderName}" 吗？`
-          : `确定要拒绝工单 "${workorderName}" 吗？`
+          ? `确定要通过宗门事务 "${workorderName}" 吗？`
+          : `确定要拒绝宗门事务 "${workorderName}" 吗？`
       }
       confirmText={action === 'approve' ? '通过' : '拒绝'}
       cancelText="取消"

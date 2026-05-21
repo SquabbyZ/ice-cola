@@ -12,6 +12,7 @@ import Workorders from './pages/Workorders';
 import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import Invite from './pages/Invite';
+import Lingqi from './pages/Lingqi';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -42,6 +43,7 @@ const App: React.FC = () => {
           <Route path="workorders" element={<Workorders />} />
           <Route path="settings" element={<Settings />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="lingqi" element={<Lingqi />} />
         </Route>
       </Routes>
       <Toaster />

@@ -21,7 +21,9 @@ import { useQuotaStore } from '@/stores/quota';
 import { useExpertStore } from '@/stores/experts';
 import { useMCPStore } from '@/stores/mcpStore';
 import { useConversationStore } from '@/stores/conversations';
+import { useAuthStore } from '@/stores/authStore';
 import { QuotaProgressBar } from '@/components/QuotaProgressBar';
+import { getTeamId } from '@/lib/team';
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
@@ -33,6 +35,8 @@ const Dashboard: React.FC = () => {
   const { prompts: experts, loadPrompts } = useExpertStore();
   const { servers, loadServers } = useMCPStore();
   const { conversations, loadConversations } = useConversationStore();
+  const user = useAuthStore(state => state.user);
+  const teamId = getTeamId(user);
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -46,20 +50,25 @@ const Dashboard: React.FC = () => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([
+        const requests: Promise<unknown>[] = [
           refreshAllStats(),
           loadConfig(),
           refreshStatus(),
           loadPrompts(),
           loadServers(),
-          loadConversations('default'),
-        ]);
+        ];
+
+        if (teamId) {
+          requests.push(loadConversations(teamId));
+        }
+
+        await Promise.all(requests);
       } finally {
         setIsLoading(false);
       }
     };
     loadData();
-  }, []);
+  }, [refreshAllStats, loadConfig, refreshStatus, loadPrompts, loadServers, loadConversations, teamId]);
 
   const workspaceActions = [
     {
@@ -93,7 +102,7 @@ const Dashboard: React.FC = () => {
   ];
 
   return (
-    <div className="flex-1 bg-gradient-to-br from-zinc-50 via-zinc-50/80 to-zinc-100/50 overflow-y-auto">
+    <div className="flex-1 overflow-y-auto bg-transparent">
       <div className="p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Welcome Section - Bento Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-8">
@@ -114,8 +123,8 @@ const Dashboard: React.FC = () => {
                 ) : (
                   <>
                     <h1 className="text-3xl lg:text-[2rem] font-bold tracking-tight leading-tight mb-2">
-                      <span className="text-zinc-900">{t('dashboard.welcomeTitle')}</span>
-                      <span className="text-gradient bg-gradient-to-r from-zinc-600 via-zinc-500 to-zinc-400 bg-clip-text">
+                      <span className="text-stone-950">{t('dashboard.welcomeTitle')}</span>
+                      <span className="pavilion-text-gradient">
                         {t('dashboard.welcomeTitleGradient')}
                       </span>
                     </h1>

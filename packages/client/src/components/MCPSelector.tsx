@@ -71,7 +71,7 @@ export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelecto
             </Badge>
           </>
         ) : (
-          <span>选择 MCP</span>
+          <span>选择法宝</span>
         )}
         <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </Button>
@@ -80,7 +80,7 @@ export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelecto
         <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-lg border border-gray-200 shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
           {/* Header */}
           <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-700">MCP 服务器</span>
+            <span className="text-sm font-medium text-gray-700">法宝</span>
             <span className="text-xs text-gray-400">{connectedServers.length} 已连接</span>
           </div>
 
@@ -92,8 +92,8 @@ export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelecto
               </div>
             ) : connectedServers.length === 0 ? (
               <div className="py-8 text-center text-sm text-gray-500">
-                <p>暂无可用的 MCP 服务器</p>
-                <p className="text-xs text-gray-400 mt-1">请先在 MCP 市场连接服务器</p>
+                <p>暂无可用法宝</p>
+                <p className="text-xs text-gray-400 mt-1">请先在法宝阁连接法宝</p>
               </div>
             ) : (
               <>

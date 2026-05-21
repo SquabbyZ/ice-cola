@@ -46,7 +46,7 @@ interface WorkordersState {
   setFilterType: (type: 'all' | 'skill' | 'mcp' | 'extension') => void;
   setFilterStatus: (status: 'pending' | 'approved' | 'rejected' | 'all') => void;
   toggleSelect: (id: string) => void;
-  selectAll: () => void;
+  selectAll: (ids?: string[]) => void;
   clearSelection: () => void;
   getFilteredWorkorders: () => Workorder[];
 }
@@ -67,7 +67,7 @@ const MOCK_WORKORDERS: Workorder[] = [
     teamId: 'team-001',
     submittedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
     status: 'pending',
-    note: '希望发布到团队让更多人使用',
+    note: '希望发布到宗门让更多人使用',
   },
   {
     id: 'wo-002',
@@ -106,24 +106,26 @@ export const useWorkordersStore = create<WorkordersState>((set, get) => ({
   isLoading: false,
   error: null,
 
-  loadWorkorders: async (teamId = 'default') => {
+  loadWorkorders: async (teamId) => {
+    if (!teamId) return;
+
     set({ isLoading: true, error: null });
     try {
       const data = await workorderService.getList(teamId);
       set({ workorders: data, isLoading: false });
     } catch {
-      // Fallback to mock data when API is unavailable
       set({ workorders: MOCK_WORKORDERS, isLoading: false });
     }
   },
 
-  loadHistory: async (teamId = 'default') => {
+  loadHistory: async (teamId) => {
+    if (!teamId) return;
+
     set({ isLoading: true, error: null });
     try {
       const data = await workorderService.getHistory(teamId);
       set({ history: data, isLoading: false });
     } catch {
-      // Fallback to mock data when API is unavailable
       set({ history: MOCK_HISTORY, isLoading: false });
     }
   },
@@ -262,8 +264,8 @@ export const useWorkordersStore = create<WorkordersState>((set, get) => ({
       : [...state.selectedIds, id],
   })),
 
-  selectAll: () => set(state => ({
-    selectedIds: state.workorders
+  selectAll: (ids) => set(state => ({
+    selectedIds: ids ?? state.workorders
       .filter(w => w.status === 'pending')
       .map(w => w.id),
   })),

@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { HttpService } from '@nestjs/axios';
 import { AiModelsService } from '../ai-models/ai-models.service';
+import { normalizeTrustedModelProviderBaseUrl } from '../ai-models/api-client';
+import { QuotaService } from '../quota/quota.service';
 import { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -47,6 +49,7 @@ interface GatewayJwtPayload {
   teamId?: string;
   role?: string;
   type?: string;
+  exp?: number;
 }
 
 interface HermesMCPServer {
@@ -55,27 +58,99 @@ interface HermesMCPServer {
   config: Record<string, unknown>;
 }
 
+type HermesMessageContent = string | Array<{
+  type: string;
+  text?: string;
+  image_url?: { url: string };
+}>;
+
+interface HermesChatMessage {
+  role: string;
+  content: HermesMessageContent;
+}
+
+interface HermesChatRequestBody {
+  model: string;
+  messages: HermesChatMessage[];
+  stream: boolean;
+  mcp_servers?: HermesMCPServer[];
+  temperature?: number;
+  max_tokens?: number;
+  top_p?: number;
+}
+
+interface ProviderStreamChunk {
+  error?: unknown;
+  choices?: Array<{
+    delta?: {
+      content?: unknown;
+      tool_calls?: unknown;
+    };
+  }>;
+  usage?: {
+    total_tokens?: unknown;
+  };
+}
+
 interface HermesMessageParams {
   sessionId: string;
   message: string;
+  userId?: string;
   teamId?: string;
   conversationId?: string;
   expertId?: string;
+  model?: string;
+  messageId?: string;
   attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }>;
+}
+
+interface HermesSendResult {
+  ok: boolean;
+  messageId: string;
+  error?: string;
+  aborted?: boolean;
+}
+
+interface LingqiChargeDecision {
+  charge: { amount: number; modelId?: string; billingId: string };
+  billingId: string;
+  executionModelName?: string;
+}
+
+interface ActiveStreamEntry {
+  ws?: WebSocket;
+  stream: { destroy?: () => void };
+  aborted: boolean;
+  hasBillableOutput: boolean;
+  prepaid?: {
+    params: HermesMessageParams;
+    charge: { amount: number; modelId?: string; billingId: string };
+  };
+}
+
+interface ProviderModelRow {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  model_id: string;
+  temperature?: number | null;
+  max_tokens?: number | null;
+  top_p?: number | null;
 }
 
 interface ConversationPromptMessage {
   role: string;
-  content: any;
+  content: HermesMessageContent;
 }
 
 @Injectable()
 export class GatewayService {
   private gatewayInstance: any = null;
   private readonly logger = new Logger(GatewayService.name);
-  private activeStreams: Map<string, { ws: WebSocket; stream: any }> = new Map();
+  private activeStreams = new Map<string, ActiveStreamEntry>();
+  private readonly refundedLingqiMessages = new Set<string>();
   private hermesAgentStatus: { healthy: boolean; lastChecked: number } = { healthy: false, lastChecked: 0 };
-  private readonly HERMES_AGENT_URL = process.env.HERMES_AGENT_URL || 'http://localhost:8642';
+  private readonly hermesAgentUrl: string;
   private readonly HERMES_HEALTH_TTL_MS = 30000;
 
   constructor(
@@ -84,13 +159,19 @@ export class GatewayService {
     private configService: ConfigService,
     private httpService: HttpService,
     private aiModelsService: AiModelsService,
+    private quotaService: QuotaService,
   ) {
+    this.hermesAgentUrl = this.normalizeInternalServiceUrl(
+      this.configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
+      'HERMES_AGENT_URL',
+    );
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
     this.logger.log(`ConfigService available: ${!!this.configService}`);
     this.logger.log(`HttpService available: ${!!this.httpService}`);
     this.logger.log(`AiModelsService available: ${!!this.aiModelsService}`);
+    this.logger.log(`QuotaService available: ${!!this.quotaService}`);
   }
 
   setGatewayInstance(gatewayInstance: any): void {
@@ -111,34 +192,38 @@ export class GatewayService {
 
     let userRole: string | undefined;
     try {
-      const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token);
+      const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token, {
+        secret: this.getJwtSecret(),
+      });
       if (payload.type !== 'access') {
         throw new Error('Authentication required');
       }
       userId = payload.sub;
       teamId = payload.teamId || undefined;
       userRole = payload.role;
+      const expiresAt = this.getTokenExpiresAt(payload);
       this.logger.log(`Authenticated user: ${userId}`);
+
+      return {
+        ok: true,
+        protocol,
+        expiresAt,
+        user: userId ? {
+          id: userId,
+          email: 'user@example.com',
+          name: 'User',
+          team: teamId ? {
+            id: teamId,
+            name: 'Team',
+            role: userRole || 'MEMBER',
+          } : undefined,
+        } : undefined,
+      };
     } catch (error) {
       this.logger.warn('Invalid token in connect params');
       throw new Error('Authentication required');
     }
 
-    return {
-      ok: true,
-      protocol,
-      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-      user: userId ? {
-        id: userId,
-        email: 'user@example.com',
-        name: 'User',
-        team: teamId ? {
-          id: teamId,
-          name: 'Team',
-          role: userRole || 'MEMBER',
-        } : undefined,
-      } : undefined,
-    };
   }
 
   async register(params: { email: string; password: string; name?: string }) {
@@ -201,15 +286,33 @@ export class GatewayService {
   async refresh(params: { refreshToken: string }) {
     try {
       const payload = this.jwtService.verify(params.refreshToken, {
-        secret: this.configService.get('JWT_SECRET'),
+        secret: this.getJwtSecret(),
       });
 
       if (payload.type !== 'refresh') {
         throw new Error('无效的刷新令牌');
       }
 
-      const tokens = await this.generateTokens(payload.sub, payload.teamId || null, payload.role);
-      return { ok: true, ...tokens };
+      const user = await this.db.findUserById(payload.sub);
+      if (!user) {
+        throw new Error('用户不存在');
+      }
+
+      const tokens = await this.generateTokens(user.id, user.teamId || null, user.role);
+      return {
+        ok: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          team: user.teamId ? {
+            id: user.teamId,
+            name: user.team_name,
+            role: user.role,
+          } : null,
+        },
+        ...tokens,
+      };
     } catch (error) {
       throw new Error('刷新令牌失败');
     }
@@ -301,6 +404,11 @@ export class GatewayService {
   }
 
   async updateConversation(params: { conversationId: string; teamId: string; title?: string }) {
+    const existing = await this.db.findConversationById(params.conversationId, params.teamId);
+    if (!existing) {
+      throw new Error('Conversation not found');
+    }
+
     const conversation = await this.db.updateConversation(params.conversationId, { title: params.title });
     return {
       ok: true,
@@ -312,12 +420,22 @@ export class GatewayService {
   }
 
   async deleteConversation(params: { conversationId: string; teamId: string }) {
+    const existing = await this.db.findConversationById(params.conversationId, params.teamId);
+    if (!existing) {
+      throw new Error('Conversation not found');
+    }
+
     await this.db.deleteMessagesByConversationId(params.conversationId);
     await this.db.deleteConversation(params.conversationId);
     return { ok: true };
   }
 
-  async getMessages(params: { conversationId: string }) {
+  async getMessages(params: { conversationId: string; teamId: string }) {
+    const existing = await this.db.findConversationById(params.conversationId, params.teamId);
+    if (!existing) {
+      throw new Error('Conversation not found');
+    }
+
     const messages = await this.db.findMessagesByConversationId(params.conversationId);
     return {
       ok: true,
@@ -493,7 +611,7 @@ export class GatewayService {
     }
     try {
       await firstValueFrom(
-        this.httpService.get(`${this.HERMES_AGENT_URL}/health`, { timeout: 2000 }),
+        this.httpService.get(`${this.hermesAgentUrl}/health`, { timeout: 2000, maxRedirects: 0 }),
       );
       this.hermesAgentStatus = { healthy: true, lastChecked: now };
       return true;
@@ -506,9 +624,11 @@ export class GatewayService {
   private async sendHermesAgentMessage(
     params: HermesMessageParams,
     senderWs?: WebSocket,
+    modelName = 'hermes-agent',
+    prepaid?: ActiveStreamEntry['prepaid'],
   ) {
-    const messageId = this.generateUUID();
-    this.logger.log(`Routing to hermes-agent at ${this.HERMES_AGENT_URL}`);
+    const messageId = params.messageId || this.generateUUID();
+    this.logger.log(`Routing to hermes-agent at ${this.hermesAgentUrl}`);
 
     const { messages: conversationMessages, mcpServers: conversationMcpServers } =
       await this.resolveConversationPromptContext({
@@ -517,11 +637,11 @@ export class GatewayService {
         teamId: params.teamId,
       });
 
-    const messages: Array<{ role: string; content: any }> = [...conversationMessages];
+    const messages: HermesChatMessage[] = [...conversationMessages];
 
     // Build user message with optional attachments (multimodal)
     if (params.attachments && params.attachments.length > 0) {
-      const contentParts: any[] = [{ type: 'text', text: params.message }];
+      const contentParts: Exclude<HermesMessageContent, string> = [{ type: 'text', text: params.message }];
       for (const att of params.attachments) {
         if (att.type === 'image' && att.data) {
           contentParts.push({
@@ -529,7 +649,10 @@ export class GatewayService {
             image_url: { url: `data:${att.mimeType};base64,${att.data}` },
           });
         } else if (att.data) {
-          contentParts[0].text += `\n\n[Attached file: ${att.name}]\n${att.data}`;
+          contentParts[0] = {
+            ...contentParts[0],
+            text: `${contentParts[0].text || ''}\n\n[Attached file: ${att.name}]\n${att.data}`,
+          };
         }
       }
       messages.push({ role: 'user', content: contentParts });
@@ -537,8 +660,8 @@ export class GatewayService {
       messages.push({ role: 'user', content: params.message });
     }
 
-    const requestBody: Record<string, any> = {
-      model: 'hermes-agent',
+    const requestBody: HermesChatRequestBody = {
+      model: modelName,
       messages,
       stream: true,
     };
@@ -556,10 +679,11 @@ export class GatewayService {
         headers['X-Hermes-Internal-MCP-Key'] = internalKey;
       }
       const response = await firstValueFrom(
-        this.httpService.post(`${this.HERMES_AGENT_URL}/v1/chat/completions`, requestBody, {
+        this.httpService.post(`${this.hermesAgentUrl}/v1/chat/completions`, requestBody, {
           headers,
           responseType: 'stream',
           timeout: 300000,
+          maxRedirects: 0,
         }),
       );
 
@@ -567,14 +691,14 @@ export class GatewayService {
       let fullResponse = '';
       let deltaCount = 0;
       let totalTokens = 0;
-      let aborted = false;
       let settled = false;
       let errored = false;
       let lineBuffer = '';
       let activeToolCallId: string | undefined;
+      const streamEntry: ActiveStreamEntry = { ws: senderWs, stream, aborted: false, hasBillableOutput: false, prepaid };
 
       if (senderWs) {
-        this.activeStreams.set(messageId, { ws: senderWs, stream });
+        this.activeStreams.set(messageId, streamEntry);
       }
 
       const cleanup = () => {
@@ -589,7 +713,7 @@ export class GatewayService {
           resolve(data);
         };
         stream.on('data', (chunk: Buffer) => {
-          if (aborted || settled) return;
+          if (streamEntry.aborted || settled) return;
 
           lineBuffer += chunk.toString();
           const lines = lineBuffer.split('\n');
@@ -609,11 +733,13 @@ export class GatewayService {
               }
 
               try {
-                const data = JSON.parse(dataStr);
-                const delta = data.choices?.[0]?.delta?.content || '';
+                const data = JSON.parse(dataStr) as ProviderStreamChunk;
+                const rawDelta = data.choices?.[0]?.delta?.content;
+                const delta = typeof rawDelta === 'string' ? rawDelta : '';
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
+                  streamEntry.hasBillableOutput = true;
                   this.sendStreamEvent('hermes.delta', {
                     messageId,
                     delta,
@@ -623,23 +749,27 @@ export class GatewayService {
 
                 // Handle tool calls in delta — track active toolCallId across chunks
                 const toolCalls = data.choices?.[0]?.delta?.tool_calls;
-                if (toolCalls && Array.isArray(toolCalls)) {
-                  for (const tc of toolCalls) {
-                    if (tc.id) {
-                      activeToolCallId = tc.id;
+                if (Array.isArray(toolCalls)) {
+                  for (const toolCall of toolCalls) {
+                    if (!this.isProviderToolCall(toolCall)) {
+                      continue;
                     }
+                    if (toolCall.id) {
+                      activeToolCallId = toolCall.id;
+                    }
+                    streamEntry.hasBillableOutput = true;
                     this.sendStreamEvent('hermes.tool', {
                       messageId,
-                      toolCallId: tc.id || activeToolCallId,
-                      toolName: tc.function?.name,
-                      input: tc.function?.arguments,
+                      toolCallId: toolCall.id || activeToolCallId,
+                      toolName: toolCall.function?.name,
+                      input: toolCall.function?.arguments,
                       status: 'running',
                     }, senderWs);
                   }
                 }
 
-                if (data.usage) {
-                  totalTokens = data.usage.total_tokens || 0;
+                if (data.usage && typeof data.usage.total_tokens === 'number') {
+                  totalTokens = data.usage.total_tokens;
                 }
               } catch (e) {
                 // Not JSON, skip
@@ -650,8 +780,8 @@ export class GatewayService {
 
         stream.on('end', () => {
           if (settled) return;
-          if (aborted) {
-            finalize({ ok: true, messageId, aborted: true });
+          if (streamEntry.aborted) {
+            finalize({ ok: false, messageId, aborted: true });
             return;
           }
           if (errored) return;
@@ -675,9 +805,8 @@ export class GatewayService {
         stream.on('error', (error: Error) => {
           if (settled) return;
           errored = true;
-          cleanup();
-          if (aborted) {
-            resolve({ ok: true, messageId, aborted: true });
+          if (streamEntry.aborted) {
+            finalize({ ok: false, messageId, aborted: true });
             return;
           }
           this.logger.error('hermes-agent stream error:', error);
@@ -685,7 +814,20 @@ export class GatewayService {
             messageId,
             error: error.message,
           }, senderWs);
-          reject(error);
+          finalize({ ok: false, messageId, error: error.message });
+        });
+
+        stream.on('close', () => {
+          if (settled) return;
+          if (streamEntry.aborted) {
+            finalize({ ok: false, messageId, aborted: true });
+            return;
+          }
+          this.sendStreamEvent('hermes.error', {
+            messageId,
+            error: 'Connection closed before completion',
+          }, senderWs);
+          finalize({ ok: false, messageId, error: 'Connection closed before completion' });
         });
       });
 
@@ -705,55 +847,97 @@ export class GatewayService {
       ok: true,
       hermesAgent: {
         available: healthy,
-        endpoint: this.HERMES_AGENT_URL,
+        endpoint: this.hermesAgentUrl,
         lastChecked: this.hermesAgentStatus.lastChecked,
       },
     };
   }
 
-  async sendHermesMessage(params: { sessionId: string; message: string; teamId?: string; conversationId?: string; expertId?: string; attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }> }, senderWs?: WebSocket) {
-    this.logger.log(`Sending message to Hermes: ${params.message.substring(0, 50)}...`);
+  async sendHermesMessage(params: HermesMessageParams, senderWs?: WebSocket): Promise<HermesSendResult> {
+    this.logger.log('Sending message to Hermes');
 
-    // Route through hermes-agent if available (unlocks all tools)
+    const messageId = params.messageId || this.generateUUID();
+    const billingId = this.generateUUID();
+    const requestParams: HermesMessageParams = { ...params, messageId };
+    const lingqiCharge = await this.prepareLingqiCharge(requestParams, billingId, senderWs);
+    if ('error' in lingqiCharge) {
+      return lingqiCharge.error;
+    }
+
+    const prepaidCharge = await this.prepayLingqiCharge(requestParams, lingqiCharge.charge, messageId, lingqiCharge.billingId);
+    if ('error' in prepaidCharge) {
+      this.sendStreamEvent('hermes.error', { messageId: prepaidCharge.error.messageId, error: prepaidCharge.error.error }, senderWs);
+      return prepaidCharge.error;
+    }
+
     const hermesHealthy = await this.checkHermesAgentHealth();
     if (hermesHealthy) {
-      return this.sendHermesAgentMessage(params, senderWs);
+      const result = await this.sendHermesAgentMessage(requestParams, senderWs, lingqiCharge.executionModelName, {
+        params: requestParams,
+        charge: lingqiCharge.charge,
+      }) as HermesSendResult;
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, result);
     }
 
-    const messageId = this.generateUUID();
-    const teamId = params.teamId;
+    const teamId = requestParams.teamId;
 
-    // Try to resolve default model from DB config
-    let defaultModel: any = null;
-    try {
-      defaultModel = await this.aiModelsService.findDefaultModelByUseCase('general');
-    } catch (err) {
-      this.logger.warn('Failed to query default model, falling back to hermes-agent');
-    }
+    const providerModel = await this.resolveProviderModelForLingqiCharge(lingqiCharge);
 
-    if (!defaultModel) {
-      // No configured default model — fall back to legacy hermes-agent
-      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+    if (!providerModel) {
+      const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      });
+      return result;
     }
 
     // Resolve provider, API key, and endpoint
-    const providerId = defaultModel.provider_id;
-    const modelCode = defaultModel.model_code; // e.g. "gpt-4o"
+    const providerId = providerModel.provider_id;
+    const modelCode = providerModel.model_id;
 
     const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerId);
     if (!apiKeyRecord) {
-      this.logger.warn(`No active API key for provider ${defaultModel.provider_name}, falling back to hermes-agent`);
-      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+      this.logger.warn(`No active API key for provider ${providerModel.provider_name}`);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      }, senderWs);
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      });
     }
 
     const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
     if (!decryptedKey) {
-      this.logger.warn(`Failed to decrypt API key for provider ${defaultModel.provider_name}, falling back to hermes-agent`);
-      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+      this.logger.warn(`Failed to decrypt API key for provider ${providerModel.provider_name}`);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      }, senderWs);
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      });
     }
 
     const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerId);
-    const baseUrl = endpoint?.base_url || this.configService.get<string>('HERMES_ENDPOINT', 'http://localhost:9119');
+    let baseUrl: string;
+    try {
+      baseUrl = this.normalizeProviderBaseUrl(
+        endpoint?.base_url || this.configService.get<string>('HERMES_ENDPOINT') || 'http://localhost:9119',
+      );
+    } catch (error: unknown) {
+      this.logger.warn('Invalid provider endpoint URL configuration');
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'Provider configuration error',
+      });
+    }
 
     // Quota check before making API call
     if (teamId) {
@@ -763,7 +947,8 @@ export class GatewayService {
           messageId,
           error: quotaError,
         }, senderWs);
-        return { ok: false, messageId, error: quotaError };
+        const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, error: quotaError });
+        return result;
       }
     }
 
@@ -772,32 +957,42 @@ export class GatewayService {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${decryptedKey}`,
     };
-    if (endpoint?.headers) {
-      const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
-      Object.assign(headers, extraHeaders);
+    try {
+      if (endpoint?.headers) {
+        const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
+        Object.assign(headers, extraHeaders);
+      }
+    } catch (error: unknown) {
+      this.logger.warn('Invalid provider endpoint headers configuration');
+      const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'Provider configuration error',
+      });
+      return result;
     }
 
     // Build model params from config
     const { messages } = await this.resolveConversationPromptContext({
-      conversationId: params.conversationId,
-      expertId: params.expertId,
-      teamId: params.teamId,
+      conversationId: requestParams.conversationId,
+      expertId: requestParams.expertId,
+      teamId: requestParams.teamId,
     });
-    messages.push({ role: 'user', content: params.message });
+    messages.push({ role: 'user', content: requestParams.message });
 
-    const requestBody: Record<string, any> = {
+    const requestBody: HermesChatRequestBody = {
       model: modelCode,
       messages,
       stream: true,
     };
-    if (defaultModel.temperature !== null && defaultModel.temperature !== undefined) {
-      requestBody.temperature = defaultModel.temperature;
+    if (providerModel.temperature !== null && providerModel.temperature !== undefined) {
+      requestBody.temperature = providerModel.temperature;
     }
-    if (defaultModel.max_tokens !== null && defaultModel.max_tokens !== undefined) {
-      requestBody.max_tokens = defaultModel.max_tokens;
+    if (providerModel.max_tokens !== null && providerModel.max_tokens !== undefined) {
+      requestBody.max_tokens = providerModel.max_tokens;
     }
-    if (defaultModel.top_p !== null && defaultModel.top_p !== undefined) {
-      requestBody.top_p = defaultModel.top_p;
+    if (providerModel.top_p !== null && providerModel.top_p !== undefined) {
+      requestBody.top_p = providerModel.top_p;
     }
 
     const timeout = endpoint?.timeout_ms || 60000;
@@ -809,24 +1004,33 @@ export class GatewayService {
           headers,
           responseType: 'stream',
           timeout,
+          maxRedirects: 0,
         })
       );
 
-      this.logger.log(`Provider API (${defaultModel.provider_name}/${modelCode}) connected, starting stream...`);
+      this.logger.log(`Provider API (${providerModel.provider_name}/${modelCode}) connected, starting stream...`);
 
-      this.logger.log(`Provider API (${defaultModel.provider_name}/${modelCode}) response status: ${response.status}`);
+      this.logger.log(`Provider API (${providerModel.provider_name}/${modelCode}) response status: ${response.status}`);
 
       const stream = response.data;
       let fullResponse = '';
       let deltaCount = 0;
       let totalTokens = 0;
-      let aborted = false;
       let lineBuffer = '';
-      let errorBody = '';
+      const streamEntry: ActiveStreamEntry = {
+        ws: senderWs,
+        stream,
+        aborted: false,
+        hasBillableOutput: false,
+        prepaid: {
+          params: requestParams,
+          charge: lingqiCharge.charge,
+        },
+      };
 
       // Register stream for abort support
       if (senderWs) {
-        this.activeStreams.set(messageId, { ws: senderWs, stream });
+        this.activeStreams.set(messageId, streamEntry);
       }
 
       const cleanup = () => {
@@ -834,13 +1038,22 @@ export class GatewayService {
       };
 
       return new Promise((resolve, reject) => {
-        const settle = (result: any) => {
+        let settled = false;
+        const settle = (result: HermesSendResult) => {
           cleanup();
           resolve(result);
         };
+        const finalizeOnce = (createResult: () => Promise<HermesSendResult>): void => {
+          if (settled) return;
+          settled = true;
+          createResult().then(settle).catch((error: unknown) => {
+            this.logger.error('Provider stream finalization failed:', error);
+            settle({ ok: false, messageId, error: 'Provider stream error' });
+          });
+        };
 
-        stream.on('data', (chunk: Buffer) => {
-          if (aborted) return;
+        stream.on('data', async (chunk: Buffer) => {
+          if (streamEntry.aborted || settled) return;
 
           // Accumulate raw data for error diagnosis when no SSE data parsed
           const chunkStr = chunk.toString();
@@ -855,42 +1068,51 @@ export class GatewayService {
             if (line.startsWith('data: ')) {
               const dataStr = line.substring(6).trim();
               if (dataStr === '[DONE]') {
-                // Stream complete
-                this.sendStreamEvent('hermes.final', {
-                  messageId,
-                  content: fullResponse,
-                  totalTokens,
-                }, senderWs);
-
-                // Record usage
-                this.recordProviderUsage(apiKeyRecord.id, providerId, defaultModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
-                  this.logger.warn('Failed to record usage:', err);
+                finalizeOnce(async () => {
+                  const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: true, messageId });
+                  if (result.ok) {
+                    this.sendStreamEvent('hermes.final', {
+                      messageId,
+                      content: fullResponse,
+                      totalTokens,
+                    }, senderWs);
+                    this.recordProviderUsage(apiKeyRecord.id, providerId, providerModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
+                      this.logger.warn('Failed to record usage:', err);
+                    });
+                  }
+                  return result;
                 });
-
-                settle({ ok: true, messageId });
                 return;
               }
 
               try {
-                const data = JSON.parse(dataStr);
+                const data = JSON.parse(dataStr) as ProviderStreamChunk;
 
                 // Check for API-level error in the SSE stream
                 if (data.error) {
-                  const errMsg = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-                  this.logger.error(`${defaultModel.provider_name} API error in stream: ${errMsg}`);
-                  this.sendStreamEvent('hermes.error', {
-                    messageId,
-                    error: `${defaultModel.provider_name} error: ${errMsg}`,
-                  }, senderWs);
-                  settle({ ok: false, messageId, error: errMsg });
+                  this.logger.error(`${providerModel.provider_name} API error in stream.`);
+                  finalizeOnce(async () => {
+                    const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+                      ok: false,
+                      messageId,
+                      error: 'Provider stream error',
+                    });
+                    this.sendStreamEvent('hermes.error', {
+                      messageId,
+                      error: result.error,
+                    }, senderWs);
+                    return result;
+                  });
                   return;
                 }
 
-                const delta = data.choices?.[0]?.delta?.content || '';
+                const rawDelta = data.choices?.[0]?.delta?.content;
+                const delta = typeof rawDelta === 'string' ? rawDelta : '';
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
                   parsedAny = true;
+                  streamEntry.hasBillableOutput = true;
 
                   this.sendStreamEvent('hermes.delta', {
                     messageId,
@@ -899,8 +1121,8 @@ export class GatewayService {
                   }, senderWs);
                 }
 
-                if (data.usage) {
-                  totalTokens = data.usage.total_tokens || 0;
+                if (data.usage && typeof data.usage.total_tokens === 'number') {
+                  totalTokens = data.usage.total_tokens;
                 }
               } catch (e) {
                 // Not JSON, skip
@@ -908,15 +1130,12 @@ export class GatewayService {
             }
           }
 
-          // Collect raw content for error diagnosis when no SSE data parsed
-          if (!parsedAny) {
-            errorBody += chunkStr;
-          }
         });
 
         stream.on('end', () => {
-          if (aborted) {
-            settle({ ok: true, messageId, aborted: true });
+          if (settled) return;
+          if (streamEntry.aborted) {
+            finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, aborted: true }, streamEntry.hasBillableOutput));
             return;
           }
 
@@ -926,11 +1145,13 @@ export class GatewayService {
               const dataStr = lineBuffer.substring(6).trim();
               if (dataStr !== '[DONE]') {
                 try {
-                  const data = JSON.parse(dataStr);
-                  const delta = data.choices?.[0]?.delta?.content || '';
+                  const data = JSON.parse(dataStr) as ProviderStreamChunk;
+                  const rawDelta = data.choices?.[0]?.delta?.content;
+                  const delta = typeof rawDelta === 'string' ? rawDelta : '';
                   if (delta) {
                     fullResponse += delta;
                     deltaCount++;
+                    streamEntry.hasBillableOutput = true;
                     this.sendStreamEvent('hermes.delta', {
                       messageId,
                       delta,
@@ -943,85 +1164,242 @@ export class GatewayService {
           }
 
           if (!fullResponse) {
-            const errorDetail = errorBody.trim().substring(0, 500);
-            this.logger.error(`Provider stream ended with no response from ${defaultModel.provider_name}/${modelCode}. Raw response: ${errorDetail || '(empty)'}`);
+            this.logger.error(`Provider stream ended with no response from ${providerModel.provider_name}/${modelCode}.`);
             this.sendStreamEvent('hermes.error', {
               messageId,
-              error: `${defaultModel.provider_name} returned no response. ${errorDetail ? 'Details: ' + errorDetail : 'The API stream closed without sending any data.'}`,
+              error: 'Provider returned no response',
             }, senderWs);
-            settle({ ok: false, messageId, error: 'No response' });
+            finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, error: 'No response' }));
           } else {
-            // Ensure final event sent (if [DONE] wasn't received)
             this.logger.log(`Provider stream ended, ${deltaCount} chunks, ${fullResponse.length} chars`);
-            this.sendStreamEvent('hermes.final', {
-              messageId,
-              content: fullResponse,
-              totalTokens,
-            }, senderWs);
-
-            this.recordProviderUsage(apiKeyRecord.id, providerId, defaultModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
-              this.logger.warn('Failed to record usage:', err);
+            finalizeOnce(async () => {
+              const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: true, messageId });
+              if (result.ok) {
+                this.sendStreamEvent('hermes.final', {
+                  messageId,
+                  content: fullResponse,
+                  totalTokens,
+                }, senderWs);
+                this.recordProviderUsage(apiKeyRecord.id, providerId, providerModel.model_id, totalTokens, Date.now() - startTime, teamId).catch(err => {
+                  this.logger.warn('Failed to record usage:', err);
+                });
+              }
+              return result;
             });
-
-            settle({ ok: true, messageId });
           }
         });
 
         stream.on('error', (error: Error) => {
-          if (aborted) {
-            settle({ ok: true, messageId, aborted: true });
+          if (settled) return;
+          if (streamEntry.aborted) {
+            finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, aborted: true }, streamEntry.hasBillableOutput));
             return;
           }
 
-          this.logger.error('Provider stream error:', error);
+          this.logger.error('Provider stream error.');
           this.sendStreamEvent('hermes.error', {
             messageId,
-            error: error.message,
+            error: 'Provider stream error',
           }, senderWs);
-          cleanup();
-          reject(error);
+          finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, error: 'Provider stream error' }));
+        });
+
+        stream.on('close', () => {
+          if (settled) return;
+          if (streamEntry.aborted) {
+            finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, { ok: false, messageId, aborted: true }, streamEntry.hasBillableOutput));
+            return;
+          }
+          this.sendStreamEvent('hermes.error', {
+            messageId,
+            error: 'Provider connection closed before completion',
+          }, senderWs);
+          finalizeOnce(() => this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+            ok: false,
+            messageId,
+            error: 'Provider connection closed before completion',
+          }));
         });
       });
 
     } catch (error) {
-      this.logger.error(`Failed to call ${defaultModel.provider_name} API:`, error);
-
-      // Fall back to hermes-agent if provider call fails
-      this.logger.log('Falling back to hermes-agent after provider failure');
-      return this.sendLegacyHermesMessage(params, senderWs, messageId);
+      this.logger.error(`Failed to call ${providerModel.provider_name} API.`);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: 'Provider request failed',
+      }, senderWs);
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'Provider request failed',
+      });
     }
   }
 
-  abortHermesMessage(params: { messageId: string }, requestingWs: WebSocket) {
+  private async prepareLingqiCharge(
+    params: HermesMessageParams,
+    billingId: string,
+    senderWs?: WebSocket,
+  ): Promise<
+    | LingqiChargeDecision
+    | { error: HermesSendResult }
+  > {
+    if (!params.teamId) {
+      return { charge: { amount: 0, billingId }, billingId };
+    }
+
+    const estimate = await this.quotaService.estimateLingqiCost(params.teamId, {
+      transactionType: 'chat_message',
+      modelId: params.model,
+      context: { conversationId: params.conversationId },
+    });
+    const messageId = params.messageId || this.generateUUID();
+
+    if (!estimate.canAfford) {
+      const error = estimate.reason || 'LINGQI_INSUFFICIENT_BALANCE';
+      this.sendStreamEvent('hermes.error', { messageId, error }, senderWs);
+      return { error: { ok: false, messageId, error } };
+    }
+
+    const executionModel = await this.quotaService.getSelectedModelForExecution(
+      params.teamId,
+      params.model,
+      params.conversationId,
+    );
+
+    return {
+      charge: {
+        amount: estimate.estimatedCost,
+        modelId: executionModel.id,
+        billingId,
+      },
+      billingId,
+      executionModelName: executionModel.modelName,
+    };
+  }
+
+  private async resolveProviderModelForLingqiCharge(lingqiCharge: LingqiChargeDecision): Promise<ProviderModelRow | null> {
+    if (!lingqiCharge.executionModelName) {
+      return null;
+    }
+
+    return this.aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
+  }
+
+  private async prepayLingqiCharge(
+    params: HermesMessageParams,
+    charge: { amount: number; modelId?: string; billingId: string },
+    messageId: string,
+    billingId: string,
+  ): Promise<{ ok: true } | { error: HermesSendResult }> {
+    if (!params.teamId || charge.amount <= 0) {
+      return { ok: true };
+    }
+
+    if (!params.userId) {
+      return { error: { ok: false, messageId, error: 'Authentication required' } };
+    }
+
+    try {
+      await this.quotaService.consumeLingqi(params.teamId, params.userId, {
+        amount: charge.amount,
+        transactionType: 'chat_message',
+        sourceType: 'chat',
+        sourceId: params.conversationId || messageId,
+        description: '聊天模型调用',
+        metadata: { modelId: charge.modelId || params.model || null, messageId },
+        idempotencyKey: `charge:chat:${billingId}`,
+      });
+      return { ok: true };
+    } catch (error: unknown) {
+      this.logger.error('Failed to prepay Lingqi before chat execution:', error);
+      return { error: { ok: false, messageId, error: 'LINGQI_CHARGE_FAILED' } };
+    }
+  }
+
+  private async refundLingqiIfUnsuccessful(
+    params: HermesMessageParams,
+    charge: { amount: number; modelId?: string; billingId: string },
+    result: HermesSendResult,
+    hasBillableOutput = false,
+  ): Promise<HermesSendResult> {
+    if ((result.ok && !result.aborted) || hasBillableOutput) {
+      return result;
+    }
+
+    await this.refundLingqiCharge(params, charge, result.messageId);
+    return result;
+  }
+
+  private async refundLingqiCharge(
+    params: HermesMessageParams,
+    charge: { amount: number; modelId?: string; billingId: string },
+    messageId: string,
+  ): Promise<void> {
+    if (!params.teamId || !params.userId || charge.amount <= 0 || this.refundedLingqiMessages.has(charge.billingId)) {
+      return;
+    }
+
+    this.refundedLingqiMessages.add(charge.billingId);
+
+    try {
+      await this.quotaService.refundLingqi(params.teamId, params.userId, {
+        amount: charge.amount,
+        transactionType: 'chat_message',
+        sourceType: 'chat_refund',
+        sourceId: params.conversationId || messageId,
+        description: '聊天模型调用退款',
+        metadata: { modelId: charge.modelId || params.model || null, messageId },
+        idempotencyKey: `refund:chat:${charge.billingId}`,
+        refundOfIdempotencyKey: `charge:chat:${charge.billingId}`,
+      });
+    } catch (error: unknown) {
+      this.refundedLingqiMessages.delete(charge.billingId);
+      this.logger.error('Failed to refund Lingqi after unsuccessful chat execution:', error);
+    }
+  }
+
+  async abortStreamsForSocket(ws: WebSocket): Promise<void> {
+    const aborts = Array.from(this.activeStreams.entries())
+      .filter(([, entry]) => entry.ws === ws)
+      .map(([messageId]) => this.abortHermesMessage({ messageId }, ws));
+
+    await Promise.allSettled(aborts);
+  }
+
+  async abortHermesMessage(params: { messageId: string }, requestingWs: WebSocket): Promise<HermesSendResult> {
     const { messageId } = params;
     const entry = this.activeStreams.get(messageId);
     if (!entry) {
       this.logger.warn(`No active stream found for messageId: ${messageId}`);
-      return { ok: false, error: 'No active stream' };
+      return { ok: false, messageId, error: 'No active stream' };
     }
 
     if (entry.ws !== requestingWs) {
       this.logger.warn(`Unauthorized abort attempt for messageId: ${messageId}`);
-      return { ok: false, error: 'Unauthorized' };
+      return { ok: false, messageId, error: 'Unauthorized' };
     }
 
     this.logger.log(`Aborting stream for messageId: ${messageId}`);
+    entry.aborted = true;
 
-    // Destroy the stream to abort the HTTP request
-    if (entry.stream && typeof entry.stream.destroy === 'function') {
+    if (entry.prepaid && !entry.hasBillableOutput) {
+      await this.refundLingqiCharge(entry.prepaid.params, entry.prepaid.charge, messageId);
+    }
+
+    if (entry.stream.destroy) {
       entry.stream.destroy();
     }
 
     this.activeStreams.delete(messageId);
 
-    // Notify the client that the stream was aborted
     this.sendStreamEvent('hermes.final', {
       messageId,
       content: '',
       aborted: true,
     }, entry.ws);
 
-    return { ok: true, messageId };
+    return { ok: true, messageId, aborted: true };
   }
 
   private async sendLegacyHermesMessage(params: { sessionId: string; message: string }, senderWs?: WebSocket, messageId?: string) {
@@ -1050,10 +1428,17 @@ export class GatewayService {
       let fullResponse = '';
       let deltaCount = 0;
       let lineBuffer = '';
-      let errorBody = '';
+      let settled = false;
 
       return new Promise((resolve, reject) => {
+        const settle = (result: HermesSendResult) => {
+          if (settled) return;
+          settled = true;
+          resolve(result);
+        };
+
         stream.on('data', (chunk: Buffer) => {
+          if (settled) return;
           const chunkStr = chunk.toString();
 
           // Line buffer for proper SSE parsing
@@ -1086,7 +1471,7 @@ export class GatewayService {
                     totalTokens: data.response?.usage?.total_tokens || 0,
                   }, senderWs);
 
-                  resolve({ ok: true, messageId });
+                  settle({ ok: true, messageId });
                 }
               } catch (e) {
                 this.logger.warn(`Failed to parse SSE line: ${line}`);
@@ -1094,12 +1479,11 @@ export class GatewayService {
             }
           }
 
-          if (!parsedAny) {
-            errorBody += chunkStr;
-          }
         });
 
         stream.on('end', () => {
+          if (settled) return;
+
           // Process remaining line buffer
           if (lineBuffer.trim() && lineBuffer.startsWith('data: ')) {
             try {
@@ -1112,23 +1496,32 @@ export class GatewayService {
 
           this.logger.log(`Legacy hermes stream ended, ${deltaCount} chunks`);
           if (!fullResponse) {
-            const errorDetail = errorBody.trim().substring(0, 500);
-            this.logger.error(`Legacy hermes returned no response. Raw: ${errorDetail || '(empty)'}`);
+            this.logger.error('Legacy hermes returned no response.');
             this.sendStreamEvent('hermes.error', {
               messageId,
-              error: `No response from legacy Hermes. ${errorDetail ? 'Details: ' + errorDetail : ''}`,
+              error: 'No response from legacy Hermes.',
             }, senderWs);
-            resolve({ ok: false, messageId, error: 'No response' });
+            settle({ ok: false, messageId, error: 'No response' });
+            return;
           }
+
+          this.sendStreamEvent('hermes.final', {
+            messageId,
+            content: fullResponse,
+            totalTokens: 0,
+          }, senderWs);
+          settle({ ok: true, messageId });
         });
 
         stream.on('error', (error: Error) => {
+          if (settled) return;
+
           this.logger.error('Hermes stream error:', error);
           this.sendStreamEvent('hermes.error', {
             messageId,
-            error: error.message,
+            error: 'Legacy Hermes stream error',
           }, senderWs);
-          reject(error);
+          settle({ ok: false, messageId, error: 'Legacy Hermes stream error' });
         });
       });
 
@@ -1150,10 +1543,10 @@ export class GatewayService {
 
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: errorMessage,
+        error: 'Legacy Hermes request failed',
       }, senderWs);
 
-      return { ok: false, messageId, error: errorMessage };
+      return { ok: false, messageId, error: 'Legacy Hermes request failed' };
     }
   }
 
@@ -1249,15 +1642,15 @@ export class GatewayService {
     }
   }
 
-  async getUsageStatus(params: { period?: 'day' | 'week' | 'month' } = {}) {
+  async getUsageStatus(params: { teamId: string; period?: 'day' | 'week' | 'month' }) {
     const period = params.period || 'month';
 
     // Get usage from database
-    const stats = await this.db.getUsageStats(period);
+    const stats = await this.db.getUsageStats(period, params.teamId);
     const [dailyStats, weeklyStats, monthlyStats] = await Promise.all([
-      this.db.getUsageStats('day'),
-      this.db.getUsageStats('week'),
-      this.db.getUsageStats('month'),
+      this.db.getUsageStats('day', params.teamId),
+      this.db.getUsageStats('week', params.teamId),
+      this.db.getUsageStats('month', params.teamId),
     ]);
 
     return {
@@ -1559,6 +1952,40 @@ export class GatewayService {
     };
   }
 
+  private getJwtSecret(): string {
+    const secret = this.configService.get<string>('JWT_SECRET') || process.env.JWT_SECRET;
+    if (!secret) {
+      throw new Error('JWT_SECRET is required');
+    }
+    return secret;
+  }
+
+  private normalizeInternalServiceUrl(value: string | undefined, name: string): string {
+    if (!value) {
+      throw new Error(`${name} is required`);
+    }
+
+    const parsed = new URL(value);
+    const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal', 'hermes-agent']);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !allowedHosts.has(parsed.hostname)) {
+      throw new Error(`${name} must point to a trusted internal service`);
+    }
+
+    return parsed.origin;
+  }
+
+  private normalizeProviderBaseUrl(value: string | undefined): string {
+    if (!value) {
+      throw new Error('Provider endpoint is required');
+    }
+
+    return normalizeTrustedModelProviderBaseUrl(value);
+  }
+
+  private isProviderToolCall(value: unknown): value is { id?: string; function?: { name?: string; arguments?: string } } {
+    return typeof value === 'object' && value !== null;
+  }
+
   private async generateTokens(userId: string, teamId: string | null, role: string) {
     const payload = {
       sub: userId,
@@ -1566,9 +1993,14 @@ export class GatewayService {
       role,
     };
 
+    const secret = this.getJwtSecret();
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync({ ...payload, type: 'access' }),
+      this.jwtService.signAsync({ ...payload, type: 'access' }, {
+        secret,
+        expiresIn: '15m',
+      }),
       this.jwtService.signAsync({ ...payload, type: 'refresh' }, {
+        secret,
         expiresIn: '7d',
       }),
     ]);
@@ -1577,7 +2009,16 @@ export class GatewayService {
       accessToken,
       refreshToken,
       expiresIn: 900,
+      expiresAt: Date.now() + 900 * 1000,
     };
+  }
+
+  private getTokenExpiresAt(payload: GatewayJwtPayload): number {
+    if (!Number.isInteger(payload.exp) || !payload.exp) {
+      throw new Error('Authentication required');
+    }
+
+    return payload.exp * 1000;
   }
 
   private async generateServiceToken(): Promise<string> {
@@ -1585,6 +2026,8 @@ export class GatewayService {
       sub: 'service',
       role: 'admin',
       type: 'access',
+    }, {
+      secret: this.getJwtSecret(),
     });
   }
 
