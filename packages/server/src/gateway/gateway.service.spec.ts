@@ -149,11 +149,12 @@ describe('GatewayService extensions', () => {
     expect(options.headers['X-Hermes-Internal-MCP-Key']).toBeUndefined();
   });
 
-  it('adds internal MCP key when forwarding conversation-scoped MCP servers', async () => {
+  it('adds internal MCP key when forwarding safe conversation-scoped MCP servers', async () => {
     configService.get.mockReturnValue('internal-secret');
     db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1' } as any);
     db.findMessagesByConversationId.mockResolvedValue([]);
     db.getConversationMCPServers.mockResolvedValue([
+      { name: 'remote-tools', server_type: 'https', config: { url: 'https://mcp.example.com/sse', token: 'ignored' } },
       { name: 'filesystem', server_type: 'stdio', config: { command: 'npx' } },
     ] as any);
     const stream = new PassThrough();
@@ -172,7 +173,7 @@ describe('GatewayService extensions', () => {
     expect(post).toHaveBeenCalled();
     const [, body, options] = post.mock.calls[0];
     expect(body.mcp_servers).toEqual([
-      { name: 'filesystem', type: 'stdio', config: { command: 'npx' } },
+      { name: 'remote-tools', type: 'https', config: { url: 'https://mcp.example.com/sse' } },
     ]);
     expect(options.headers['X-Hermes-Internal-MCP-Key']).toBe('internal-secret');
   });
@@ -922,6 +923,99 @@ describe('GatewayService extensions', () => {
     const [, body] = post.mock.calls[0];
     expect(result).toEqual({ ok: true, messageId: 'message-1' });
     expect(body.model).toBe('provider-model');
+  });
+
+  it('uses MiniMax Anthropic-compatible execution and parses text deltas', async () => {
+    quotaService.estimateLingqiCost.mockResolvedValue(successfulLingqiEstimate());
+    quotaService.getSelectedModelForExecution.mockResolvedValue({ id: 'model-1', modelName: 'MiniMax-M2.7' });
+    quotaService.consumeLingqi.mockResolvedValue({ balance: 90, totalConsumed: 10 });
+    jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(false);
+    jest.spyOn(service as any, 'checkQuota').mockResolvedValue(null);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream, status: 200 }));
+    const send = jest.fn();
+    const targetSocket = { readyState: WebSocket.OPEN, send } as unknown as WebSocket;
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+    aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture({
+      provider_name: 'MiniMax',
+      provider_code: 'minimax',
+      model_id: 'MiniMax-M2.7',
+    }));
+    aiModelsService.findDefaultEndpointByProvider.mockResolvedValue({ base_url: 'https://api.minimaxi.com/anthropic' } as any);
+
+    const resultPromise = service.sendHermesMessage({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      teamId: 'team-1',
+      message: 'hello',
+      model: 'model-1',
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+    }, targetSocket);
+    stream.end(
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":8,"output_tokens":0}}}\n\n' +
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"你好"}}\n\n' +
+      'data: {"type":"message_delta","usage":{"output_tokens":3}}\n\n' +
+      'data: {"type":"message_stop"}\n\n',
+    );
+    const result = await resultPromise;
+
+    expect(result).toEqual({ ok: true, messageId: 'message-1' });
+    expect(post).toHaveBeenCalledWith(
+      'https://api.minimaxi.com/anthropic/v1/messages',
+      expect.objectContaining({
+        model: 'MiniMax-M2.7',
+        stream: true,
+        messages: expect.arrayContaining([{ role: 'user', content: 'hello' }]),
+      }),
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': 'secret-key',
+        },
+      }),
+    );
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('"delta":"你好"'));
+    expect(send).toHaveBeenCalledWith(expect.stringContaining('"event":"hermes.final"'));
+  });
+
+  it('keeps OpenAI-compatible provider execution unchanged', async () => {
+    quotaService.estimateLingqiCost.mockResolvedValue(successfulLingqiEstimate());
+    quotaService.getSelectedModelForExecution.mockResolvedValue({ id: 'model-1', modelName: 'provider-model' });
+    quotaService.consumeLingqi.mockResolvedValue({ balance: 90, totalConsumed: 10 });
+    jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(false);
+    jest.spyOn(service as any, 'checkQuota').mockResolvedValue(null);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream, status: 200 }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+    aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture());
+    aiModelsService.findDefaultEndpointByProvider.mockResolvedValue({ base_url: 'https://api.openai.com' } as any);
+
+    const resultPromise = service.sendHermesMessage({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      teamId: 'team-1',
+      message: 'hello',
+      model: 'model-1',
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+    });
+    stream.end('data: {"choices":[{"delta":{"content":"hi"}}]}\n\ndata: [DONE]\n\n');
+    const result = await resultPromise;
+
+    expect(result).toEqual({ ok: true, messageId: 'message-1' });
+    expect(post).toHaveBeenCalledWith(
+      'https://api.openai.com/v1/chat/completions',
+      expect.objectContaining({ model: 'provider-model' }),
+      expect.objectContaining({
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer secret-key',
+        },
+      }),
+    );
   });
 
   it('rejects provider fallback when the executable provider model differs from the selected Lingqi model', async () => {

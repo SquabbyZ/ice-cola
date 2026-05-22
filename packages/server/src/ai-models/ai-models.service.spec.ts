@@ -82,6 +82,7 @@ describe('AiModelsService', () => {
           useValue: {
             query: jest.fn(),
             queryOne: jest.fn(),
+            transaction: jest.fn(),
           },
         },
         {
@@ -104,6 +105,30 @@ describe('AiModelsService', () => {
 
     service = module.get<AiModelsService>(AiModelsService);
     db = module.get(DatabaseService);
+    const transactionQueryAdapter = async (text: string, params?: unknown[]) => {
+      const normalizedText = text.trim();
+
+      if (
+        normalizedText.startsWith('SELECT * FROM ai_models WHERE id = $1') ||
+        normalizedText.startsWith('INSERT INTO ai_models')
+      ) {
+        const row = await db.queryOne(text, params);
+        if (row) return { rows: [row] };
+      }
+
+      const rows = await db.query(text, params);
+      if (rows !== undefined) return { rows };
+
+      if (normalizedText.startsWith('UPDATE ai_models')) {
+        const row = await db.queryOne(text, params);
+        if (row) return { rows: [row] };
+      }
+
+      return { rows: [] };
+    };
+    db.transaction.mockImplementation(async (callback) =>
+      callback({ query: transactionQueryAdapter } as never),
+    );
     encryption = module.get(EncryptionService);
     apiClient = module.get(AiApiClient);
   });
@@ -311,6 +336,68 @@ describe('AiModelsService', () => {
 
         expect(result).toEqual(mockModel);
       });
+
+      it('creates a model and upserts its client catalog projection in one transaction', async () => {
+        const createdModel = {
+          ...mockModel,
+          status: 'active',
+          enabled: true,
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [createdModel] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
+
+        const createModelInput = {
+          providerId: 'provider-1',
+          name: 'GPT-4',
+          modelId: 'gpt-4',
+          modelType: 'chat',
+          description: 'GPT-4 model',
+          contextWindow: 128000,
+          inputPricePer1m: 30,
+          outputPricePer1m: 60,
+          sortOrder: 1,
+          capabilities: ['chat', 'streaming'],
+          displayName: 'GPT-4 Client',
+          rank: 2,
+          costMultiplier: 1.5,
+          requiredPlanLevel: 1,
+          isCatalogVisible: true,
+        } as Parameters<typeof service.createModel>[0] & {
+          displayName: string;
+          rank: number;
+          costMultiplier: number;
+          requiredPlanLevel: number;
+          isCatalogVisible: boolean;
+        };
+
+        const result = await service.createModel(createModelInput);
+
+        expect(result).toEqual(createdModel);
+        expect(db.transaction).toHaveBeenCalledTimes(1);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO ai_models'),
+          expect.arrayContaining(['provider-1', 'GPT-4', 'gpt-4']),
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO model_catalog'),
+          expect.arrayContaining([
+            'provider-1',
+            'gpt-4',
+            'GPT-4 Client',
+            'GPT-4 model',
+            2,
+            1.5,
+            1,
+            true,
+          ]),
+        );
+      });
     });
 
     describe('findModelsByProvider', () => {
@@ -371,6 +458,17 @@ describe('AiModelsService', () => {
 
         expect(result).toBeNull();
       });
+
+      it('finds executable active models by provider model id', async () => {
+        db.queryOne.mockResolvedValue(mockModel);
+
+        await service.findExecutableModelByModelId('gpt-4');
+
+        expect(db.queryOne).toHaveBeenCalledWith(
+          expect.stringContaining("WHERE m.model_id = $1 AND m.status = 'active'"),
+          ['gpt-4'],
+        );
+      });
     });
 
     describe('updateModel', () => {
@@ -425,15 +523,229 @@ describe('AiModelsService', () => {
 
         expect(result?.status).toBe('inactive');
       });
+
+      it('updates a model and synchronizes catalog display fields', async () => {
+        const existingModel = {
+          ...mockModel,
+          status: 'active',
+        };
+        const updatedModel = {
+          ...existingModel,
+          name: 'GPT-4 Turbo',
+          description: 'Updated description',
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [existingModel] })
+          .mockResolvedValueOnce({ rows: [updatedModel] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
+
+        const updateModelInput = {
+          name: 'GPT-4 Turbo',
+          description: 'Updated description',
+          displayName: 'Turbo Client',
+          rank: 3,
+          costMultiplier: 2,
+          requiredPlanLevel: 2,
+          isCatalogVisible: false,
+        } as Parameters<typeof service.updateModel>[1] & {
+          displayName: string;
+          rank: number;
+          costMultiplier: number;
+          requiredPlanLevel: number;
+          isCatalogVisible: boolean;
+        };
+
+        const result = await service.updateModel('model-1', updateModelInput);
+
+        expect(result).toEqual(updatedModel);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('SELECT * FROM ai_models WHERE id = $1'),
+          ['model-1'],
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('UPDATE ai_models SET'),
+          expect.arrayContaining(['GPT-4 Turbo', 'Updated description', 'model-1']),
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO model_catalog'),
+          expect.arrayContaining([
+            'provider-1',
+            'gpt-4',
+            'Turbo Client',
+            'Updated description',
+            3,
+            2,
+            2,
+            false,
+          ]),
+        );
+      });
+
+      it('does not publish inactive models even when catalog visibility is requested', async () => {
+        const existingModel = {
+          ...mockModel,
+          status: 'active',
+          enabled: true,
+        };
+        const updatedModel = {
+          ...existingModel,
+          status: 'inactive',
+          enabled: true,
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [existingModel] })
+          .mockResolvedValueOnce({ rows: [updatedModel] })
+          .mockResolvedValueOnce({ rows: [] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
+
+        const result = await service.updateModel('model-1', {
+          status: 'inactive',
+          isCatalogVisible: true,
+        });
+
+        expect(result).toEqual(updatedModel);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO model_catalog'),
+          expect.arrayContaining([
+            'provider-1',
+            'gpt-4',
+            'GPT-4',
+            'GPT-4 model',
+            1,
+            1,
+            0,
+            false,
+          ]),
+        );
+      });
+
+      it('preserves existing catalog billing fields when updating model without catalog billing fields', async () => {
+        const existingModel = {
+          ...mockModel,
+          status: 'active',
+          enabled: true,
+        };
+        const updatedModel = {
+          ...existingModel,
+          name: 'GPT-4 Turbo',
+        };
+        const existingCatalog = {
+          rank: 7,
+          cost_multiplier: 2.5,
+          required_plan_level: 3,
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [existingModel] })
+          .mockResolvedValueOnce({ rows: [updatedModel] })
+          .mockResolvedValueOnce({ rows: [existingCatalog] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
+
+        const result = await service.updateModel('model-1', {
+          name: 'GPT-4 Turbo',
+        });
+
+        expect(result).toEqual(updatedModel);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('SELECT rank, cost_multiplier, required_plan_level FROM model_catalog'),
+          ['gpt-4'],
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO model_catalog'),
+          expect.arrayContaining([
+            'provider-1',
+            'gpt-4',
+            'GPT-4 Turbo',
+            'GPT-4 model',
+            7,
+            2.5,
+            3,
+            true,
+          ]),
+        );
+      });
     });
 
     describe('deleteModel', () => {
-      it('deletes model', async () => {
-        db.queryOne.mockResolvedValue(mockModel);
+      it('soft-deletes model and deactivates the catalog projection', async () => {
+        const existingModel = {
+          ...mockModel,
+          status: 'active',
+          enabled: true,
+        };
+        const deactivatedModel = {
+          ...existingModel,
+          status: 'inactive',
+          enabled: false,
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [existingModel] })
+          .mockResolvedValueOnce({ rows: [deactivatedModel] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
 
         const result = await service.deleteModel('model-1');
 
-        expect(result).toEqual(mockModel);
+        expect(result).toEqual(deactivatedModel);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining("UPDATE ai_models SET status = 'inactive'"),
+          ['model-1'],
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('UPDATE model_catalog SET is_active = false'),
+          ['gpt-4'],
+        );
+      });
+
+      it('deactivates the catalog projection when deleting an admin model', async () => {
+        const existingModel = {
+          ...mockModel,
+          status: 'active',
+        };
+        const deactivatedModel = {
+          ...existingModel,
+          status: 'inactive',
+        };
+        const transactionQuery = jest
+          .fn()
+          .mockResolvedValueOnce({ rows: [existingModel] })
+          .mockResolvedValueOnce({ rows: [deactivatedModel] })
+          .mockResolvedValueOnce({ rows: [] });
+
+        db.transaction.mockImplementation(async (callback) =>
+          callback({ query: transactionQuery } as never),
+        );
+
+        const result = await service.deleteModel('model-1');
+
+        expect(result).toEqual(deactivatedModel);
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining("UPDATE ai_models SET status = 'inactive'"),
+          ['model-1'],
+        );
+        expect(transactionQuery).toHaveBeenCalledWith(
+          expect.stringContaining('UPDATE model_catalog SET is_active = false'),
+          ['gpt-4'],
+        );
       });
     });
   });

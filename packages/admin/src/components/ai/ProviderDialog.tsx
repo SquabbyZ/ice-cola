@@ -23,7 +23,7 @@ interface ProviderDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: CreateProviderDto | UpdateProviderDto) => void;
-  initialData?: UpdateProviderDto & { id?: string };
+  initialData?: UpdateProviderDto & { id?: string; code?: string };
   isLoading?: boolean;
 }
 
@@ -54,7 +54,7 @@ export function ProviderDialog({ open, onClose, onSubmit, initialData, isLoading
       if (initialData) {
         setForm({
           name: initialData.name || '',
-          code: (initialData as any).code || '',
+          code: initialData.code || '',
           logoUrl: initialData.logoUrl || '',
           websiteUrl: initialData.websiteUrl || '',
           description: initialData.description || '',

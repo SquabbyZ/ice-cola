@@ -59,6 +59,12 @@ interface HermesMCPServer {
   config: Record<string, unknown>;
 }
 
+interface ConversationMcpServerRow {
+  name: string;
+  server_type?: string | null;
+  config?: Record<string, unknown> | null;
+}
+
 type HermesMessageContent = string | Array<{
   type: string;
   text?: string;
@@ -81,6 +87,7 @@ interface HermesChatRequestBody {
 }
 
 interface ProviderStreamChunk {
+  type?: unknown;
   error?: unknown;
   choices?: Array<{
     delta?: {
@@ -88,8 +95,19 @@ interface ProviderStreamChunk {
       tool_calls?: unknown;
     };
   }>;
+  delta?: {
+    type?: unknown;
+    text?: unknown;
+  };
   usage?: {
     total_tokens?: unknown;
+    output_tokens?: unknown;
+  };
+  message?: {
+    usage?: {
+      input_tokens?: unknown;
+      output_tokens?: unknown;
+    };
   };
 }
 
@@ -133,6 +151,7 @@ interface ProviderModelRow {
   id: string;
   provider_id: string;
   provider_name: string;
+  provider_code?: string | null;
   model_id: string;
   temperature?: number | null;
   max_tokens?: number | null;
@@ -594,15 +613,36 @@ export class GatewayService {
   private async getConversationHermesMcpServers(conversationId: string): Promise<HermesMCPServer[]> {
     try {
       const rows = await this.db.getConversationMCPServers(conversationId);
-      return rows.map((row: { name: string; server_type?: string; config?: Record<string, unknown> }) => ({
-        name: row.name,
-        type: row.server_type || 'stdio',
-        config: row.config || {},
-      }));
+      return rows.reduce<HermesMCPServer[]>((servers, row: ConversationMcpServerRow) => {
+        const server = this.toSafeHermesMcpServer(row);
+        return server ? [...servers, server] : servers;
+      }, []);
     } catch (error) {
       this.logger.warn(`Failed to load MCP servers for conversation ${conversationId}:`, error);
       return [];
     }
+  }
+
+  private toSafeHermesMcpServer(row: ConversationMcpServerRow): HermesMCPServer | null {
+    if (row.server_type !== 'http' && row.server_type !== 'https') return null;
+
+    const config = row.config || {};
+    const url = config.url;
+    if (typeof url !== 'string') return null;
+
+    try {
+      const parsedUrl = new URL(url);
+      if (parsedUrl.protocol !== 'https:') return null;
+      if (parsedUrl.username || parsedUrl.password) return null;
+    } catch {
+      return null;
+    }
+
+    return {
+      name: row.name,
+      type: row.server_type,
+      config: { url },
+    };
   }
 
   private async checkHermesAgentHealth(): Promise<boolean> {
@@ -735,8 +775,7 @@ export class GatewayService {
 
               try {
                 const data = JSON.parse(dataStr) as ProviderStreamChunk;
-                const rawDelta = data.choices?.[0]?.delta?.content;
-                const delta = typeof rawDelta === 'string' ? rawDelta : '';
+                const delta = this.extractProviderTextDelta(data);
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
@@ -769,9 +808,7 @@ export class GatewayService {
                   }
                 }
 
-                if (data.usage && typeof data.usage.total_tokens === 'number') {
-                  totalTokens = data.usage.total_tokens;
-                }
+                totalTokens = this.extractProviderTotalTokens(data, totalTokens);
               } catch (e) {
                 // Not JSON, skip
               }
@@ -953,11 +990,18 @@ export class GatewayService {
       }
     }
 
+    const isMiniMaxAnthropicProvider = this.isMiniMaxAnthropicProvider(providerModel, baseUrl);
+
     // Build request headers and body
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${decryptedKey}`,
-    };
+    const headers: Record<string, string> = isMiniMaxAnthropicProvider
+      ? {
+          'Content-Type': 'application/json',
+          'X-Api-Key': decryptedKey,
+        }
+      : {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${decryptedKey}`,
+        };
     try {
       if (endpoint?.headers) {
         const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
@@ -1000,8 +1044,9 @@ export class GatewayService {
 
     try {
       const startTime = Date.now();
+      const providerRequestPath = isMiniMaxAnthropicProvider ? '/v1/messages' : '/v1/chat/completions';
       const response = await firstValueFrom(
-        this.httpService.post(`${baseUrl}/v1/chat/completions`, requestBody, {
+        this.httpService.post(`${baseUrl}${providerRequestPath}`, requestBody, {
           headers,
           responseType: 'stream',
           timeout,
@@ -1107,8 +1152,7 @@ export class GatewayService {
                   return;
                 }
 
-                const rawDelta = data.choices?.[0]?.delta?.content;
-                const delta = typeof rawDelta === 'string' ? rawDelta : '';
+                const delta = this.extractProviderTextDelta(data);
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
@@ -1122,9 +1166,7 @@ export class GatewayService {
                   }, senderWs);
                 }
 
-                if (data.usage && typeof data.usage.total_tokens === 'number') {
-                  totalTokens = data.usage.total_tokens;
-                }
+                totalTokens = this.extractProviderTotalTokens(data, totalTokens);
               } catch (e) {
                 // Not JSON, skip
               }
@@ -1147,8 +1189,7 @@ export class GatewayService {
               if (dataStr !== '[DONE]') {
                 try {
                   const data = JSON.parse(dataStr) as ProviderStreamChunk;
-                  const rawDelta = data.choices?.[0]?.delta?.content;
-                  const delta = typeof rawDelta === 'string' ? rawDelta : '';
+                  const delta = this.extractProviderTextDelta(data);
                   if (delta) {
                     fullResponse += delta;
                     deltaCount++;
@@ -1159,6 +1200,7 @@ export class GatewayService {
                       sequenceNumber: deltaCount,
                     }, senderWs);
                   }
+                  totalTokens = this.extractProviderTotalTokens(data, totalTokens);
                 } catch (e) { /* skip */ }
               }
             }
@@ -1616,7 +1658,7 @@ export class GatewayService {
   }
 
   private sendStreamEvent(eventType: string, data: any, targetWs?: WebSocket): void {
-    if (!this.gatewayInstance) {
+    if (!this.gatewayInstance && !targetWs) {
       this.logger.warn('Gateway instance not set, cannot send stream event');
       return;
     }
@@ -1981,6 +2023,51 @@ export class GatewayService {
     }
 
     return normalizeTrustedModelProviderBaseUrl(value);
+  }
+
+  private isMiniMaxAnthropicProvider(providerModel: ProviderModelRow, baseUrl: string): boolean {
+    const providerCode = providerModel.provider_code?.toLowerCase();
+    const providerName = providerModel.provider_name.toLowerCase();
+    const parsedUrl = new URL(baseUrl);
+
+    return (
+      parsedUrl.hostname === 'api.minimaxi.com' &&
+      parsedUrl.pathname.startsWith('/anthropic') &&
+      (providerCode === 'minimax' || providerName.includes('minimax'))
+    );
+  }
+
+  private extractProviderTextDelta(data: ProviderStreamChunk): string {
+    const openAiDelta = data.choices?.[0]?.delta?.content;
+    if (typeof openAiDelta === 'string') {
+      return openAiDelta;
+    }
+
+    if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta' && typeof data.delta.text === 'string') {
+      return data.delta.text;
+    }
+
+    return '';
+  }
+
+  private extractProviderTotalTokens(data: ProviderStreamChunk, fallback: number): number {
+    if (typeof data.usage?.total_tokens === 'number') {
+      return data.usage.total_tokens;
+    }
+
+    const inputTokens = data.message?.usage?.input_tokens;
+    const messageOutputTokens = data.message?.usage?.output_tokens;
+    if (typeof inputTokens === 'number' || typeof messageOutputTokens === 'number') {
+      return (typeof inputTokens === 'number' ? inputTokens : 0) +
+        (typeof messageOutputTokens === 'number' ? messageOutputTokens : 0);
+    }
+
+    const outputTokens = data.usage?.output_tokens;
+    if (typeof outputTokens === 'number') {
+      return Math.max(fallback, outputTokens);
+    }
+
+    return fallback;
   }
 
   private isProviderToolCall(value: unknown): value is { id?: string; function?: { name?: string; arguments?: string } } {

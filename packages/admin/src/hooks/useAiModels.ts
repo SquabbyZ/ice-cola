@@ -1,5 +1,55 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { aiModelsApi, CreateProviderDto, UpdateProviderDto, CreateModelDto, UpdateModelDto, CreateApiKeyDto, CreateEndpointDto, CreateModelConfigDto, CreateDefaultModelDto, UpdateDefaultModelDto, CreateTeamQuotaDto, UpdateTeamQuotaDto } from '../services/aiModelsApi';
+import {
+  aiModelsApi,
+  CreateProviderDto,
+  UpdateProviderDto,
+  CreateModelDto,
+  UpdateModelDto,
+  CreateApiKeyDto,
+  CreateEndpointDto,
+  CreateModelConfigDto,
+  CreateDefaultModelDto,
+  UpdateDefaultModelDto,
+  CreateTeamQuotaDto,
+  UpdateTeamQuotaDto,
+  Model,
+  Provider,
+  UpdateApiKeyDto,
+  UpdateEndpointDto,
+  UpdateModelConfigDto,
+} from '../services/aiModelsApi';
+
+interface RawProvider extends Provider {
+  website?: string;
+  enabled?: boolean;
+}
+
+type RawModel = Omit<Model, 'capabilities'> & {
+  capabilities?: Model['capabilities'] | { type?: string; contextWindow?: number };
+  pricing?: { inputPricePer1m?: number; outputPricePer1m?: number };
+};
+
+function transformProvider(provider: RawProvider): Provider {
+  return {
+    ...provider,
+    websiteUrl: provider.website || provider.websiteUrl,
+    status: provider.status ?? (provider.enabled === false ? 'inactive' : 'active'),
+  };
+}
+
+function transformModel(model: RawModel): Model {
+  const capabilities = Array.isArray(model.capabilities) ? model.capabilities : [];
+  const capabilityShape = Array.isArray(model.capabilities) ? undefined : model.capabilities;
+
+  return {
+    ...model,
+    capabilities,
+    modelType: capabilityShape?.type || model.modelType || 'chat',
+    contextWindow: capabilityShape?.contextWindow || model.contextWindow,
+    inputPricePer1m: model.pricing?.inputPricePer1m ?? model.inputPricePer1m,
+    outputPricePer1m: model.pricing?.outputPricePer1m ?? model.outputPricePer1m,
+  };
+}
 
 interface QuotaAlertTeamQuota {
   dailyTokenLimit: number;
@@ -14,13 +64,9 @@ export function useProviders() {
   return useQuery({
     queryKey: ['ai', 'providers'],
     queryFn: () => aiModelsApi.getProviders().then(res => {
-      const providers = res.data.data;
+      const providers: RawProvider[] = res.data.data;
       // Transform API response to match frontend Provider interface
-      return providers.map((p: any) => ({
-        ...p,
-        websiteUrl: p.website || p.websiteUrl,
-        status: p.enabled ? 'active' : 'inactive',
-      }));
+      return providers.map(transformProvider);
     }),
   });
 }
@@ -71,15 +117,9 @@ export function useModels(providerId?: string) {
   return useQuery({
     queryKey: ['ai', 'models', { providerId }],
     queryFn: () => aiModelsApi.getModels(providerId).then(res => {
-      const models = res.data.data;
+      const models: RawModel[] = res.data.data;
       // Transform API response to match frontend Model interface
-      return models.map((m: any) => ({
-        ...m,
-        modelType: m.capabilities?.type || 'chat',
-        contextWindow: m.capabilities?.contextWindow || m.contextWindow,
-        inputPricePer1m: m.pricing?.inputPricePer1m ?? m.inputPricePer1m,
-        outputPricePer1m: m.pricing?.outputPricePer1m ?? m.outputPricePer1m,
-      }));
+      return models.map(transformModel);
     }),
   });
 }
@@ -185,7 +225,7 @@ export function useUpdateApiKeyStatus() {
 export function useUpdateApiKey() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) =>
+    mutationFn: ({ id, data }: { id: string; data: UpdateApiKeyDto }) =>
       aiModelsApi.updateApiKey(id, data).then(res => res.data.data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['ai', 'api-keys'] });
@@ -226,7 +266,7 @@ export function useCreateEndpoint() {
 export function useUpdateEndpoint() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) =>
+    mutationFn: ({ id, data }: { id: string; data: UpdateEndpointDto }) =>
       aiModelsApi.updateEndpoint(id, data).then(res => res.data.data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['ai', 'endpoints'] });
@@ -267,7 +307,7 @@ export function useCreateModelConfig() {
 export function useUpdateModelConfig() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) =>
+    mutationFn: ({ id, data }: { id: string; data: UpdateModelConfigDto }) =>
       aiModelsApi.updateModelConfig(id, data).then(res => res.data.data),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ['ai', 'model-configs'] });

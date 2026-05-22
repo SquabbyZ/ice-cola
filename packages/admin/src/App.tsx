@@ -11,7 +11,7 @@ import AcceptInvite from './pages/AcceptInvite';
 import ForgotPassword from './pages/ForgotPassword';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import AiSettings from './pages/ai/ApiKeys';
+import AiSettings from './pages/ai/AISettings';
 import Marketplace from './pages/Marketplace';
 import ApprovalCenter from './pages/ApprovalCenter';
 import RedemptionCodes from './pages/RedemptionCodes';
@@ -69,7 +69,7 @@ const App: React.FC = () => {
           <Route
             path="ai/settings"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute roles={['OWNER', 'ADMIN']}>
                 <AiSettings />
               </ProtectedRoute>
             }

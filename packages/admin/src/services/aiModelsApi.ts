@@ -24,24 +24,34 @@ export interface CreateModelDto {
   name: string;
   modelId: string;
   modelType: 'chat' | 'vision' | 'embedding' | 'text';
+  displayName?: string;
   description?: string;
   contextWindow?: number;
   inputPricePer1m?: number;
   outputPricePer1m?: number;
   sortOrder?: number;
+  rank?: number;
+  costMultiplier?: number;
+  requiredPlanLevel?: number;
+  isCatalogVisible?: boolean;
   capabilities?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface UpdateModelDto {
   name?: string;
+  displayName?: string;
   description?: string;
   contextWindow?: number;
   inputPricePer1m?: number;
   outputPricePer1m?: number;
   sortOrder?: number;
+  rank?: number;
+  costMultiplier?: number;
+  requiredPlanLevel?: number;
+  isCatalogVisible?: boolean;
   capabilities?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   status?: 'active' | 'inactive';
 }
 
@@ -93,7 +103,7 @@ export interface CreateModelConfigDto {
   presencePenalty?: number;
   stopSequences?: string[];
   responseFormat?: { type: string };
-  extraParams?: Record<string, any>;
+  extraParams?: Record<string, unknown>;
   isActive?: boolean;
 }
 
@@ -107,7 +117,7 @@ export interface UpdateModelConfigDto {
   presencePenalty?: number;
   stopSequences?: string[];
   responseFormat?: { type: string };
-  extraParams?: Record<string, any>;
+  extraParams?: Record<string, unknown>;
   isActive?: boolean;
 }
 
@@ -152,7 +162,7 @@ export interface CreateUsageLogDto {
   cost?: number;
   latencyMs?: number;
   endpoint?: string;
-  modelParams?: Record<string, any>;
+  modelParams?: Record<string, unknown>;
   responseId?: string;
   status?: 'success' | 'error' | 'rate_limited';
   errorMessage?: string;
@@ -178,14 +188,19 @@ export interface Model {
   name: string;
   modelId: string;
   modelType: string;
+  displayName?: string;
   description?: string;
   contextWindow?: number;
   inputPricePer1m?: number;
   outputPricePer1m?: number;
   sortOrder: number;
+  rank?: number;
+  costMultiplier?: number;
+  requiredPlanLevel?: number;
+  isCatalogVisible?: boolean;
   status: string;
   capabilities?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   providerName?: string;
   providerCode?: string;
   createdAt: string;
@@ -234,7 +249,7 @@ export interface ModelConfig {
   presencePenalty: number;
   stopSequences?: string[];
   responseFormat?: { type: string };
-  extraParams?: Record<string, any>;
+  extraParams?: Record<string, unknown>;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -283,7 +298,7 @@ export interface UsageLog {
   cost: number;
   latencyMs?: number;
   endpoint?: string;
-  modelParams?: Record<string, any>;
+  modelParams?: Record<string, unknown>;
   responseId?: string;
   status: string;
   errorMessage?: string;

@@ -19,6 +19,19 @@ import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
 import { ApiKey, Model, DefaultModel } from '../../services/aiModelsApi';
 
+function getSafeExternalUrl(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:' ? parsedUrl.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 interface ProviderCardProps {
   provider: {
     id: string;
@@ -76,6 +89,8 @@ export function ProviderCard({
     return dm?.modelId;
   }, [defaultModels, provider.id]);
 
+  const safeWebsiteUrl = getSafeExternalUrl(provider.websiteUrl);
+
   const maskApiKey = (keyId: string) => {
     if (viewingKeyId === keyId && decryptedKey) {
       return decryptedKey;
@@ -102,15 +117,15 @@ export function ProviderCard({
             )}
             <div>
               <h3 className="text-lg font-semibold">{provider.name}</h3>
-              {provider.websiteUrl && (
+              {safeWebsiteUrl && (
                 <a
-                  href={provider.websiteUrl}
+                  href={safeWebsiteUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1"
                 >
                   <Globe className="h-3 w-3" />
-                  {provider.websiteUrl.replace(/^https?:\/\//, '')}
+                  {safeWebsiteUrl.replace(/^https?:\/\//, '')}
                 </a>
               )}
             </div>

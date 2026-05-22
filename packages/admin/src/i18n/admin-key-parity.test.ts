@@ -25,4 +25,14 @@ describe('admin remediation locale keys', () => {
     expectMatchingNamespaceKeys(en.redemptionCodeDetail, zh.redemptionCodeDetail);
     expectMatchingNamespaceKeys(en.lingqiLedger, zh.lingqiLedger);
   });
+
+  test('keeps AI keys in sync and localizes Chinese admin copy', () => {
+    expectMatchingNamespaceKeys(en.ai, zh.ai);
+
+    expect(zh.ai.nav.title).toBe('AI 模型');
+    expect(zh.ai.nav.endpoints).toBe('端点');
+    expect(zh.ai.providers.title).toBe('AI 供应商');
+    expect(zh.ai.apiKeys.description).toBe('管理 AI 供应商的 API 密钥');
+    expect(zh.ai.settings.usingDefaultEndpoint).toBe('默认：{{url}}');
+  });
 });

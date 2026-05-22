@@ -22,7 +22,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { CreateProviderDto, UpdateProviderDto } from '../../services/aiModelsApi';
+import { CreateProviderDto, Provider, UpdateProviderDto } from '../../services/aiModelsApi';
+
+interface ProviderEditData extends UpdateProviderDto {
+  id: string;
+  code: string;
+}
+
+function getSafeExternalUrl(url: string | undefined): string | undefined {
+  if (!url) {
+    return undefined;
+  }
+
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.protocol === 'https:' || parsedUrl.protocol === 'http:' ? parsedUrl.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export default function Providers() {
   const { t } = useTranslation();
@@ -34,7 +52,7 @@ export default function Providers() {
   const canEdit = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editData, setEditData] = React.useState<UpdateProviderDto & { id?: string } | undefined>();
+  const [editData, setEditData] = React.useState<ProviderEditData | undefined>();
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
 
   const handleCreate = (data: CreateProviderDto) => {
@@ -51,8 +69,17 @@ export default function Providers() {
     }
   };
 
-  const handleEdit = (provider: any) => {
-    setEditData(provider);
+  const handleEdit = (provider: Provider) => {
+    setEditData({
+      id: provider.id,
+      code: provider.code,
+      name: provider.name,
+      logoUrl: provider.logoUrl,
+      websiteUrl: provider.websiteUrl,
+      description: provider.description,
+      sortOrder: provider.sortOrder,
+      status: provider.status === 'inactive' ? 'inactive' : 'active',
+    });
     setDialogOpen(true);
   };
 
@@ -76,6 +103,8 @@ export default function Providers() {
     setDialogOpen(false);
     setEditData(undefined);
   };
+
+  const getProviderWebsiteUrl = (provider: Provider) => getSafeExternalUrl(provider.websiteUrl);
 
   if (isLoading) {
     return (
@@ -113,11 +142,11 @@ export default function Providers() {
           </TableHeader>
           <TableBody>
             {providers?.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                   {t('ai.providers.noProviders')}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               providers?.map((provider) => (
                 <TableRow key={provider.id}>
@@ -146,9 +175,9 @@ export default function Providers() {
                     </code>
                   </TableCell>
                   <TableCell>
-                    {provider.websiteUrl ? (
+                    {getProviderWebsiteUrl(provider) ? (
                       <a
-                        href={provider.websiteUrl}
+                        href={getProviderWebsiteUrl(provider)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-primary hover:underline inline-flex items-center gap-1"
@@ -202,7 +231,13 @@ export default function Providers() {
       <ProviderDialog
         open={dialogOpen}
         onClose={handleDialogClose}
-        onSubmit={editData?.id ? handleUpdate as any : handleCreate as any}
+        onSubmit={(data) => {
+          if (editData?.id) {
+            handleUpdate(data as UpdateProviderDto);
+            return;
+          }
+          handleCreate(data as CreateProviderDto);
+        }}
         initialData={editData}
         isLoading={createProvider.isPending || updateProvider.isPending}
       />

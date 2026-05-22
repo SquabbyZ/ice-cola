@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsNotEmpty, IsArray } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsNotEmpty, IsArray, IsBoolean, Min } from 'class-validator';
 
 export class CreateModelDto {
   @IsString()
@@ -42,7 +42,30 @@ export class CreateModelDto {
   capabilities?: string[];
 
   @IsOptional()
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
+
+  @IsString()
+  @IsOptional()
+  displayName?: string;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  rank?: number;
+
+  @IsNumber()
+  @Min(0.01)
+  @IsOptional()
+  costMultiplier?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  requiredPlanLevel?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isCatalogVisible?: boolean;
 }
 
 export class UpdateModelDto {
@@ -75,9 +98,32 @@ export class UpdateModelDto {
   capabilities?: string[];
 
   @IsOptional()
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   @IsString()
   @IsOptional()
   status?: 'active' | 'inactive';
+
+  @IsString()
+  @IsOptional()
+  displayName?: string;
+
+  @IsNumber()
+  @Min(1)
+  @IsOptional()
+  rank?: number;
+
+  @IsNumber()
+  @Min(0.01)
+  @IsOptional()
+  costMultiplier?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  requiredPlanLevel?: number;
+
+  @IsBoolean()
+  @IsOptional()
+  isCatalogVisible?: boolean;
 }

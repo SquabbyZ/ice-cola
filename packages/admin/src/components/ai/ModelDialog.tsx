@@ -13,17 +13,40 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '../ui/dialog';
+import { Textarea } from '../ui/textarea';
 import { CreateModelDto, UpdateModelDto } from '../../services/aiModelsApi';
+
+type ModelType = 'chat' | 'vision' | 'embedding' | 'text';
+
+interface ModelDialogInitialData {
+  id?: string;
+  providerId?: string;
+  name?: string;
+  modelId?: string;
+  modelType?: string;
+  displayName?: string;
+  rank?: number;
+  costMultiplier?: number;
+  requiredPlanLevel?: number;
+  isCatalogVisible?: boolean;
+  description?: string;
+  contextWindow?: number;
+  inputPricePer1m?: number;
+  outputPricePer1m?: number;
+  sortOrder?: number;
+  capabilities?: string[];
+}
 
 interface ModelDialogProps {
   open: boolean;
   onClose: () => void;
   onSubmit: (data: CreateModelDto | UpdateModelDto) => void;
-  initialData?: UpdateModelDto & { id?: string; providerId?: string };
+  initialData?: ModelDialogInitialData;
   providers: { id: string; name: string }[];
   isLoading?: boolean;
 }
@@ -32,62 +55,104 @@ type FormState = {
   providerId: string;
   name: string;
   modelId: string;
-  modelType: 'chat' | 'vision' | 'embedding' | 'text';
+  modelType: ModelType;
+  displayName: string;
+  rank: string;
+  costMultiplier: string;
+  requiredPlanLevel: string;
+  isCatalogVisible: boolean;
   description: string;
-  contextWindow: number;
-  inputPricePer1m: number;
-  outputPricePer1m: number;
-  sortOrder: number;
+  contextWindow: string;
+  inputPricePer1m: string;
+  outputPricePer1m: string;
+  sortOrder: string;
   capabilities: string[];
 };
 
-const MODEL_TYPES = ['chat', 'vision', 'embedding', 'text'] as const;
+const MODEL_TYPES: ModelType[] = ['chat', 'vision', 'embedding', 'text'];
+
+const MODEL_TYPE_LABEL_KEYS: Record<ModelType, string> = {
+  chat: 'ai.models.typeChat',
+  vision: 'ai.models.typeVision',
+  embedding: 'ai.models.typeEmbedding',
+  text: 'ai.models.typeText',
+};
+
+const isModelType = (value: string | undefined): value is ModelType => (
+  value !== undefined && MODEL_TYPES.includes(value as ModelType)
+);
+
+const numberToInputValue = (value: number | undefined, defaultValue: number): string => (
+  String(value ?? defaultValue)
+);
+
+const parseOptionalInteger = (value: string): number | undefined => {
+  const parsedValue = Number.parseInt(value, 10);
+  return Number.isNaN(parsedValue) ? undefined : parsedValue;
+};
+
+const parseOptionalFloat = (value: string): number | undefined => {
+  const parsedValue = Number.parseFloat(value);
+  return Number.isNaN(parsedValue) ? undefined : parsedValue;
+};
+
+const parseIntegerWithDefault = (value: string, defaultValue: number): number => (
+  parseOptionalInteger(value) ?? defaultValue
+);
+
+const parseFloatWithDefault = (value: string, defaultValue: number): number => (
+  parseOptionalFloat(value) ?? defaultValue
+);
+
+const createEmptyForm = (providerId: string): FormState => ({
+  providerId,
+  name: '',
+  modelId: '',
+  modelType: 'chat',
+  displayName: '',
+  rank: '1',
+  costMultiplier: '1',
+  requiredPlanLevel: '0',
+  isCatalogVisible: true,
+  description: '',
+  contextWindow: '0',
+  inputPricePer1m: '0',
+  outputPricePer1m: '0',
+  sortOrder: '0',
+  capabilities: [],
+});
 
 export function ModelDialog({ open, onClose, onSubmit, initialData, providers, isLoading }: ModelDialogProps) {
   const { t } = useTranslation();
-  const [form, setForm] = React.useState<FormState>({
-    providerId: '',
-    name: '',
-    modelId: '',
-    modelType: 'chat',
-    description: '',
-    contextWindow: 0,
-    inputPricePer1m: 0,
-    outputPricePer1m: 0,
-    sortOrder: 0,
-    capabilities: [],
-  });
+  const [form, setForm] = React.useState<FormState>(createEmptyForm(''));
 
   React.useEffect(() => {
-    if (open) {
-      if (initialData) {
-        setForm({
-          providerId: initialData.providerId || '',
-          name: initialData.name || '',
-          modelId: (initialData as any).modelId || '',
-          modelType: (initialData as any).modelType as 'chat' | 'vision' | 'embedding' | 'text' || 'chat',
-          description: initialData.description || '',
-          contextWindow: initialData.contextWindow || 0,
-          inputPricePer1m: initialData.inputPricePer1m || 0,
-          outputPricePer1m: initialData.outputPricePer1m || 0,
-          sortOrder: initialData.sortOrder || 0,
-          capabilities: initialData.capabilities || [],
-        });
-      } else {
-        setForm({
-          providerId: providers[0]?.id || '',
-          name: '',
-          modelId: '',
-          modelType: 'chat',
-          description: '',
-          contextWindow: 0,
-          inputPricePer1m: 0,
-          outputPricePer1m: 0,
-          sortOrder: 0,
-          capabilities: [],
-        });
-      }
+    if (!open) {
+      return;
     }
+
+    if (!initialData) {
+      setForm(createEmptyForm(providers[0]?.id || ''));
+      return;
+    }
+
+    setForm({
+      providerId: initialData.providerId || '',
+      name: initialData.name || '',
+      modelId: initialData.modelId || '',
+      modelType: isModelType(initialData.modelType) ? initialData.modelType : 'chat',
+      displayName: initialData.displayName || '',
+      rank: numberToInputValue(initialData.rank, 1),
+      costMultiplier: numberToInputValue(initialData.costMultiplier, 1),
+      requiredPlanLevel: numberToInputValue(initialData.requiredPlanLevel, 0),
+      isCatalogVisible: initialData.isCatalogVisible ?? true,
+      description: initialData.description || '',
+      contextWindow: numberToInputValue(initialData.contextWindow, 0),
+      inputPricePer1m: numberToInputValue(initialData.inputPricePer1m, 0),
+      outputPricePer1m: numberToInputValue(initialData.outputPricePer1m, 0),
+      sortOrder: numberToInputValue(initialData.sortOrder, 0),
+      capabilities: initialData.capabilities || [],
+    });
   }, [initialData, open, providers]);
 
   const handleCapabilityToggle = (cap: string) => {
@@ -103,18 +168,41 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
     e.preventDefault();
     if (initialData?.id) {
       const updateData: UpdateModelDto = {
-        name: form.name || undefined,
-        description: form.description || undefined,
-        contextWindow: form.contextWindow || undefined,
-        inputPricePer1m: form.inputPricePer1m || undefined,
-        outputPricePer1m: form.outputPricePer1m || undefined,
-        sortOrder: form.sortOrder || undefined,
-        capabilities: form.capabilities || undefined,
+        name: form.name,
+        displayName: form.displayName,
+        description: form.description,
+        contextWindow: parseOptionalInteger(form.contextWindow),
+        inputPricePer1m: parseOptionalFloat(form.inputPricePer1m),
+        outputPricePer1m: parseOptionalFloat(form.outputPricePer1m),
+        sortOrder: parseOptionalInteger(form.sortOrder),
+        rank: parseIntegerWithDefault(form.rank, 1),
+        costMultiplier: parseFloatWithDefault(form.costMultiplier, 1),
+        requiredPlanLevel: parseIntegerWithDefault(form.requiredPlanLevel, 0),
+        isCatalogVisible: form.isCatalogVisible,
+        capabilities: form.capabilities,
       };
       onSubmit(updateData);
-    } else {
-      onSubmit(form as CreateModelDto);
+      return;
     }
+
+    const createData: CreateModelDto = {
+      providerId: form.providerId,
+      name: form.name,
+      modelId: form.modelId,
+      modelType: form.modelType,
+      displayName: form.displayName || undefined,
+      rank: parseIntegerWithDefault(form.rank, 1),
+      costMultiplier: parseFloatWithDefault(form.costMultiplier, 1),
+      requiredPlanLevel: parseIntegerWithDefault(form.requiredPlanLevel, 0),
+      isCatalogVisible: form.isCatalogVisible,
+      description: form.description || undefined,
+      contextWindow: parseOptionalInteger(form.contextWindow),
+      inputPricePer1m: parseOptionalFloat(form.inputPricePer1m),
+      outputPricePer1m: parseOptionalFloat(form.outputPricePer1m),
+      sortOrder: parseOptionalInteger(form.sortOrder),
+      capabilities: form.capabilities,
+    };
+    onSubmit(createData);
   };
 
   return (
@@ -124,17 +212,18 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
           <DialogTitle className="text-lg font-semibold">
             {initialData?.id ? t('ai.models.editModel') : t('ai.models.addModel')}
           </DialogTitle>
+          <DialogDescription>{t('ai.models.dialogDescription')}</DialogDescription>
         </DialogHeader>
 
         <form id="modelForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="providerId">{t('ai.models.provider')} *</Label>
+            <Label id="providerIdLabel" htmlFor="providerId">{t('ai.models.provider')} *</Label>
             <Select
               value={form.providerId}
               onValueChange={(val) => setForm({ ...form, providerId: val })}
               disabled={!!initialData?.id}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="providerId" aria-labelledby="providerIdLabel" className="w-full">
                 <SelectValue placeholder={t('ai.models.selectProvider')} />
               </SelectTrigger>
               <SelectContent>
@@ -174,20 +263,24 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
 
           {!initialData?.id && (
             <div className="space-y-2">
-              <Label htmlFor="modelType">{t('ai.models.type')} *</Label>
+              <Label id="modelTypeLabel" htmlFor="modelType">{t('ai.models.type')} *</Label>
               <Select
-              value={form.modelType}
-              onValueChange={(val) => setForm({ ...form, modelType: val as 'chat' | 'vision' | 'embedding' | 'text' })}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODEL_TYPES.map(type => (
-                  <SelectItem key={type} value={type}>{t(`ai.models.type${type.charAt(0).toUpperCase() + type.slice(1)}` as any)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                value={form.modelType}
+                onValueChange={(val) => {
+                  if (isModelType(val)) {
+                    setForm({ ...form, modelType: val });
+                  }
+                }}
+              >
+                <SelectTrigger id="modelType" aria-labelledby="modelTypeLabel" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MODEL_TYPES.map(type => (
+                    <SelectItem key={type} value={type}>{t(MODEL_TYPE_LABEL_KEYS[type])}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           )}
 
@@ -197,7 +290,10 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
               id="contextWindow"
               type="number"
               value={form.contextWindow}
-              onChange={(e) => setForm({ ...form, contextWindow: parseInt(e.target.value) || 0 })}
+              onChange={(e) => setForm(prev => ({
+                ...prev,
+                contextWindow: e.target.value,
+              }))}
               placeholder="128000"
               className="h-10"
             />
@@ -212,7 +308,10 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
                 type="number"
                 step="0.01"
                 value={form.inputPricePer1m}
-                onChange={(e) => setForm({ ...form, inputPricePer1m: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setForm(prev => ({
+                  ...prev,
+                  inputPricePer1m: e.target.value,
+                }))}
                 placeholder="5.00"
                 className="h-10"
               />
@@ -224,7 +323,10 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
                 type="number"
                 step="0.01"
                 value={form.outputPricePer1m}
-                onChange={(e) => setForm({ ...form, outputPricePer1m: parseFloat(e.target.value) || 0 })}
+                onChange={(e) => setForm(prev => ({
+                  ...prev,
+                  outputPricePer1m: e.target.value,
+                }))}
                 placeholder="15.00"
                 className="h-10"
               />
@@ -241,29 +343,102 @@ export function ModelDialog({ open, onClose, onSubmit, initialData, providers, i
                 { key: 'json_mode', label: t('ai.models.capJsonMode') },
                 { key: 'streaming', label: t('ai.models.capStreaming') },
               ].map(({ key, label }) => (
-                <button
+                <Button
                   key={key}
                   type="button"
+                  variant={form.capabilities.includes(key) ? 'default' : 'outline'}
+                  size="sm"
+                  aria-pressed={form.capabilities.includes(key)}
                   onClick={() => handleCapabilityToggle(key)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
-                    form.capabilities.includes(key)
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-input hover:bg-accent hover:text-accent-foreground'
-                  }`}
+                  className="rounded-full"
                 >
                   {label}
-                </button>
+                </Button>
               ))}
+            </div>
+          </div>
+
+          <div className="space-y-4 rounded-lg border p-4">
+            <div>
+              <h3 className="text-sm font-medium">{t('ai.models.clientCatalog')}</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="displayName">{t('ai.models.displayName')}</Label>
+                <Input
+                  id="displayName"
+                  value={form.displayName}
+                  onChange={(e) => setForm({ ...form, displayName: e.target.value })}
+                  placeholder={t('ai.models.displayNamePlaceholder')}
+                  className="h-10"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="rank">{t('ai.models.rank')}</Label>
+                <Input
+                  id="rank"
+                  type="number"
+                  value={form.rank}
+                  onChange={(e) => setForm(prev => ({
+                    ...prev,
+                    rank: e.target.value,
+                  }))}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">{t('ai.models.rankHint')}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="costMultiplier">{t('ai.models.costMultiplier')}</Label>
+                <Input
+                  id="costMultiplier"
+                  type="number"
+                  step="0.1"
+                  value={form.costMultiplier}
+                  onChange={(e) => setForm(prev => ({
+                    ...prev,
+                    costMultiplier: e.target.value,
+                  }))}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">{t('ai.models.costMultiplierHint')}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="requiredPlanLevel">{t('ai.models.requiredPlanLevel')}</Label>
+                <Input
+                  id="requiredPlanLevel"
+                  type="number"
+                  value={form.requiredPlanLevel}
+                  onChange={(e) => setForm(prev => ({
+                    ...prev,
+                    requiredPlanLevel: e.target.value,
+                  }))}
+                  className="h-10"
+                />
+                <p className="text-xs text-muted-foreground">{t('ai.models.requiredPlanLevelHint')}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="isCatalogVisible"
+                type="checkbox"
+                checked={form.isCatalogVisible}
+                onChange={(e) => setForm({ ...form, isCatalogVisible: e.target.checked })}
+                className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              />
+              <Label htmlFor="isCatalogVisible">{t('ai.models.isCatalogVisible')}</Label>
+              <span className="text-xs text-muted-foreground">
+                {form.isCatalogVisible ? t('ai.models.visible') : t('ai.models.hidden')}
+              </span>
             </div>
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="description">{t('ai.models.description')}</Label>
-            <textarea
+            <Textarea
               id="description"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
-              className="w-full px-3 py-2 border border-input rounded-md text-sm min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+              className="resize-none"
               placeholder={t('ai.models.descriptionPlaceholder')}
             />
           </div>

@@ -16,14 +16,17 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '../ui/dialog';
 import { Provider } from '../../services/aiModelsApi';
 
+const MINIMAX_PLACEHOLDER_API_KEY = '123';
+
 const defaultProviderUrls: Record<string, string> = {
   openai: 'https://api.openai.com',
   anthropic: 'https://api.anthropic.com',
-  minimax: 'https://api.minimax.io',
+  minimax: 'https://api.minimaxi.com/anthropic',
   deepseek: 'https://api.deepseek.com',
   google: 'https://generativelanguage.googleapis.com',
   moonshot: 'https://api.moonshot.cn',
@@ -92,11 +95,8 @@ export function AddProviderDialog({
   React.useEffect(() => {
     if (selectedProvider) {
       const defaultUrl = defaultProviderUrls[selectedProvider.code];
-      if (defaultUrl) {
-        setEndpointUrl(defaultUrl);
-      } else {
-        setEndpointUrl('');
-      }
+      setEndpointUrl(defaultUrl || '');
+      setApiKey(selectedProvider.code === 'minimax' ? MINIMAX_PLACEHOLDER_API_KEY : '');
     }
   }, [selectedProvider]);
 
@@ -106,7 +106,7 @@ export function AddProviderDialog({
       providerId,
       keyName,
       apiKey,
-      endpointUrl: showEndpoint && endpointUrl ? endpointUrl : undefined,
+      endpointUrl: endpointUrl || undefined,
     });
   };
 
@@ -119,6 +119,7 @@ export function AddProviderDialog({
           <DialogTitle className="text-lg font-semibold">
             {t('ai.settings.addProvider')}
           </DialogTitle>
+          <DialogDescription>{t('ai.apiKeys.description')}</DialogDescription>
         </DialogHeader>
 
         <form

@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, HttpException, HttpStatus } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { DatabaseService } from '../database/database.service';
 import { EncryptionService } from './encryption.service';
 import { AiApiClient } from './api-client';
@@ -20,6 +21,19 @@ import {
   UpdateTeamQuotaDto,
 } from './dto/team-quota.dto';
 import { CreateUsageLogDto } from './dto/usage-log.dto';
+import {
+  buildCatalogProjection,
+  deactivateModelCatalogProjection,
+  upsertModelCatalogProjection,
+} from './model-catalog-projection';
+
+type SqlValue = string | number | boolean | null;
+
+interface CatalogProjectionDefaults {
+  rank?: number;
+  costMultiplier?: number;
+  requiredPlanLevel?: number;
+}
 
 @Injectable()
 export class AiModelsService implements OnModuleInit {
@@ -114,26 +128,36 @@ export class AiModelsService implements OnModuleInit {
   // ==================== MODEL CRUD ====================
 
   async createModel(data: CreateModelDto) {
-    const id = this.generateUUID();
-    const pricing = {
-      inputPricePer1m: data.inputPricePer1m || null,
-      outputPricePer1m: data.outputPricePer1m || null,
-    };
-    return this.db.queryOne(
-      `INSERT INTO ai_models (id, provider_id, name, model_id, description, capabilities, pricing, sort_order, enabled, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
-       RETURNING *`,
-      [
-        id,
-        data.providerId,
-        data.name,
-        data.modelId,
-        data.description || null,
-        data.capabilities ? JSON.stringify(data.capabilities) : JSON.stringify({ type: data.modelType, contextWindow: data.contextWindow }),
-        JSON.stringify(pricing),
-        data.sortOrder || 0,
-      ],
-    );
+    return this.db.transaction(async (client) => {
+      const id = this.generateUUID();
+      const pricing = {
+        inputPricePer1m: data.inputPricePer1m || null,
+        outputPricePer1m: data.outputPricePer1m || null,
+      };
+      const result = await client.query(
+        `INSERT INTO ai_models (id, provider_id, name, model_id, description, capabilities, pricing, sort_order, status, enabled, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', true, NOW(), NOW())
+         RETURNING *`,
+        [
+          id,
+          data.providerId,
+          data.name,
+          data.modelId,
+          data.description || null,
+          data.capabilities ? JSON.stringify(data.capabilities) : JSON.stringify({ type: data.modelType, contextWindow: data.contextWindow }),
+          JSON.stringify(pricing),
+          data.sortOrder || 0,
+        ],
+      );
+      const model = result.rows[0];
+
+      await upsertModelCatalogProjection(
+        client,
+        buildCatalogProjection(model, data),
+      );
+
+      return model;
+    });
   }
 
   async findModelsByProvider(providerId: string) {
@@ -179,63 +203,119 @@ export class AiModelsService implements OnModuleInit {
   }
 
   async updateModel(id: string, data: UpdateModelDto) {
-    const fields: string[] = [];
-    const values: any[] = [];
-    let paramCount = 1;
+    return this.db.transaction(async (client) => {
+      const existingResult = await client.query(
+        'SELECT * FROM ai_models WHERE id = $1',
+        [id],
+      );
+      const existingModel = existingResult.rows[0];
+      if (!existingModel) return null;
 
-    if (data.name !== undefined) {
-      fields.push(`name = $${paramCount++}`);
-      values.push(data.name);
-    }
-    if (data.description !== undefined) {
-      fields.push(`description = $${paramCount++}`);
-      values.push(data.description);
-    }
-    if (data.contextWindow !== undefined) {
-      fields.push(`context_window = $${paramCount++}`);
-      values.push(data.contextWindow);
-    }
-    if (data.inputPricePer1m !== undefined) {
-      fields.push(`input_price_per_1m = $${paramCount++}`);
-      values.push(data.inputPricePer1m);
-    }
-    if (data.outputPricePer1m !== undefined) {
-      fields.push(`output_price_per_1m = $${paramCount++}`);
-      values.push(data.outputPricePer1m);
-    }
-    if (data.sortOrder !== undefined) {
-      fields.push(`sort_order = $${paramCount++}`);
-      values.push(data.sortOrder);
-    }
-    if (data.capabilities !== undefined) {
-      fields.push(`capabilities = $${paramCount++}`);
-      values.push(JSON.stringify(data.capabilities));
-    }
-    if (data.metadata !== undefined) {
-      fields.push(`metadata = $${paramCount++}`);
-      values.push(JSON.stringify(data.metadata));
-    }
-    if (data.status !== undefined) {
-      fields.push(`status = $${paramCount++}`);
-      values.push(data.status);
-    }
+      const fields: string[] = [];
+      const values: SqlValue[] = [];
+      let paramCount = 1;
 
-    if (fields.length === 0) return this.findModelById(id);
+      if (data.name !== undefined) {
+        fields.push(`name = $${paramCount++}`);
+        values.push(data.name);
+      }
+      if (data.description !== undefined) {
+        fields.push(`description = $${paramCount++}`);
+        values.push(data.description);
+      }
+      if (data.contextWindow !== undefined) {
+        fields.push(`context_window = $${paramCount++}`);
+        values.push(data.contextWindow);
+      }
+      if (data.inputPricePer1m !== undefined) {
+        fields.push(`input_price_per_1m = $${paramCount++}`);
+        values.push(data.inputPricePer1m);
+      }
+      if (data.outputPricePer1m !== undefined) {
+        fields.push(`output_price_per_1m = $${paramCount++}`);
+        values.push(data.outputPricePer1m);
+      }
+      if (data.sortOrder !== undefined) {
+        fields.push(`sort_order = $${paramCount++}`);
+        values.push(data.sortOrder);
+      }
+      if (data.capabilities !== undefined) {
+        fields.push(`capabilities = $${paramCount++}`);
+        values.push(JSON.stringify(data.capabilities));
+      }
+      if (data.metadata !== undefined) {
+        fields.push(`metadata = $${paramCount++}`);
+        values.push(JSON.stringify(data.metadata));
+      }
+      if (data.status !== undefined) {
+        fields.push(`status = $${paramCount++}`);
+        values.push(data.status);
+      }
 
-    fields.push(`updated_at = NOW()`);
-    values.push(id);
+      const shouldSyncCatalog =
+        data.displayName !== undefined ||
+        data.rank !== undefined ||
+        data.costMultiplier !== undefined ||
+        data.requiredPlanLevel !== undefined ||
+        data.isCatalogVisible !== undefined;
 
-    const rows = await this.db.query(
-      `UPDATE ai_models SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-      values,
-    );
-    return rows[0];
+      if (fields.length === 0) {
+        if (shouldSyncCatalog) {
+          const catalogDefaults = await this.findCatalogProjectionDefaults(
+            client,
+            existingModel.model_id,
+          );
+
+          await upsertModelCatalogProjection(
+            client,
+            buildCatalogProjection(existingModel, data, catalogDefaults),
+          );
+        }
+
+        return existingModel;
+      }
+
+      fields.push(`updated_at = NOW()`);
+      values.push(id);
+
+      const result = await client.query(
+        `UPDATE ai_models SET ${fields.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+        values,
+      );
+      const updatedModel = result.rows[0];
+      const catalogDefaults = await this.findCatalogProjectionDefaults(
+        client,
+        updatedModel.model_id,
+      );
+
+      await upsertModelCatalogProjection(
+        client,
+        buildCatalogProjection(updatedModel, data, catalogDefaults),
+      );
+
+      return updatedModel;
+    });
   }
 
   async deleteModel(id: string) {
-    return this.db.queryOne('DELETE FROM ai_models WHERE id = $1 RETURNING *', [
-      id,
-    ]);
+    return this.db.transaction(async (client) => {
+      const existingResult = await client.query(
+        'SELECT * FROM ai_models WHERE id = $1',
+        [id],
+      );
+      const existingModel = existingResult.rows[0];
+      if (!existingModel) return null;
+
+      const result = await client.query(
+        `UPDATE ai_models SET status = 'inactive', enabled = false, updated_at = NOW() WHERE id = $1 RETURNING *`,
+        [id],
+      );
+      const deactivatedModel = result.rows[0];
+
+      await deactivateModelCatalogProjection(client, existingModel.model_id);
+
+      return deactivatedModel;
+    });
   }
 
   // ==================== FETCH MODELS FROM PROVIDER ====================
@@ -243,7 +323,7 @@ export class AiModelsService implements OnModuleInit {
   private readonly defaultProviderUrls: Record<string, string> = {
     openai: 'https://api.openai.com',
     anthropic: 'https://api.anthropic.com',
-    minimax: 'https://api.minimax.chat',
+    minimax: 'https://api.minimaxi.com/anthropic',
     deepseek: 'https://api.deepseek.com',
     google: 'https://generativelanguage.googleapis.com',
     moonshot: 'https://api.moonshot.cn',
@@ -1022,6 +1102,25 @@ export class AiModelsService implements OnModuleInit {
 
   // ==================== HELPERS ====================
 
+  private async findCatalogProjectionDefaults(
+    client: PoolClient,
+    modelName: string,
+  ): Promise<CatalogProjectionDefaults> {
+    const result = await client.query(
+      `SELECT rank, cost_multiplier, required_plan_level FROM model_catalog WHERE model_name = $1`,
+      [modelName],
+    );
+    const existingCatalog = result.rows[0];
+
+    if (!existingCatalog) return {};
+
+    return {
+      rank: existingCatalog.rank,
+      costMultiplier: existingCatalog.cost_multiplier,
+      requiredPlanLevel: existingCatalog.required_plan_level,
+    };
+  }
+
   async onModuleInit() {
     try {
       await seedAiModels(this.db, this.encryption);
@@ -1029,6 +1128,7 @@ export class AiModelsService implements OnModuleInit {
       console.error('Failed to seed AI models:', error);
     }
   }
+
 
   private generateUUID(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {

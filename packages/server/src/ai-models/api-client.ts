@@ -51,6 +51,11 @@ function providerEndpoint(baseUrl: string, path: string): string {
   return `${normalizeTrustedModelProviderBaseUrl(baseUrl)}${path}`;
 }
 
+function isMiniMaxAnthropicBaseUrl(baseUrl: string): boolean {
+  const url = new URL(normalizeTrustedModelProviderBaseUrl(baseUrl));
+  return url.hostname === 'api.minimaxi.com' && url.pathname.startsWith('/anthropic');
+}
+
 @Injectable()
 export class AiApiClient {
   constructor(private readonly httpService: HttpService) {}
@@ -59,9 +64,9 @@ export class AiApiClient {
     const url = providerEndpoint(baseUrl, '/v1/models');
     const response = await firstValueFrom(
       this.httpService.get(url, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
+        headers: isMiniMaxAnthropicBaseUrl(baseUrl)
+          ? { 'X-Api-Key': apiKey }
+          : { Authorization: `Bearer ${apiKey}` },
         maxRedirects: 0,
         timeout,
       }),

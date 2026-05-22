@@ -32,17 +32,17 @@ describe('AiApiClient', () => {
     );
   });
 
-  it('preserves trusted provider base paths', async () => {
-    httpService.get = jest.fn().mockReturnValue(of({ data: { data: [{ id: 'abab6.5s-chat' }] } })) as any;
+  it('uses MiniMax Anthropic-compatible model listing auth for trusted base paths', async () => {
+    httpService.get = jest.fn().mockReturnValue(of({ data: { data: [{ id: 'MiniMax-M2.7' }] } })) as any;
 
     await expect(client.fetchModels('https://api.minimaxi.com/anthropic', 'secret')).resolves.toEqual({
-      data: [{ id: 'abab6.5s-chat' }],
+      data: [{ id: 'MiniMax-M2.7' }],
     });
 
     expect(httpService.get).toHaveBeenCalledWith(
       'https://api.minimaxi.com/anthropic/v1/models',
       expect.objectContaining({
-        headers: { Authorization: 'Bearer secret' },
+        headers: { 'X-Api-Key': 'secret' },
         maxRedirects: 0,
       }),
     );

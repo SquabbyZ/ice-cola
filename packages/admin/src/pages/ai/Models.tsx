@@ -5,6 +5,7 @@ import { useModels, useProviders, useCreateModel, useUpdateModel, useDeleteModel
 import { useAuthStore } from '../../stores/authStore';
 import { ModelDialog } from '../../components/ai/ModelDialog';
 import { Button } from '../../components/ui/button';
+import { Badge } from '../../components/ui/badge';
 import { Spinner } from '../../components/ui/spinner';
 import {
   Table,
@@ -29,7 +30,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog';
-import { CreateModelDto, UpdateModelDto } from '../../services/aiModelsApi';
+import { CreateModelDto, Model, UpdateModelDto } from '../../services/aiModelsApi';
+
+const MODEL_TYPE_LABEL_KEYS: Record<string, string> = {
+  chat: 'ai.models.typeChat',
+  vision: 'ai.models.typeVision',
+  embedding: 'ai.models.typeEmbedding',
+  text: 'ai.models.typeText',
+};
+
+const CAPABILITY_LABEL_KEYS: Record<string, string> = {
+  chat: 'ai.models.capChat',
+  vision: 'ai.models.capVision',
+  function_calling: 'ai.models.capFunctionCalling',
+  json_mode: 'ai.models.capJsonMode',
+  streaming: 'ai.models.capStreaming',
+};
 
 export default function Models() {
   const { t } = useTranslation();
@@ -42,7 +58,7 @@ export default function Models() {
   const canEdit = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
 
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editData, setEditData] = React.useState<UpdateModelDto & { id?: string; providerId?: string } | undefined>();
+  const [editData, setEditData] = React.useState<Model | undefined>();
   const [expandedRows, setExpandedRows] = React.useState<Set<string>>(new Set());
   const [filterProvider, setFilterProvider] = React.useState<string>('');
   const [filterType, setFilterType] = React.useState<string>('');
@@ -68,7 +84,7 @@ export default function Models() {
     }
   };
 
-  const handleEdit = (model: any) => {
+  const handleEdit = (model: Model) => {
     setEditData(model);
     setDialogOpen(true);
   };
@@ -95,13 +111,15 @@ export default function Models() {
   };
 
   const toggleRow = (id: string) => {
-    const newExpanded = new Set(expandedRows);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
-    }
-    setExpandedRows(newExpanded);
+    setExpandedRows((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const formatPrice = (price?: number) => {
@@ -115,6 +133,22 @@ export default function Models() {
     if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`;
     return tokens.toString();
   };
+
+  const formatCostMultiplier = (costMultiplier?: number) => (
+    `${costMultiplier ?? 1}x`
+  );
+
+  const formatPlanLevel = (requiredPlanLevel?: number) => (
+    `L${requiredPlanLevel ?? 0}`
+  );
+
+  const getModelTypeLabelKey = (modelType: string) => (
+    MODEL_TYPE_LABEL_KEYS[modelType] || MODEL_TYPE_LABEL_KEYS.chat
+  );
+
+  const getCapabilityLabel = (capability: string) => (
+    t(CAPABILITY_LABEL_KEYS[capability] || capability)
+  );
 
   if (isLoading) {
     return (
@@ -173,18 +207,22 @@ export default function Models() {
               <TableHead>{t('ai.models.name')}</TableHead>
               <TableHead>{t('ai.models.modelId')}</TableHead>
               <TableHead>{t('ai.models.type')}</TableHead>
+              <TableHead>{t('ai.models.displayName')}</TableHead>
               <TableHead>{t('ai.models.contextWindow')}</TableHead>
               <TableHead>{t('ai.models.price')}</TableHead>
+              <TableHead>{t('ai.models.costMultiplier')}</TableHead>
+              <TableHead>{t('ai.models.requiredPlanLevel')}</TableHead>
+              <TableHead>{t('ai.models.isCatalogVisible')}</TableHead>
               <TableHead className="text-right">{t('ai.models.actions')}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredModels?.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={11} className="px-4 py-8 text-center text-muted-foreground">
                   {t('ai.models.noModels')}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               filteredModels?.map((model) => (
                 <React.Fragment key={model.id}>
@@ -194,6 +232,7 @@ export default function Models() {
                         variant="ghost"
                         size="icon"
                         className="h-6 w-6"
+                        aria-label={expandedRows.has(model.id) ? `${t('ai.models.collapse')} ${model.name}` : `${t('ai.models.expand')} ${model.name}`}
                         onClick={() => toggleRow(model.id)}
                       >
                         {expandedRows.has(model.id) ? (
@@ -208,10 +247,11 @@ export default function Models() {
                       <code className="text-sm bg-muted px-2 py-1 rounded">{model.modelId || '-'}</code>
                     </TableCell>
                     <TableCell>
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">
-                        {t(`ai.models.type${model.modelType.charAt(0).toUpperCase() + model.modelType.slice(1)}` as any)}
-                      </span>
+                      <Badge variant="info">
+                        {t(getModelTypeLabelKey(model.modelType))}
+                      </Badge>
                     </TableCell>
+                    <TableCell>{model.displayName || '-'}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {formatContextWindow(model.contextWindow)}
                     </TableCell>
@@ -221,6 +261,15 @@ export default function Models() {
                         <br />
                         <span className="text-muted-foreground">{t('ai.models.outputPriceShort')} {formatPrice(model.outputPricePer1m)}</span>
                       </div>
+                    </TableCell>
+                    <TableCell>{formatCostMultiplier(model.costMultiplier)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary">{formatPlanLevel(model.requiredPlanLevel)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={model.isCatalogVisible === false ? 'secondary' : 'success'}>
+                        {model.isCatalogVisible === false ? t('ai.models.hidden') : t('ai.models.visible')}
+                      </Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       {canEdit && (
@@ -248,7 +297,7 @@ export default function Models() {
                   </TableRow>
                   {expandedRows.has(model.id) && (
                     <TableRow>
-                      <td colSpan={7} className="px-4 py-3">
+                      <TableCell colSpan={11} className="px-4 py-3">
                         <div className="space-y-2 text-sm">
                           {model.providerName && (
                             <p><span className="font-medium">{t('ai.models.provider')}:</span> {model.providerName}</p>
@@ -257,19 +306,19 @@ export default function Models() {
                             <p><span className="font-medium">{t('ai.models.description')}:</span> {model.description}</p>
                           )}
                           {model.capabilities && model.capabilities.length > 0 && (
-                            <p>
+                            <div>
                               <span className="font-medium">{t('ai.models.capabilities')}:</span>
                               <div className="flex flex-wrap gap-1 mt-1">
-                                {model.capabilities.map((cap: string) => (
-                                  <span key={cap} className="px-2 py-0.5 bg-muted rounded text-xs">
-                                    {t(`ai.models.cap${cap.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join('')}` as any) || cap}
-                                  </span>
+                                {model.capabilities.map((capability: string) => (
+                                  <Badge key={capability} variant="secondary">
+                                    {getCapabilityLabel(capability)}
+                                  </Badge>
                                 ))}
                               </div>
-                            </p>
+                            </div>
                           )}
                         </div>
-                      </td>
+                      </TableCell>
                     </TableRow>
                   )}
                 </React.Fragment>
@@ -282,7 +331,13 @@ export default function Models() {
       <ModelDialog
         open={dialogOpen}
         onClose={handleDialogClose}
-        onSubmit={editData?.id ? handleUpdate as any : handleCreate as any}
+        onSubmit={(data) => {
+          if (editData?.id) {
+            handleUpdate(data as UpdateModelDto);
+            return;
+          }
+          handleCreate(data as CreateModelDto);
+        }}
         initialData={editData}
         providers={providers?.map(p => ({ id: p.id, name: p.name })) || []}
         isLoading={createModel.isPending || updateModel.isPending}
