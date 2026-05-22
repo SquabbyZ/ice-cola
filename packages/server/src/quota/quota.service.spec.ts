@@ -358,15 +358,166 @@ describe('QuotaService', () => {
       });
     });
 
-    it('rejects a code already used by the team', async () => {
+    it('rejects a code already used by any team', async () => {
       transactionClient.query
         .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [{ id: 'code-1', lingqi_amount: '1000', plan_id: null, max_uses: 5, used_count: 1, expires_at: null }] })
         .mockResolvedValueOnce({ rows: [{ id: 'redemption-1' }] });
 
       await expect(service.redeemLingqiCode('team-1', 'user-1', 'TEST_REDEMPTION_CODE')).rejects.toMatchObject({
-        code: 'LINGQI_REDEMPTION_CODE_ALREADY_USED',
+        code: 'LINGQI_REDEMPTION_CODE_EXHAUSTED',
       });
+    });
+
+    it('creates an Admin redemption code without storing plaintext', async () => {
+      const createdAt = new Date('2026-05-21T00:00:00.000Z');
+      db.queryOne.mockResolvedValueOnce(null);
+      db.query.mockResolvedValueOnce([
+        {
+          id: 'code-1',
+          lingqi_amount: '1200',
+          plan_id: null,
+          max_uses: 1,
+          used_count: 0,
+          expires_at: new Date('2026-06-01T00:00:00.000Z'),
+          is_active: true,
+          code_preview: 'ABCD...WXYZ',
+          created_by_user_id: 'admin-1',
+          note: 'unit test grant',
+          disabled_at: null,
+          disabled_by_user_id: null,
+          disabled_reason: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        },
+      ]);
+
+      const result = await service.createAdminRedemptionCode('admin-1', {
+        type: 'lingqi_only',
+        lingqiAmount: 1200,
+        expiresAt: '2026-06-01T00:00:00.000Z',
+        note: 'unit test grant',
+      });
+
+      expect(result.code).toMatch(/^[A-Z0-9_-]{24}$/);
+      expect(result.codePreview).toBe('ABCD...WXYZ');
+      expect(result.lingqiAmount).toBe(1200);
+      expect(result.maxUses).toBe(1);
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('INSERT INTO redemption_codes'),
+        expect.not.arrayContaining([result.code]),
+      );
+    });
+
+    it('requires a plan id when creating a plan with Lingqi redemption code', async () => {
+      await expect(service.createAdminRedemptionCode('admin-1', {
+        type: 'plan_with_lingqi',
+        lingqiAmount: 1000,
+      })).rejects.toMatchObject({ code: 'LINGQI_REDEMPTION_PLAN_REQUIRED' });
+
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid Admin redemption code type before insert', async () => {
+      await expect(service.createAdminRedemptionCode('admin-1', {
+        type: 'unknown' as 'lingqi_only',
+        lingqiAmount: 1000,
+      })).rejects.toMatchObject({ code: 'LINGQI_REDEMPTION_TYPE_INVALID' });
+
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid Admin redemption code expiration before insert', async () => {
+      await expect(service.createAdminRedemptionCode('admin-1', {
+        type: 'lingqi_only',
+        lingqiAmount: 1000,
+        expiresAt: 'not-a-date',
+      })).rejects.toMatchObject({ code: 'LINGQI_REDEMPTION_EXPIRES_AT_INVALID' });
+
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('rejects unknown plan ids before creating plan with Lingqi redemption code', async () => {
+      db.queryOne.mockResolvedValueOnce(null);
+
+      await expect(service.createAdminRedemptionCode('admin-1', {
+        type: 'plan_with_lingqi',
+        lingqiAmount: 1000,
+        planId: 'plan-1',
+      })).rejects.toMatchObject({ code: 'LINGQI_REDEMPTION_PLAN_INVALID' });
+
+      expect(db.query).not.toHaveBeenCalled();
+    });
+
+    it('lists Admin redemption codes with derived disabled status', async () => {
+      const createdAt = new Date('2026-05-21T00:00:00.000Z');
+      db.query.mockResolvedValueOnce([
+        {
+          id: 'code-1',
+          lingqi_amount: '500',
+          plan_id: null,
+          max_uses: 1,
+          used_count: 0,
+          expires_at: null,
+          is_active: false,
+          code_preview: 'ABCD...WXYZ',
+          created_by_user_id: 'admin-1',
+          note: null,
+          disabled_at: createdAt,
+          disabled_by_user_id: 'admin-1',
+          disabled_reason: 'mistake',
+          redeemed_team_id: null,
+          redeemed_user_id: null,
+          redeemed_at: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+          total_count: '1',
+        },
+      ]);
+
+      const result = await service.listAdminRedemptionCodes('admin-1', { status: 'disabled' });
+
+      expect(result.total).toBe(1);
+      expect(result.items[0]).toMatchObject({
+        id: 'code-1',
+        status: 'disabled',
+        codePreview: 'ABCD...WXYZ',
+      });
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('rc.created_by_user_id = $1'), ['admin-1', 50, 0]);
+    });
+
+    it('returns Admin ledger entries for redemption grants', async () => {
+      const createdAt = new Date('2026-05-21T00:00:00.000Z');
+      db.query.mockResolvedValueOnce([
+        {
+          id: 'ledger-1',
+          team_id: 'team-1',
+          user_id: 'user-1',
+          direction: 'grant',
+          amount: '700',
+          transaction_type: 'redemption_code',
+          source_type: 'redemption_code',
+          source_id: 'code-1',
+          description: '灵气兑换码充值',
+          metadata: { codeId: 'code-1' },
+          created_at: createdAt,
+          total_count: '1',
+        },
+      ]);
+
+      const ledger = await service.listAdminLingqiLedgerEntries('team-1', {
+        transactionType: 'redemption_code',
+      });
+
+      expect(ledger.total).toBe(1);
+      expect(ledger.items[0]).toMatchObject({
+        teamId: 'team-1',
+        userId: 'user-1',
+        direction: 'grant',
+        amount: 700,
+        transactionType: 'redemption_code',
+      });
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('team_id = $1'), ['team-1', 'redemption_code', 50, 0]);
     });
 
     it('estimates chat message cost from selected model and subscription discount', async () => {

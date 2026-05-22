@@ -1,4 +1,8 @@
-import { Lock, Sparkles } from 'lucide-react';
+import type React from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Check, ChevronDown, Lock, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { LingqiModel } from '@/services/lingqi-service';
 
 interface LingqiModelSelectorProps {
@@ -7,65 +11,151 @@ interface LingqiModelSelectorProps {
   onSelect: (modelId: string) => void;
 }
 
-function getModelAvailabilityText(model: LingqiModel): string {
-  return model.isAvailable ? '可启用' : '需更高套餐';
-}
-
 export function LingqiModelSelector({
   models,
   selectedModelId,
   onSelect,
 }: LingqiModelSelectorProps) {
-  if (models.length === 0) {
-    return (
-      <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3 text-sm text-stone-500">
-        暂无可用模型，请稍后刷新灵气阁。
-      </div>
-    );
-  }
+  const { t } = useTranslation();
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const selectedModel = models.find((model) => model.id === selectedModelId);
+  const enabledOptionIndexes = models.flatMap((model, index) => (model.isAvailable ? [index] : []));
+  const listboxId = useId();
+
+  const focusOption = (optionIndex: number) => {
+    optionRefs.current[optionIndex]?.focus();
+  };
+
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (enabledOptionIndexes.length === 0) return;
+    const currentOptionIndex = optionRefs.current.findIndex((option) => option === document.activeElement);
+    const currentEnabledIndex = Math.max(0, enabledOptionIndexes.indexOf(currentOptionIndex));
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusOption(enabledOptionIndexes[(currentEnabledIndex + 1) % enabledOptionIndexes.length]);
+    }
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusOption(enabledOptionIndexes[(currentEnabledIndex - 1 + enabledOptionIndexes.length) % enabledOptionIndexes.length]);
+    }
+    if (event.key === 'Home') {
+      event.preventDefault();
+      focusOption(enabledOptionIndexes[0]);
+    }
+    if (event.key === 'End') {
+      event.preventDefault();
+      focusOption(enabledOptionIndexes[enabledOptionIndexes.length - 1]);
+    }
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') return;
+      setIsOpen(false);
+      triggerRef.current?.focus();
+    }
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
 
   return (
-    <div role="radiogroup" aria-label="选择灵气模型" className="grid gap-2">
-      {models.map((model) => {
-        const isSelected = model.id === selectedModelId;
-        return (
-          <button
-            key={model.id}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            disabled={!model.isAvailable}
-            onClick={() => onSelect(model.id)}
-            className={`group rounded-2xl border px-4 py-3 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 ${
-              isSelected
-                ? 'border-amber-300 bg-gradient-to-br from-amber-50 via-white to-teal-50 shadow-md shadow-amber-100/70'
-                : 'border-stone-200/70 bg-white/70 hover:-translate-y-0.5 hover:border-teal-200 hover:bg-amber-50/50 hover:shadow-sm'
-            }`}
-          >
-            <span className="flex items-start justify-between gap-3">
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 text-sm font-semibold text-stone-900">
-                  <Sparkles className="h-4 w-4 text-amber-600" />
-                  {model.displayName}
-                </span>
-                <span className="mt-1 block truncate text-xs text-stone-500">{model.modelName}</span>
-              </span>
-              <span
-                className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium ${
-                  model.isAvailable ? 'bg-teal-50 text-teal-700' : 'bg-stone-100 text-stone-500'
-                }`}
-              >
-                {!model.isAvailable && <Lock className="h-3 w-3" />}
-                {getModelAvailabilityText(model)}
-              </span>
-            </span>
-            <span className="mt-2 flex items-center justify-between text-xs text-stone-500">
-              <span>阶位 Rank {model.rank}</span>
-              <span>消耗倍率 ×{model.costMultiplier}</span>
-            </span>
-          </button>
-        );
-      })}
+    <div className="relative" ref={dropdownRef}>
+      <Button
+        ref={triggerRef}
+        type="button"
+        variant="outline"
+        aria-controls={listboxId}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
+        className={`min-w-[180px] gap-2 transition-all duration-200 ${
+          isOpen ? 'border-amber-300 bg-amber-50/80 shadow-md' : 'border-zinc-200/60 hover:border-amber-200'
+        }`}
+        onClick={() => setIsOpen((open) => !open)}
+        onKeyDown={(event) => {
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+          event.preventDefault();
+          setIsOpen(true);
+          window.requestAnimationFrame(() => {
+            focusOption(enabledOptionIndexes[0]);
+          });
+        }}
+      >
+        <Sparkles className="h-4 w-4 text-amber-600" />
+        <span className={`flex-1 truncate text-sm ${selectedModel ? 'font-medium text-zinc-700' : 'text-zinc-500'}`}>
+          {selectedModel?.displayName || t('chat.lingqiModel.select')}
+        </span>
+        <ChevronDown className={`h-4 w-4 text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </Button>
+
+      {isOpen && (
+        <div className="absolute bottom-full left-0 z-50 mb-2 flex max-h-[320px] w-72 flex-col overflow-hidden rounded-xl border border-zinc-200/50 bg-white/95 shadow-xl shadow-zinc-200/30 backdrop-blur-xl animate-fade-in-up">
+          <div className="border-b border-zinc-100/50 bg-gradient-to-r from-amber-50/80 via-zinc-50/50 to-emerald-50/80 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t('chat.lingqiModel.title')}</p>
+          </div>
+
+          <div id={listboxId} aria-label={t('chat.lingqiModel.title')} className="overflow-y-auto py-1" role="menu" onKeyDown={handleMenuKeyDown}>
+            {models.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <Sparkles className="mx-auto mb-2 h-8 w-8 text-zinc-300" />
+                <p className="text-sm text-zinc-400">{t('chat.lingqiModel.empty')}</p>
+              </div>
+            ) : (
+              models.map((model, index) => {
+                const isSelected = model.id === selectedModelId;
+                return (
+                  <button
+                    key={model.id}
+                    ref={(element) => {
+                      optionRefs.current[index] = element;
+                    }}
+                    type="button"
+                    aria-checked={isSelected}
+                    disabled={!model.isAvailable}
+                    role="menuitemradio"
+                    className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-amber-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      isSelected ? 'bg-amber-50/70' : ''
+                    }`}
+                    onClick={() => {
+                      onSelect(model.id);
+                      setIsOpen(false);
+                      triggerRef.current?.focus();
+                    }}
+                  >
+                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 shadow-sm">
+                      {model.isAvailable ? <Sparkles className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-zinc-800">{model.displayName}</p>
+                      <p className="truncate text-xs text-zinc-400">
+                        {model.modelName} · {t('chat.lingqiModel.rank', { rank: model.rank })} · {t('chat.lingqiModel.costMultiplier', { multiplier: model.costMultiplier })}
+                      </p>
+                    </div>
+                    {isSelected && <Check className="h-4 w-4 flex-shrink-0 text-primary" />}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

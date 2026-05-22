@@ -53,7 +53,15 @@ describe('JwtAuthGuard', () => {
       email: 'user@example.com',
       teamId: 'team-1',
       role: 'OWNER',
+      authType: 'user',
     });
+  });
+
+  it('rejects admin access tokens for user protected routes', async () => {
+    jwtService.verify.mockReturnValue({ sub: 'admin-1', type: 'admin_access' } as any);
+
+    await expect(guard.canActivate(createContext())).resolves.toBe(false);
+    expect(db.findUserById).not.toHaveBeenCalled();
   });
 
   it('rejects refresh tokens for protected routes', async () => {

@@ -1,0 +1,92 @@
+<h2>问道页重设计方向</h2>
+<p class="subtitle">请选择一个主方向。三个方向都会包含：shadcn/ui 组件规范化、输入框默认 1 行/最多 3 行/发送后回到 1 行、admin + client 国际化清理。</p>
+
+<div class="cards">
+  <div class="card" data-choice="a-focus-chat" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:260px;border-radius:18px;background:linear-gradient(135deg,#f8fafc,#ecfdf5);border:1px solid #d1fae5;padding:14px;display:grid;grid-template-columns:180px 1fr;gap:12px;font-family:Inter,system-ui,sans-serif;">
+        <div style="border-radius:14px;background:rgba(255,255,255,.82);border:1px solid #e4e4e7;padding:12px;display:flex;flex-direction:column;gap:8px;">
+          <div style="height:28px;border-radius:10px;background:#10b981;color:white;font-size:12px;display:flex;align-items:center;justify-content:center;">新开问道</div>
+          <div style="height:12px;border-radius:6px;background:#e4e4e7;width:80%;"></div>
+          <div style="height:12px;border-radius:6px;background:#f4f4f5;width:65%;"></div>
+          <div style="height:12px;border-radius:6px;background:#f4f4f5;width:72%;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;min-width:0;">
+          <div style="height:42px;border-radius:14px;background:rgba(255,255,255,.75);border:1px solid #e4e4e7;display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;color:#18181b;">问道 · Hermes ready</div>
+          <div style="flex:1;border-radius:18px;background:white;border:1px solid #e4e4e7;padding:14px;display:flex;flex-direction:column;gap:10px;">
+            <div style="align-self:flex-end;max-width:70%;border-radius:18px 18px 4px 18px;background:#10b981;color:white;padding:10px 12px;font-size:12px;">帮我分析这个问题...</div>
+            <div style="max-width:82%;border-radius:18px 18px 18px 4px;background:#f4f4f5;color:#27272a;padding:10px 12px;font-size:12px;">我会分步骤处理，并展示工具调用...</div>
+          </div>
+          <div style="border-radius:18px;background:white;border:1px solid #d4d4d8;padding:10px;box-shadow:0 12px 30px rgba(15,23,42,.08);">
+            <div style="height:26px;border-radius:10px;background:#fafafa;border:1px solid #f4f4f5;color:#a1a1aa;font-size:12px;display:flex;align-items:center;padding:0 10px;">输入消息...（1 行，最多 3 行）</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Chat-first 聚焦体验（推荐）</h3>
+      <p>最大化对话区域，把模型/专家/MCP 压缩为输入框上方的轻量工具条。适合“问道页要尽可能多的对话部分”。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="b-command-center" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:260px;border-radius:18px;background:linear-gradient(135deg,#fff7ed,#fefce8);border:1px solid #fed7aa;padding:14px;display:grid;grid-template-rows:auto 1fr auto;gap:12px;font-family:Inter,system-ui,sans-serif;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div style="height:44px;border-radius:14px;background:white;border:1px solid #fed7aa;padding:8px;font-size:11px;color:#92400e;">模型选择</div>
+          <div style="height:44px;border-radius:14px;background:white;border:1px solid #fed7aa;padding:8px;font-size:11px;color:#92400e;">灵气预估</div>
+          <div style="height:44px;border-radius:14px;background:white;border:1px solid #fed7aa;padding:8px;font-size:11px;color:#92400e;">MCP / 宗主</div>
+        </div>
+        <div style="border-radius:18px;background:white;border:1px solid #fed7aa;padding:14px;display:flex;flex-direction:column;gap:10px;">
+          <div style="width:66%;height:32px;border-radius:16px;background:#f4f4f5;"></div>
+          <div style="align-self:flex-end;width:58%;height:32px;border-radius:16px;background:#f59e0b;"></div>
+          <div style="width:78%;height:32px;border-radius:16px;background:#f4f4f5;"></div>
+        </div>
+        <div style="height:48px;border-radius:16px;background:white;border:1px solid #fed7aa;box-shadow:0 12px 30px rgba(146,64,14,.08);"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Command Center 控制台</h3>
+      <p>顶部保留模型、灵气、MCP、宗主控制卡片，功能显性更强，但会牺牲一部分对话纵向空间。</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="c-minimal-pro" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:260px;border-radius:18px;background:#09090b;border:1px solid #27272a;padding:14px;display:grid;grid-template-columns:1fr;gap:12px;font-family:Inter,system-ui,sans-serif;color:white;">
+        <div style="height:42px;border-radius:14px;background:#18181b;border:1px solid #27272a;display:flex;align-items:center;padding:0 12px;font-size:13px;font-weight:700;">问道</div>
+        <div style="border-radius:18px;background:#111113;border:1px solid #27272a;padding:14px;display:flex;flex-direction:column;gap:10px;">
+          <div style="width:72%;height:34px;border-radius:17px;background:#27272a;"></div>
+          <div style="align-self:flex-end;width:54%;height:34px;border-radius:17px;background:#22c55e;"></div>
+          <div style="width:80%;height:34px;border-radius:17px;background:#27272a;"></div>
+          <div style="align-self:center;margin-top:auto;font-size:11px;color:#71717a;">工具与灵气信息折叠在输入栏</div>
+        </div>
+        <div style="height:52px;border-radius:18px;background:#18181b;border:1px solid #3f3f46;box-shadow:0 12px 30px rgba(0,0,0,.2);"></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Minimal Pro 极简沉浸</h3>
+      <p>视觉更高级，对话区最大，但需要重新统一暗色/浅色与现有“西瓜/灵气”品牌风格，改动更大。</p>
+    </div>
+  </div>
+</div>
+
+<div class="pros-cons">
+  <div class="pros">
+    <h4>共通整改</h4>
+    <ul>
+      <li>建立 admin/client 组件自检清单</li>
+      <li>优先替换原生 button/input/select/textarea/table 为本地 shadcn/ui</li>
+      <li>补齐缺失 ui 组件：textarea/select/table/dialog 等按需同步</li>
+      <li>抽出硬编码中文/英文到 zh/en locale</li>
+    </ul>
+  </div>
+  <div class="cons">
+    <h4>注意</h4>
+    <ul>
+      <li>全量一起会触及较多文件</li>
+      <li>Chat.tsx 当前已较大，可能需要拆组件以满足 500 行规则</li>
+      <li>需要最后跑 admin/client 单测、build 和 Playwright MCP 报告</li>
+    </ul>
+  </div>
+</div>

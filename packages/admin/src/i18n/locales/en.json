@@ -21,7 +21,9 @@
     "profile": "Profile",
     "admin": "Admin",
     "marketplace": "Marketplace",
-    "approvalCenter": "Approval Center"
+    "approvalCenter": "Approval Center",
+    "redemptionCodes": "Redemption Codes",
+    "lingqiLedger": "Lingqi Ledger"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -495,6 +497,156 @@
     "rejectReasonPlaceholder": "Enter rejection reason...",
     "confirmReject": "Reject",
     "rejecting": "Rejecting..."
+  },
+  "redemptionCodes": {
+    "title": "Redemption Codes",
+    "subtitle": "Generate one-time Lingqi redemption codes and track redemption status.",
+    "refresh": "Refresh",
+    "create": "Generate Redemption Code",
+    "recordsTitle": "Redemption Code Records",
+    "recordsDescription": "The full plaintext code is shown only once after generation; later pages keep only the preview.",
+    "statusPlaceholder": "Status",
+    "allStatuses": "All statuses",
+    "empty": "No redemption code records yet",
+    "viewDetails": "View details",
+    "disable": "Disable",
+    "pagination": "{{range}} of {{total}} items",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "table": {
+      "preview": "Preview",
+      "type": "Type",
+      "lingqi": "Lingqi",
+      "status": "Status",
+      "redeemedTeam": "Redeemed Team",
+      "expiresAt": "Expires At",
+      "createdAt": "Created At",
+      "actions": "Actions"
+    },
+    "type": {
+      "lingqiOnly": "Lingqi only",
+      "planWithLingqi": "Plan + Lingqi"
+    },
+    "status": {
+      "active": "Redeemable",
+      "redeemed": "Redeemed",
+      "expired": "Expired",
+      "disabled": "Disabled"
+    },
+    "validation": {
+      "lingqiPositiveInteger": "Lingqi amount must be a positive integer",
+      "planRequired": "Plan redemption codes require a plan ID",
+      "invalidExpiresAt": "Invalid expiration time"
+    },
+    "errors": {
+      "loadFailed": "Failed to load redemption codes",
+      "createFailed": "Failed to create redemption code",
+      "copyFailed": "Copy failed. Please copy the redemption code manually.",
+      "disableFailed": "Failed to disable redemption code"
+    },
+    "createDialog": {
+      "title": "Generate Redemption Code",
+      "description": "Copy the full redemption code immediately after generation. It will not be shown again.",
+      "type": "Redemption code type",
+      "planId": "Plan ID",
+      "lingqiAmount": "Lingqi amount",
+      "expiresAt": "Expiration time",
+      "note": "Note",
+      "notePlaceholder": "For operations and issue tracking",
+      "cancel": "Cancel",
+      "generate": "Generate"
+    },
+    "createdDialog": {
+      "title": "Redemption Code Generated",
+      "description": "The full redemption code is shown only this time. Copy it and send it securely to the target user.",
+      "preview": "Preview",
+      "lingqi": "Lingqi",
+      "close": "Close",
+      "copy": "Copy full redemption code",
+      "copied": "Copied"
+    },
+    "disableDialog": {
+      "title": "Disable Redemption Code",
+      "description": "After disabling, this redemption code can no longer be redeemed.",
+      "reason": "Disable reason",
+      "reasonPlaceholder": "Optional",
+      "confirm": "Confirm disable"
+    }
+  },
+  "redemptionCodeDetail": {
+    "title": "Redemption Code Details",
+    "subtitle": "View redemption code status, redemption ownership, and audit information.",
+    "backToList": "Back to list",
+    "notFound": "Redemption code not found",
+    "basicTitle": "Basic Information",
+    "basicDescription": "Plaintext is shown only at generation time; this page keeps only a safe preview.",
+    "redemptionTitle": "Redemption Information",
+    "redemptionDescription": "Used to locate user top-ups and billing issues.",
+    "disabledTitle": "Disable Information",
+    "disabledDescription": "Records the reason for manual operations-side disabling.",
+    "noteTitle": "Note",
+    "emptyNote": "No note",
+    "fields": {
+      "preview": "Preview",
+      "status": "Status",
+      "type": "Type",
+      "lingqiAmount": "Lingqi amount",
+      "planId": "Plan ID",
+      "usage": "Usage count",
+      "expiresAt": "Expires At",
+      "createdAt": "Created At",
+      "updatedAt": "Updated At",
+      "createdBy": "Created by admin",
+      "redeemedTeam": "Redeemed Team",
+      "redeemedUser": "Redeemed User",
+      "redeemedAt": "Redeemed At",
+      "disabledAt": "Disabled At",
+      "disabledBy": "Disabled by admin",
+      "disabledReason": "Disable reason"
+    }
+  },
+  "lingqiLedger": {
+    "title": "Lingqi Ledger",
+    "subtitle": "Track redemption, model calls, and charge records for cost accounting and consumption troubleshooting.",
+    "refresh": "Refresh",
+    "filtersTitle": "Filters",
+    "filtersDescription": "Locate ledger records by team, user, direction, or transaction type.",
+    "recordsTitle": "Ledger Records",
+    "recordsDescription": "Source IDs can be used to link redemption codes or model calls.",
+    "empty": "No ledger records yet",
+    "pagination": "{{range}} of {{total}} items",
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
+    "labels": {
+      "teamId": "Team ID",
+      "userId": "User ID",
+      "direction": "Direction",
+      "transactionType": "Transaction type"
+    },
+    "placeholders": {
+      "teamId": "team id",
+      "userId": "user id",
+      "direction": "Direction",
+      "transactionType": "redemption / model_usage"
+    },
+    "directions": {
+      "all": "All",
+      "grant": "Grant",
+      "consume": "Consume"
+    },
+    "errors": {
+      "loadFailed": "Failed to load ledger records"
+    },
+    "table": {
+      "time": "Time",
+      "team": "Team",
+      "user": "User",
+      "direction": "Direction",
+      "amount": "Amount",
+      "transactionType": "Transaction Type",
+      "source": "Source",
+      "description": "Description"
+    }
   },
   "error": {
     "somethingWentWrong": "Something went wrong",

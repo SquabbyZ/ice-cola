@@ -14,6 +14,9 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import AiSettings from './pages/ai/ApiKeys';
 import Marketplace from './pages/Marketplace';
 import ApprovalCenter from './pages/ApprovalCenter';
+import RedemptionCodes from './pages/RedemptionCodes';
+import RedemptionCodeDetail from './pages/RedemptionCodeDetail';
+import LingqiLedger from './pages/LingqiLedger';
 
 const App: React.FC = () => {
   return (
@@ -84,6 +87,30 @@ const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <ApprovalCenter />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="redemption-codes"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN']}>
+                <RedemptionCodes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="redemption-codes/:id"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN']}>
+                <RedemptionCodeDetail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="lingqi-ledger"
+            element={
+              <ProtectedRoute roles={['OWNER', 'ADMIN']}>
+                <LingqiLedger />
               </ProtectedRoute>
             }
           />

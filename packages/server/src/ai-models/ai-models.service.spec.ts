@@ -53,6 +53,26 @@ describe('AiModelsService', () => {
     updated_at: new Date(),
   };
 
+  const mockSafeApiKey = {
+    id: 'key-1',
+    provider_id: 'provider-1',
+    key_name: 'Test Key',
+    is_active: true,
+    last_used_at: null,
+    expires_at: null,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+
+  function expectSafeApiKey(result: Record<string, unknown> | null | undefined): void {
+    expect(result).toBeDefined();
+    expect(result).not.toHaveProperty('key_hash');
+    expect(result).not.toHaveProperty('encrypted_key');
+    expect(result).not.toHaveProperty('iv');
+    expect(result).not.toHaveProperty('auth_tag');
+    expect(result).not.toHaveProperty('apiKey');
+  }
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -420,8 +440,8 @@ describe('AiModelsService', () => {
 
   describe('ApiKey operations', () => {
     describe('createApiKey', () => {
-      it('creates api key with encrypted value', async () => {
-        db.queryOne.mockResolvedValue(mockApiKey);
+      it('creates api key with encrypted value and returns safe fields only', async () => {
+        db.queryOne.mockResolvedValue(mockSafeApiKey);
 
         const result = await service.createApiKey({
           providerId: 'provider-1',
@@ -429,9 +449,14 @@ describe('AiModelsService', () => {
           apiKey: 'sk-test123',
         }, 'user-1');
 
-        expect(result).toEqual(mockApiKey);
+        expect(result).toEqual(mockSafeApiKey);
+        expectSafeApiKey(result);
         expect(encryption.hashForLookup).toHaveBeenCalledWith('sk-test123');
         expect(encryption.encrypt).toHaveBeenCalledWith('sk-test123');
+        expect(db.queryOne).toHaveBeenCalledWith(
+          expect.not.stringContaining('RETURNING *'),
+          expect.any(Array),
+        );
       });
     });
 
@@ -482,69 +507,72 @@ describe('AiModelsService', () => {
     });
 
     describe('updateApiKeyStatus', () => {
-      it('updates key status', async () => {
-        const updated = { ...mockApiKey, is_active: false };
+      it('updates key status and returns safe fields only', async () => {
+        const updated = { ...mockSafeApiKey, is_active: false };
         db.query.mockResolvedValue([updated]);
 
         const result = await service.updateApiKeyStatus('key-1', { isActive: false });
 
         expect(result?.is_active).toBe(false);
+        expectSafeApiKey(result);
+        expect(db.query).toHaveBeenCalledWith(
+          expect.not.stringContaining('RETURNING *'),
+          [false, 'key-1'],
+        );
       });
     });
 
     describe('updateApiKey', () => {
-      it('updates key name only', async () => {
-        const updated = { ...mockApiKey, key_name: 'Updated Name' };
-        db.query.mockResolvedValue(null); // UPDATE key_name query
-        db.queryOne.mockResolvedValue(updated); // final SELECT query
+      it('updates key name only and returns safe fields only', async () => {
+        const updated = { ...mockSafeApiKey, key_name: 'Updated Name' };
+        db.query.mockResolvedValue(null);
+        db.queryOne.mockResolvedValue(updated);
 
         const result = await service.updateApiKey('key-1', { keyName: 'Updated Name' });
 
         expect(result?.key_name).toBe('Updated Name');
+        expectSafeApiKey(result);
       });
 
-      it('updates api key value with re-encryption', async () => {
-        const updated = { ...mockApiKey, encrypted_key: 'new-encrypted' };
-        db.query.mockResolvedValue(null); // UPDATE queries
-        db.queryOne.mockResolvedValue(updated);
+      it('updates api key value with re-encryption and returns safe fields only', async () => {
+        db.query.mockResolvedValue(null);
+        db.queryOne.mockResolvedValue(mockSafeApiKey);
 
         const result = await service.updateApiKey('key-1', { apiKey: 'sk-new123' });
 
         expect(encryption.hashForLookup).toHaveBeenCalledWith('sk-new123');
         expect(encryption.encrypt).toHaveBeenCalledWith('sk-new123');
-        expect(result).toBeDefined();
+        expectSafeApiKey(result);
       });
 
       it('updates endpoint url when no default exists', async () => {
-        const updated = { ...mockApiKey };
-        db.query.mockResolvedValue(null); // UPDATE queries
+        db.query.mockResolvedValue(null);
         db.queryOne
-          .mockResolvedValueOnce(mockApiKey) // SELECT for key (line 449)
-          .mockResolvedValueOnce(null) // no existing default endpoint (line 452)
-          .mockResolvedValueOnce(updated); // final SELECT
-        db.query.mockResolvedValue(null); // INSERT for new endpoint
+          .mockResolvedValueOnce(mockApiKey)
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(mockSafeApiKey);
+        db.query.mockResolvedValue(null);
 
         const result = await service.updateApiKey('key-1', { endpointUrl: 'https://new.endpoint.com' });
 
-        expect(result).toBeDefined();
+        expectSafeApiKey(result);
       });
 
       it('updates existing default endpoint when found', async () => {
         const endpoint = { id: 'ep-existing', provider_id: 'provider-1' };
-        const updated = { ...mockApiKey };
-        db.query.mockResolvedValue(null); // UPDATE queries
+        db.query.mockResolvedValue(null);
         db.queryOne
-          .mockResolvedValueOnce(mockApiKey) // SELECT for key
-          .mockResolvedValueOnce(endpoint) // existing default endpoint found
-          .mockResolvedValueOnce(updated); // final SELECT
+          .mockResolvedValueOnce(mockApiKey)
+          .mockResolvedValueOnce(endpoint)
+          .mockResolvedValueOnce(mockSafeApiKey);
 
         const result = await service.updateApiKey('key-1', { endpointUrl: 'https://updated.endpoint.com' });
 
-        expect(result).toBeDefined();
+        expectSafeApiKey(result);
       });
 
-      it('returns updated key with all fields', async () => {
-        const updated = { ...mockApiKey, key_name: 'New Name', encrypted_key: 'new-enc' };
+      it('does not select encrypted fields for the final updated key response', async () => {
+        const updated = { ...mockSafeApiKey, key_name: 'New Name' };
         db.query.mockResolvedValue(null);
         db.queryOne.mockResolvedValue(updated);
 
@@ -555,16 +583,26 @@ describe('AiModelsService', () => {
         });
 
         expect(result?.key_name).toBe('New Name');
+        expectSafeApiKey(result);
+        expect(db.queryOne).toHaveBeenLastCalledWith(
+          expect.not.stringContaining('SELECT *'),
+          ['key-1'],
+        );
       });
     });
 
     describe('deleteApiKey', () => {
-      it('deletes api key', async () => {
-        db.queryOne.mockResolvedValue(mockApiKey);
+      it('deletes api key and returns safe fields only', async () => {
+        db.queryOne.mockResolvedValue(mockSafeApiKey);
 
         const result = await service.deleteApiKey('key-1');
 
-        expect(result).toEqual(mockApiKey);
+        expect(result).toEqual(mockSafeApiKey);
+        expectSafeApiKey(result);
+        expect(db.queryOne).toHaveBeenCalledWith(
+          expect.not.stringContaining('RETURNING *'),
+          ['key-1'],
+        );
       });
     });
 
@@ -596,17 +634,16 @@ describe('AiModelsService', () => {
     });
 
     describe('updateApiKeyLastUsed', () => {
-      it('updates last_used_at timestamp', async () => {
-        const updated = { ...mockApiKey, last_used_at: new Date() };
-        db.queryOne.mockResolvedValue(updated);
+      it('updates last_used_at timestamp without returning key material', async () => {
+        db.query.mockResolvedValue([]);
 
-        const result = await service.updateApiKeyLastUsed('key-1');
+        await expect(service.updateApiKeyLastUsed('key-1')).resolves.toBeUndefined();
 
-        expect(result).toBeDefined();
-        expect(db.queryOne).toHaveBeenCalledWith(
+        expect(db.query).toHaveBeenCalledWith(
           expect.stringContaining('last_used_at'),
           ['key-1'],
         );
+        expect(db.queryOne).not.toHaveBeenCalled();
       });
     });
   });

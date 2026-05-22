@@ -16,6 +16,7 @@ export interface Attachment {
   url: string;
   mimeType: string;
   data?: string;
+  sizeBytes?: number;
 }
 
 export interface ChatMessage {
@@ -44,6 +45,7 @@ export interface PendingMessage {
     name: string;
     mimeType: string;
     data?: string;
+    sizeBytes?: number;
   }>;
 }
 

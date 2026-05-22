@@ -141,16 +141,83 @@ CREATE TABLE IF NOT EXISTS conversation_selected_models (
 );
 
 CREATE INDEX IF NOT EXISTS idx_lingqi_ledger_team_created ON lingqi_ledger_entries(team_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_lingqi_ledger_created_id ON lingqi_ledger_entries(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_lingqi_ledger_user ON lingqi_ledger_entries(user_id);
 CREATE INDEX IF NOT EXISTS idx_team_subscriptions_team_status_expires ON team_subscriptions(team_id, status, expires_at);
+DO $$
+DECLARE
+    duplicate_team_ids TEXT;
+BEGIN
+    SELECT string_agg(team_id, ', ')
+    INTO duplicate_team_ids
+    FROM (
+        SELECT team_id
+        FROM team_subscriptions
+        WHERE status = 'active'
+        GROUP BY team_id
+        HAVING COUNT(*) > 1
+    ) duplicates;
+
+    IF duplicate_team_ids IS NOT NULL THEN
+        RAISE EXCEPTION 'Cannot create one-active-subscription constraint; duplicate active subscriptions exist for team_id(s): %', duplicate_team_ids;
+    END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_team_subscriptions_one_active ON team_subscriptions(team_id) WHERE status = 'active';
 CREATE INDEX IF NOT EXISTS idx_team_subscriptions_plan ON team_subscriptions(plan_id);
 CREATE INDEX IF NOT EXISTS idx_redemption_redemptions_team ON redemption_redemptions(team_id);
 CREATE INDEX IF NOT EXISTS idx_redemption_redemptions_user ON redemption_redemptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_redemption_redemptions_code ON redemption_redemptions(code_id);
+DO $$
+DECLARE
+    duplicate_code_ids TEXT;
+BEGIN
+    SELECT string_agg(code_id, ', ')
+    INTO duplicate_code_ids
+    FROM (
+        SELECT code_id
+        FROM redemption_redemptions
+        GROUP BY code_id
+        HAVING COUNT(*) > 1
+    ) duplicates;
+
+    IF duplicate_code_ids IS NOT NULL THEN
+        RAISE EXCEPTION 'Cannot create one-time redemption constraint; duplicate redemptions exist for code_id(s): %', duplicate_code_ids;
+    END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_redemption_redemptions_code_once ON redemption_redemptions(code_id);
 CREATE INDEX IF NOT EXISTS idx_redemption_attempt_limits_reset ON redemption_attempt_limits(reset_at);
+CREATE INDEX IF NOT EXISTS idx_redemption_attempt_limits_user ON redemption_attempt_limits(user_id);
+CREATE INDEX IF NOT EXISTS idx_redemption_codes_plan ON redemption_codes(plan_id);
 CREATE INDEX IF NOT EXISTS idx_redemption_codes_active_expires ON redemption_codes(is_active, expires_at);
 CREATE INDEX IF NOT EXISTS idx_model_catalog_active_rank ON model_catalog(is_active, rank);
+
+ALTER TABLE redemption_codes
+ADD COLUMN IF NOT EXISTS code_preview VARCHAR(32),
+ADD COLUMN IF NOT EXISTS created_by_user_id VARCHAR(36),
+ADD COLUMN IF NOT EXISTS note TEXT,
+ADD COLUMN IF NOT EXISTS disabled_at TIMESTAMP,
+ADD COLUMN IF NOT EXISTS disabled_by_user_id VARCHAR(36),
+ADD COLUMN IF NOT EXISTS disabled_reason TEXT;
+
+UPDATE redemption_codes
+SET code_preview = LEFT(display_label, 32)
+WHERE code_preview IS NULL;
+
+ALTER TABLE redemption_codes
+ALTER COLUMN code_preview SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_redemption_codes_created_by ON redemption_codes(created_by_user_id);
+CREATE INDEX IF NOT EXISTS idx_redemption_codes_disabled_by ON redemption_codes(disabled_by_user_id);
+
+ALTER TABLE redemption_codes
+DROP CONSTRAINT IF EXISTS fk_redemption_code_created_by,
+DROP CONSTRAINT IF EXISTS fk_redemption_code_disabled_by;
+
+ALTER TABLE redemption_codes
+ADD CONSTRAINT fk_redemption_code_created_by
+FOREIGN KEY (created_by_user_id) REFERENCES admin_users(id) ON DELETE SET NULL,
+ADD CONSTRAINT fk_redemption_code_disabled_by
+FOREIGN KEY (disabled_by_user_id) REFERENCES admin_users(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_team_selected_models_catalog ON team_selected_models(model_catalog_id);
 CREATE INDEX IF NOT EXISTS idx_conversation_selected_models_catalog ON conversation_selected_models(model_catalog_id);
 
@@ -197,13 +264,14 @@ ON CONFLICT (model_name) DO UPDATE SET
     required_plan_level = EXCLUDED.required_plan_level,
     updated_at = CURRENT_TIMESTAMP;
 
-INSERT INTO redemption_codes (code_hash, display_label, lingqi_amount, plan_id, max_uses, expires_at)
+INSERT INTO redemption_codes (code_hash, display_label, code_preview, lingqi_amount, plan_id, max_uses, expires_at)
 SELECT
     seed.code_hash,
     '本地开发灵符',
+    'DEV...SEED',
     1000,
     id,
-    100,
+    1,
     NOW() + INTERVAL '365 days'
 FROM subscription_plans
 CROSS JOIN LATERAL (
@@ -214,6 +282,7 @@ WHERE name = 'outer_disciple'
   AND seed.code_hash ~ '^[a-f0-9]{64}$'
 ON CONFLICT (code_hash) DO UPDATE SET
     display_label = EXCLUDED.display_label,
+    code_preview = EXCLUDED.code_preview,
     lingqi_amount = EXCLUDED.lingqi_amount,
     plan_id = EXCLUDED.plan_id,
     max_uses = EXCLUDED.max_uses,

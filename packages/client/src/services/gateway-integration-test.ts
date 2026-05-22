@@ -100,7 +100,11 @@ async function main(): Promise<void> {
   }));
   
   // 测试 2: 连接测试
-  const gatewayToken = 'ff905ffe94711d52ba7ca34cc56399f5788caaf8ec67027c'; // Gateway 配置的 token
+  const gatewayToken = process.env.GATEWAY_TOKEN;
+  if (!gatewayToken) {
+    throw new Error('GATEWAY_TOKEN is required for Gateway integration tests');
+  }
+
   const client = new GatewayClient({
     url: 'ws://localhost:18789',
     token: gatewayToken,

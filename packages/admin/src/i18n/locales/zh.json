@@ -20,7 +20,9 @@
     "profile": "个人资料",
     "admin": "管理",
     "marketplace": "市场",
-    "approvalCenter": "审批中心"
+    "approvalCenter": "审批中心",
+    "redemptionCodes": "兑换码",
+    "lingqiLedger": "灵气账务"
   },
   "dashboard": {
     "title": "仪表盘",
@@ -479,6 +481,156 @@
     "rejectReasonPlaceholder": "输入拒绝原因...",
     "confirmReject": "拒绝",
     "rejecting": "拒绝中..."
+  },
+  "redemptionCodes": {
+    "title": "兑换码",
+    "subtitle": "生成一次性灵气兑换码，并追踪兑换状态。",
+    "refresh": "刷新",
+    "create": "生成兑换码",
+    "recordsTitle": "兑换码记录",
+    "recordsDescription": "完整明文只在生成后显示一次，后续仅保留预览。",
+    "statusPlaceholder": "状态",
+    "allStatuses": "全部状态",
+    "empty": "暂无兑换码记录",
+    "viewDetails": "查看详情",
+    "disable": "禁用",
+    "pagination": "{{range}}，共 {{total}} 项",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "table": {
+      "preview": "预览",
+      "type": "类型",
+      "lingqi": "灵气",
+      "status": "状态",
+      "redeemedTeam": "兑换团队",
+      "expiresAt": "过期时间",
+      "createdAt": "创建时间",
+      "actions": "操作"
+    },
+    "type": {
+      "lingqiOnly": "仅灵气",
+      "planWithLingqi": "套餐 + 灵气"
+    },
+    "status": {
+      "active": "可兑换",
+      "redeemed": "已兑换",
+      "expired": "已过期",
+      "disabled": "已禁用"
+    },
+    "validation": {
+      "lingqiPositiveInteger": "灵气数量必须为正整数",
+      "planRequired": "套餐兑换码必须填写套餐 ID",
+      "invalidExpiresAt": "过期时间格式无效"
+    },
+    "errors": {
+      "loadFailed": "加载兑换码失败",
+      "createFailed": "创建兑换码失败",
+      "copyFailed": "复制失败，请手动复制兑换码",
+      "disableFailed": "禁用兑换码失败"
+    },
+    "createDialog": {
+      "title": "生成兑换码",
+      "description": "生成后请立即复制完整兑换码，后续页面不会再次展示明文。",
+      "type": "兑换码类型",
+      "planId": "套餐 ID",
+      "lingqiAmount": "灵气数量",
+      "expiresAt": "过期时间",
+      "note": "备注",
+      "notePlaceholder": "用于运营和问题追踪",
+      "cancel": "取消",
+      "generate": "生成"
+    },
+    "createdDialog": {
+      "title": "兑换码已生成",
+      "description": "完整兑换码仅本次展示，请复制后安全发送给目标用户。",
+      "preview": "预览",
+      "lingqi": "灵气",
+      "close": "关闭",
+      "copy": "复制完整兑换码",
+      "copied": "已复制"
+    },
+    "disableDialog": {
+      "title": "禁用兑换码",
+      "description": "禁用后该兑换码将无法继续兑换。",
+      "reason": "禁用原因",
+      "reasonPlaceholder": "可选",
+      "confirm": "确认禁用"
+    }
+  },
+  "redemptionCodeDetail": {
+    "title": "兑换码详情",
+    "subtitle": "查看兑换码状态、兑换归属和审计信息。",
+    "backToList": "返回列表",
+    "notFound": "未找到兑换码",
+    "basicTitle": "基础信息",
+    "basicDescription": "完整明文仅生成时展示，此处只保留安全预览。",
+    "redemptionTitle": "兑换信息",
+    "redemptionDescription": "用于定位用户充值和账务问题。",
+    "disabledTitle": "禁用信息",
+    "disabledDescription": "记录运营侧手动禁用的原因。",
+    "noteTitle": "备注",
+    "emptyNote": "无备注",
+    "fields": {
+      "preview": "预览",
+      "status": "状态",
+      "type": "类型",
+      "lingqiAmount": "灵气数量",
+      "planId": "套餐 ID",
+      "usage": "使用次数",
+      "expiresAt": "过期时间",
+      "createdAt": "创建时间",
+      "updatedAt": "更新时间",
+      "createdBy": "创建管理员",
+      "redeemedTeam": "兑换团队",
+      "redeemedUser": "兑换用户",
+      "redeemedAt": "兑换时间",
+      "disabledAt": "禁用时间",
+      "disabledBy": "禁用管理员",
+      "disabledReason": "禁用原因"
+    }
+  },
+  "lingqiLedger": {
+    "title": "灵气账务流水",
+    "subtitle": "追踪兑换、模型调用和扣费记录，用于成本核算与消费问题排查。",
+    "refresh": "刷新",
+    "filtersTitle": "筛选条件",
+    "filtersDescription": "按团队、用户、方向或交易类型定位账务记录。",
+    "recordsTitle": "流水记录",
+    "recordsDescription": "记录来源 ID 可用于关联兑换码或模型调用。",
+    "empty": "暂无账务记录",
+    "pagination": "{{range}}，共 {{total}} 项",
+    "previousPage": "上一页",
+    "nextPage": "下一页",
+    "labels": {
+      "teamId": "团队 ID",
+      "userId": "用户 ID",
+      "direction": "方向",
+      "transactionType": "交易类型"
+    },
+    "placeholders": {
+      "teamId": "team id",
+      "userId": "user id",
+      "direction": "方向",
+      "transactionType": "redemption / model_usage"
+    },
+    "directions": {
+      "all": "全部",
+      "grant": "获得",
+      "consume": "消耗"
+    },
+    "errors": {
+      "loadFailed": "加载账务记录失败"
+    },
+    "table": {
+      "time": "时间",
+      "team": "团队",
+      "user": "用户",
+      "direction": "方向",
+      "amount": "数量",
+      "transactionType": "交易类型",
+      "source": "来源",
+      "description": "描述"
+    }
   },
   "error": {
     "somethingWentWrong": "出错了",

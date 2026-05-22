@@ -215,6 +215,7 @@ describe('AdminService', () => {
         sub: mockAdminUser.id,
         email: mockAdminUser.email,
         role: mockAdminUser.role,
+        type: 'admin_access',
       });
     });
   });

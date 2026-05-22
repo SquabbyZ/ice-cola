@@ -4,8 +4,9 @@ export interface CurrentAuthUser {
   sub: string;
   id: string;
   email: string;
-  teamId: string | null;
+  teamId?: string | null;
   role: string;
+  authType?: 'user' | 'admin';
 }
 
 export const CurrentUser = createParamDecorator(

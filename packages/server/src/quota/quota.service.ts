@@ -93,6 +93,73 @@ export interface LingqiLedgerEntryView {
   createdAt: Date;
 }
 
+export type AdminRedemptionCodeType = 'lingqi_only' | 'plan_with_lingqi';
+export type AdminRedemptionCodeStatus = 'active' | 'redeemed' | 'expired' | 'disabled';
+
+export interface CreateAdminRedemptionCodeRequest {
+  type: AdminRedemptionCodeType;
+  lingqiAmount: number;
+  planId?: string;
+  expiresAt?: string;
+  note?: string;
+}
+
+export interface AdminRedemptionCodeView {
+  id: string;
+  type: AdminRedemptionCodeType;
+  codePreview: string;
+  lingqiAmount: number;
+  planId: string | null;
+  maxUses: number;
+  usedCount: number;
+  status: AdminRedemptionCodeStatus;
+  expiresAt: Date | null;
+  note: string | null;
+  createdByUserId: string | null;
+  disabledAt: Date | null;
+  disabledByUserId: string | null;
+  disabledReason: string | null;
+  redeemedTeamId: string | null;
+  redeemedUserId: string | null;
+  redeemedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreatedAdminRedemptionCodeView extends AdminRedemptionCodeView {
+  code: string;
+}
+
+export interface ListAdminRedemptionCodesQuery {
+  status?: AdminRedemptionCodeStatus;
+  limit?: number | string;
+  offset?: number | string;
+}
+
+export interface AdminLingqiLedgerEntryView extends LingqiLedgerEntryView {
+  teamId: string;
+  userId: string | null;
+  sourceId: string | null;
+}
+
+export interface AdminLingqiLedgerQuery {
+  teamId?: string;
+  userId?: string;
+  direction?: LingqiDirection;
+  transactionType?: string;
+  from?: string;
+  to?: string;
+  limit?: number | string;
+  offset?: number | string;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 interface QuotaRow {
   id: string;
   teamId: string;
@@ -168,12 +235,29 @@ interface RedemptionCodeRow {
   is_active?: boolean;
 }
 
+interface AdminRedemptionCodeRow extends RedemptionCodeRow {
+  code_preview: string | null;
+  created_by_user_id: string | null;
+  note: string | null;
+  disabled_at: Date | null;
+  disabled_by_user_id: string | null;
+  disabled_reason: string | null;
+  redeemed_team_id?: string | null;
+  redeemed_user_id?: string | null;
+  redeemed_at?: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
 interface LingqiLedgerEntryRow {
   id: string;
+  team_id?: string;
+  user_id?: string | null;
   direction: string;
   amount: string;
   transaction_type: string;
   source_type: string;
+  source_id?: string | null;
   description: string | null;
   metadata: Record<string, unknown> | null;
   created_at: Date;
@@ -195,6 +279,10 @@ const TASK_PHASE_COSTS = {
 } as const;
 const MAX_REDEMPTION_CODE_LENGTH = 128;
 const REDEMPTION_CODE_PATTERN = /^[A-Z0-9_-]+$/;
+const GENERATED_REDEMPTION_CODE_LENGTH = 24;
+const DEFAULT_ADMIN_LIST_LIMIT = 50;
+const MAX_ADMIN_REDEMPTION_NOTE_LENGTH = 500;
+const ID_PATTERN = /^[a-zA-Z0-9_-]{1,100}$/;
 
 @Injectable()
 export class QuotaService {
@@ -448,6 +536,236 @@ export class QuotaService {
     };
   }
 
+  async createAdminRedemptionCode(
+    createdByUserId: string,
+    request: CreateAdminRedemptionCodeRequest,
+  ): Promise<CreatedAdminRedemptionCodeView> {
+    const validatedRequest = await this.validateCreateAdminRedemptionCodeRequest(request);
+    const code = this.generateRedemptionCode();
+    const codeHash = this.hashRedemptionCode(code);
+    const codePreview = this.toRedemptionCodePreview(code);
+    const rows = await this.db.query<AdminRedemptionCodeRow>(
+      `INSERT INTO redemption_codes (
+         code_hash, display_label, code_preview, lingqi_amount, plan_id, max_uses,
+         expires_at, created_by_user_id, note
+       )
+       VALUES ($1, $2, $3, $4, $5, 1, $6, $7, $8)
+       RETURNING id, lingqi_amount, plan_id, max_uses, used_count, expires_at, is_active,
+         code_preview, created_by_user_id, note, disabled_at, disabled_by_user_id,
+         disabled_reason, created_at, updated_at`,
+      [
+        codeHash,
+        codePreview,
+        codePreview,
+        validatedRequest.lingqiAmount.toString(),
+        validatedRequest.planId,
+        validatedRequest.expiresAt,
+        createdByUserId,
+        validatedRequest.note,
+      ],
+    );
+
+    return {
+      ...this.toAdminRedemptionCodeView(rows[0]),
+      code,
+    };
+  }
+
+  async listAdminRedemptionCodes(
+    createdByUserId: string,
+    query: ListAdminRedemptionCodesQuery = {},
+  ): Promise<PaginatedResult<AdminRedemptionCodeView>> {
+    const limit = this.clampAdminListLimit(query.limit);
+    const offset = this.clampOffset(query.offset);
+    const values: unknown[] = [createdByUserId];
+    const conditions: string[] = ['rc.created_by_user_id = $1'];
+
+    if (query.status === 'active') {
+      conditions.push('rc.is_active = true');
+      conditions.push('rc.used_count < rc.max_uses');
+      conditions.push('(rc.expires_at IS NULL OR rc.expires_at >= CURRENT_TIMESTAMP)');
+    } else if (query.status === 'redeemed') {
+      conditions.push('(rc.used_count >= rc.max_uses OR rr.redeemed_at IS NOT NULL)');
+    } else if (query.status === 'expired') {
+      conditions.push('rc.is_active = true');
+      conditions.push('rc.used_count < rc.max_uses');
+      conditions.push('rc.expires_at < CURRENT_TIMESTAMP');
+    } else if (query.status === 'disabled') {
+      conditions.push('rc.is_active = false');
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = await this.db.query<AdminRedemptionCodeRow & { total_count: string }>(
+      `SELECT rc.id, rc.lingqi_amount, rc.plan_id, rc.max_uses, rc.used_count, rc.expires_at,
+         rc.is_active, rc.code_preview, rc.created_by_user_id, rc.note, rc.disabled_at,
+         rc.disabled_by_user_id, rc.disabled_reason, rc.created_at, rc.updated_at,
+         rr.team_id AS redeemed_team_id, rr.user_id AS redeemed_user_id, rr.redeemed_at,
+         COUNT(*) OVER() AS total_count
+       FROM redemption_codes rc
+       LEFT JOIN redemption_redemptions rr ON rr.code_id = rc.id
+       ${whereClause}
+       ORDER BY rc.created_at DESC, rc.id DESC
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, limit, offset],
+    );
+
+    return {
+      items: rows.map((row) => this.toAdminRedemptionCodeView(row)),
+      total: rows[0] ? Number(rows[0].total_count) : 0,
+      limit,
+      offset,
+    };
+  }
+
+  async getAdminRedemptionCode(id: string, createdByUserId: string): Promise<AdminRedemptionCodeView> {
+    const row = await this.db.queryOne<AdminRedemptionCodeRow>(
+      `SELECT rc.id, rc.lingqi_amount, rc.plan_id, rc.max_uses, rc.used_count, rc.expires_at,
+         rc.is_active, rc.code_preview, rc.created_by_user_id, rc.note, rc.disabled_at,
+         rc.disabled_by_user_id, rc.disabled_reason, rc.created_at, rc.updated_at,
+         rr.team_id AS redeemed_team_id, rr.user_id AS redeemed_user_id, rr.redeemed_at
+       FROM redemption_codes rc
+       LEFT JOIN redemption_redemptions rr ON rr.code_id = rc.id
+       WHERE rc.id = $1 AND rc.created_by_user_id = $2
+       LIMIT 1`,
+      [id, createdByUserId],
+    );
+
+    if (!row) {
+      throw new AppError('LINGQI_REDEMPTION_CODE_NOT_FOUND', '兑换码不存在', 404);
+    }
+
+    return this.toAdminRedemptionCodeView(row);
+  }
+
+  async disableAdminRedemptionCode(id: string, disabledByUserId: string, reason?: string): Promise<AdminRedemptionCodeView> {
+    const existing = await this.getAdminRedemptionCode(id, disabledByUserId);
+
+    if (existing.status === 'redeemed') {
+      throw new AppError('LINGQI_REDEMPTION_CODE_REDEEMED', '已兑换的兑换码不能禁用', 400);
+    }
+
+    const rows = await this.db.query<AdminRedemptionCodeRow>(
+      `UPDATE redemption_codes
+       SET is_active = false,
+           disabled_at = CURRENT_TIMESTAMP,
+           disabled_by_user_id = $2,
+           disabled_reason = $3,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND created_by_user_id = $2
+       RETURNING id, lingqi_amount, plan_id, max_uses, used_count, expires_at, is_active,
+         code_preview, created_by_user_id, note, disabled_at, disabled_by_user_id,
+         disabled_reason, created_at, updated_at`,
+      [id, disabledByUserId, reason ?? null],
+    );
+
+    return this.toAdminRedemptionCodeView(rows[0]);
+  }
+
+  async listAdminLingqiLedgerEntries(
+    teamId: string,
+    query: Omit<AdminLingqiLedgerQuery, 'teamId'> = {},
+  ): Promise<PaginatedResult<AdminLingqiLedgerEntryView>> {
+    const limit = this.clampAdminListLimit(query.limit);
+    const offset = this.clampOffset(query.offset);
+    const values: unknown[] = [teamId];
+    const conditions: string[] = ['team_id = $1'];
+
+    if (query.userId) {
+      values.push(query.userId);
+      conditions.push(`user_id = $${values.length}`);
+    }
+
+    if (query.direction) {
+      values.push(query.direction);
+      conditions.push(`direction = $${values.length}`);
+    }
+
+    if (query.transactionType) {
+      values.push(query.transactionType);
+      conditions.push(`transaction_type = $${values.length}`);
+    }
+
+    if (query.from) {
+      values.push(new Date(query.from));
+      conditions.push(`created_at >= $${values.length}`);
+    }
+
+    if (query.to) {
+      values.push(new Date(query.to));
+      conditions.push(`created_at <= $${values.length}`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const rows = await this.db.query<LingqiLedgerEntryRow & { total_count: string }>(
+      `SELECT id, team_id, user_id, direction, amount, transaction_type, source_type,
+         source_id, description, metadata, created_at, COUNT(*) OVER() AS total_count
+       FROM lingqi_ledger_entries
+       ${whereClause}
+       ORDER BY created_at DESC, id DESC
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, limit, offset],
+    );
+
+    return {
+      items: rows.map((row) => this.toAdminLingqiLedgerEntryView(row)),
+      total: rows[0] ? Number(rows[0].total_count) : 0,
+      limit,
+      offset,
+    };
+  }
+
+  private async validateCreateAdminRedemptionCodeRequest(request: CreateAdminRedemptionCodeRequest): Promise<{
+    type: AdminRedemptionCodeType;
+    lingqiAmount: number;
+    planId: string | null;
+    expiresAt: Date | null;
+    note: string | null;
+  }> {
+    if (request.type !== 'lingqi_only' && request.type !== 'plan_with_lingqi') {
+      throw new AppError('LINGQI_REDEMPTION_TYPE_INVALID', '兑换码类型无效', 400);
+    }
+
+    if (!Number.isInteger(request.lingqiAmount) || request.lingqiAmount <= 0) {
+      throw new AppError('LINGQI_REDEMPTION_AMOUNT_INVALID', '灵气数量必须为正整数', 400);
+    }
+
+    if (request.note !== undefined && (typeof request.note !== 'string' || request.note.length > MAX_ADMIN_REDEMPTION_NOTE_LENGTH)) {
+      throw new AppError('LINGQI_REDEMPTION_NOTE_INVALID', '备注长度不能超过 500 个字符', 400);
+    }
+
+    const planId = request.planId?.trim() || null;
+    if (request.type === 'plan_with_lingqi' && !planId) {
+      throw new AppError('LINGQI_REDEMPTION_PLAN_REQUIRED', '套餐兑换码必须选择套餐', 400);
+    }
+
+    if (planId && !ID_PATTERN.test(planId)) {
+      throw new AppError('LINGQI_REDEMPTION_PLAN_INVALID', '套餐 ID 无效', 400);
+    }
+
+    if (planId) {
+      const plan = await this.db.queryOne<{ id: string }>(
+        'SELECT id FROM subscription_plans WHERE id = $1 AND is_active = true LIMIT 1',
+        [planId],
+      );
+      if (!plan) {
+        throw new AppError('LINGQI_REDEMPTION_PLAN_INVALID', '套餐不存在或已停用', 400);
+      }
+    }
+
+    const expiresAt = request.expiresAt ? new Date(request.expiresAt) : null;
+    if (request.expiresAt && Number.isNaN(expiresAt?.getTime())) {
+      throw new AppError('LINGQI_REDEMPTION_EXPIRES_AT_INVALID', '过期时间无效', 400);
+    }
+
+    return {
+      type: request.type,
+      lingqiAmount: request.lingqiAmount,
+      planId,
+      expiresAt,
+      note: request.note?.trim() || null,
+    };
+  }
+
   async redeemLingqiCode(teamId: string, userId: string, code: string): Promise<{ grantedAmount: number; status: LingqiStatus }> {
     const codeHashes = this.getRedemptionCodeLookupHashes(code);
 
@@ -480,13 +798,13 @@ export class QuotaService {
       const usedResult = await client.query(
         `SELECT id
          FROM redemption_redemptions
-         WHERE code_id = $1 AND team_id = $2
+         WHERE code_id = $1
          LIMIT 1`,
-        [redemptionCode.id, teamId],
+        [redemptionCode.id],
       );
 
       if (usedResult.rows.length > 0) {
-        throw new AppError('LINGQI_REDEMPTION_CODE_ALREADY_USED', '该团队已使用过此兑换码', 400);
+        throw new AppError('LINGQI_REDEMPTION_CODE_EXHAUSTED', '灵气兑换码已用尽', 400);
       }
 
       await this.ensureLingqiAccountInTransaction(client, teamId);
@@ -814,6 +1132,14 @@ export class QuotaService {
     return rows.map((row) => this.toLedgerEntryView(row));
   }
 
+  private generateRedemptionCode(): string {
+    return randomUUID().replace(/-/g, '').slice(0, GENERATED_REDEMPTION_CODE_LENGTH).toUpperCase();
+  }
+
+  private toRedemptionCodePreview(code: string): string {
+    return `${code.slice(0, 4)}...${code.slice(-4)}`;
+  }
+
   private normalizeRedemptionCode(code: string): string {
     if (typeof code !== 'string') {
       throw new AppError('LINGQI_REDEMPTION_CODE_INVALID', '灵气兑换码无效', 400);
@@ -864,6 +1190,26 @@ export class QuotaService {
     }
 
     return Math.min(100, Math.max(1, limit));
+  }
+
+  private clampAdminListLimit(limit: number | string | undefined): number {
+    const parsedLimit = typeof limit === 'string' ? Number(limit) : limit;
+
+    if (!Number.isInteger(parsedLimit)) {
+      return DEFAULT_ADMIN_LIST_LIMIT;
+    }
+
+    return Math.min(100, Math.max(1, parsedLimit));
+  }
+
+  private clampOffset(offset: number | string | undefined): number {
+    const parsedOffset = typeof offset === 'string' ? Number(offset) : offset;
+
+    if (!Number.isInteger(parsedOffset) || parsedOffset < 0) {
+      return 0;
+    }
+
+    return parsedOffset;
   }
 
   private async ensureLingqiAccount(teamId: string): Promise<LingqiAccountRow> {
@@ -1147,5 +1493,54 @@ export class QuotaService {
       metadata: row.metadata ?? {},
       createdAt: row.created_at,
     };
+  }
+
+  private toAdminLingqiLedgerEntryView(row: LingqiLedgerEntryRow): AdminLingqiLedgerEntryView {
+    return {
+      ...this.toLedgerEntryView(row),
+      teamId: row.team_id ?? '',
+      userId: row.user_id ?? null,
+      sourceId: row.source_id ?? null,
+    };
+  }
+
+  private toAdminRedemptionCodeView(row: AdminRedemptionCodeRow): AdminRedemptionCodeView {
+    return {
+      id: row.id,
+      type: row.plan_id ? 'plan_with_lingqi' : 'lingqi_only',
+      codePreview: row.code_preview ?? '',
+      lingqiAmount: Number(row.lingqi_amount),
+      planId: row.plan_id,
+      maxUses: row.max_uses,
+      usedCount: row.used_count,
+      status: this.deriveAdminRedemptionCodeStatus(row),
+      expiresAt: row.expires_at ? new Date(row.expires_at) : null,
+      note: row.note,
+      createdByUserId: row.created_by_user_id,
+      disabledAt: row.disabled_at,
+      disabledByUserId: row.disabled_by_user_id,
+      disabledReason: row.disabled_reason,
+      redeemedTeamId: row.redeemed_team_id ?? null,
+      redeemedUserId: row.redeemed_user_id ?? null,
+      redeemedAt: row.redeemed_at ?? null,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private deriveAdminRedemptionCodeStatus(row: AdminRedemptionCodeRow): AdminRedemptionCodeStatus {
+    if (row.used_count >= row.max_uses || row.redeemed_at) {
+      return 'redeemed';
+    }
+
+    if (row.is_active === false) {
+      return 'disabled';
+    }
+
+    if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+      return 'expired';
+    }
+
+    return 'active';
   }
 }

@@ -203,10 +203,8 @@ export class AiModelsController {
 
   @Get('api-keys/:id/decrypt')
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
-  async decryptApiKey(@Param('id') id: string) {
-    this.requirePlatformAdmin();
-    const result = await this.aiModelsService.getDecryptedApiKey(id);
-    return { success: true, data: { apiKey: result } };
+  async decryptApiKey() {
+    throw new ForbiddenException('API key plaintext export is not allowed');
   }
 
   @Put('api-keys/:id/status')

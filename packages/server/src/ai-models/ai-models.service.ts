@@ -369,6 +369,15 @@ export class AiModelsService implements OnModuleInit {
 
   // ==================== API KEY CRUD ====================
 
+  private readonly safeApiKeyColumns = `id, provider_id, key_name, is_active, last_used_at, expires_at, created_at, updated_at`;
+
+  private async findSafeApiKeyById(id: string) {
+    return this.db.queryOne(
+      `SELECT ${this.safeApiKeyColumns} FROM ai_api_keys WHERE id = $1`,
+      [id],
+    );
+  }
+
   async createApiKey(data: CreateApiKeyDto, userId: string) {
     const id = this.generateUUID();
     const keyHash = this.encryption.hashForLookup(data.apiKey);
@@ -377,7 +386,7 @@ export class AiModelsService implements OnModuleInit {
     return this.db.queryOne(
       `INSERT INTO ai_api_keys (id, provider_id, key_name, key_hash, encrypted_key, iv, auth_tag, is_active, expires_at, created_by, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, NOW(), NOW())
-       RETURNING *`,
+       RETURNING ${this.safeApiKeyColumns}`,
       [
         id,
         data.providerId,
@@ -394,14 +403,14 @@ export class AiModelsService implements OnModuleInit {
 
   async findAllApiKeys() {
     return this.db.query(
-      `SELECT id, provider_id, key_name, is_active, last_used_at, expires_at, created_at, updated_at
+      `SELECT ${this.safeApiKeyColumns}
        FROM ai_api_keys ORDER BY created_at DESC`,
     );
   }
 
   async findApiKeysByProvider(providerId: string) {
     const rows = await this.db.query(
-      `SELECT id, provider_id, key_name, is_active, last_used_at, expires_at, created_at, updated_at
+      `SELECT ${this.safeApiKeyColumns}
        FROM ai_api_keys WHERE provider_id = $1 ORDER BY created_at DESC`,
       [providerId],
     );
@@ -432,7 +441,7 @@ export class AiModelsService implements OnModuleInit {
 
   async updateApiKeyStatus(id: string, data: UpdateApiKeyStatusDto) {
     const rows = await this.db.query(
-      `UPDATE ai_api_keys SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      `UPDATE ai_api_keys SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING ${this.safeApiKeyColumns}`,
       [data.isActive, id],
     );
     return rows[0];
@@ -458,7 +467,10 @@ export class AiModelsService implements OnModuleInit {
     // Update or create endpoint if endpointUrl is provided
     if (data.endpointUrl !== undefined) {
       // Find the api key to get providerId
-      const key = await this.db.queryOne('SELECT * FROM ai_api_keys WHERE id = $1', [id]);
+      const key = await this.db.queryOne(
+        'SELECT id, provider_id FROM ai_api_keys WHERE id = $1',
+        [id],
+      );
       if (key) {
         // Check if default endpoint exists for this provider
         const existingEndpoint = await this.db.queryOne(
@@ -482,19 +494,19 @@ export class AiModelsService implements OnModuleInit {
         }
       }
     }
-    // Return updated key
-    return this.db.queryOne('SELECT * FROM ai_api_keys WHERE id = $1', [id]);
+    return this.findSafeApiKeyById(id);
   }
 
   async deleteApiKey(id: string) {
-    return this.db.queryOne('DELETE FROM ai_api_keys WHERE id = $1 RETURNING *', [
-      id,
-    ]);
+    return this.db.queryOne(
+      `DELETE FROM ai_api_keys WHERE id = $1 RETURNING ${this.safeApiKeyColumns}`,
+      [id],
+    );
   }
 
   async updateApiKeyLastUsed(id: string) {
-    return this.db.queryOne(
-      'UPDATE ai_api_keys SET last_used_at = NOW() WHERE id = $1 RETURNING *',
+    await this.db.query(
+      'UPDATE ai_api_keys SET last_used_at = NOW() WHERE id = $1',
       [id],
     );
   }

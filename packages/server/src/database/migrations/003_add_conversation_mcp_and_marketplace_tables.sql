@@ -1,3 +1,14 @@
+CREATE TABLE IF NOT EXISTS admin_users (
+    id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    name VARCHAR(255),
+    role VARCHAR(20) NOT NULL DEFAULT 'MEMBER',
+    verified BOOLEAN DEFAULT true,
+    "createdAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS conversation_mcp_servers (
     id VARCHAR(36) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
     conversation_id VARCHAR(36) NOT NULL,

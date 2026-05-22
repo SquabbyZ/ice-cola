@@ -131,7 +131,7 @@ describe('AiModelsController platform scoping', () => {
     await expect(controller.createModelConfig({} as never)).rejects.toThrow(ForbiddenException);
     await expect(controller.createDefaultModel({} as never)).rejects.toThrow(ForbiddenException);
     await expect(controller.createApiKey({} as never, req)).rejects.toThrow(ForbiddenException);
-    await expect(controller.decryptApiKey('api-key-1')).rejects.toThrow(ForbiddenException);
+    await expect(controller.decryptApiKey()).rejects.toThrow(ForbiddenException);
   });
 
   it('rejects team admins from global AI configuration reads', async () => {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Menu, X, LogOut, User, ChevronDown, Cpu, LayoutDashboard, Users as UsersIcon, Mail, Settings, ShoppingBag, ShieldCheck } from 'lucide-react';
+import { Menu, X, LogOut, User, ChevronDown, Cpu, LayoutDashboard, Users as UsersIcon, Mail, Settings, ShoppingBag, ShieldCheck, Ticket, ScrollText } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from './ui/button';
 import {
@@ -40,11 +40,14 @@ const Layout: React.FC = () => {
     { path: '/profile', label: t('nav.profile'), icon: User },
     { path: '/marketplace', label: t('nav.marketplace'), icon: ShoppingBag },
     { path: '/approval-center', label: t('nav.approvalCenter'), icon: ShieldCheck },
+    { path: '/redemption-codes', label: t('nav.redemptionCodes'), icon: Ticket },
+    { path: '/lingqi-ledger', label: t('nav.lingqiLedger'), icon: ScrollText },
   ];
 
+  const adminOnlyPaths = ['/settings', '/redemption-codes', '/lingqi-ledger'];
   const filteredNavItems = isAdmin
     ? navItems
-    : navItems.filter((item) => item.path !== '/settings');
+    : navItems.filter((item) => !adminOnlyPaths.includes(item.path));
 
   const aiNavItems = [
     { path: '/ai/settings', label: t('ai.nav.settings') },

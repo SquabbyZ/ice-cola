@@ -104,6 +104,7 @@ export class AdminService {
       sub: admin.id,
       email: admin.email,
       role: admin.role,
+      type: 'admin_access',
     };
 
     return this.jwtService.sign(payload);
@@ -249,17 +250,9 @@ export class AdminService {
   // ========== User Management ==========
 
   async getUsers(): Promise<AdminUser[]> {
-    console.log('=== getUsers called ===');
-    try {
-      const result = await this.db.query<AdminUser>(
-        'SELECT id, email, name, role, verified, "createdAt", "updatedAt" FROM admin_users ORDER BY "createdAt" ASC'
-      );
-      console.log('=== getUsers result:', result);
-      return result;
-    } catch (error) {
-      console.error('=== getUsers error:', error);
-      throw error;
-    }
+    return this.db.query<AdminUser>(
+      'SELECT id, email, name, role, verified, "createdAt", "updatedAt" FROM admin_users ORDER BY "createdAt" ASC'
+    );
   }
 
   async removeUser(id: string): Promise<void> {
