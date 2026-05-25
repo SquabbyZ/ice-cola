@@ -77,6 +77,7 @@ export interface ChatState {
   deleteMessage: (id: string) => void;
   setEditingMessageId: (id: string | null) => void;
   addToPendingQueue: (msg: PendingMessage) => void;
+  updatePendingMessageConversationId: (id: string, conversationId: string) => void;
   removeFromPendingQueue: (id: string) => void;
   getPendingMessages: () => PendingMessage[];
   clearPendingQueue: () => void;
@@ -118,6 +119,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setEditingMessageId: (id) => set({ editingMessageId: id }),
   addToPendingQueue: (msg) =>
     set((state) => ({ pendingMessages: [...state.pendingMessages, msg] })),
+  updatePendingMessageConversationId: (id, conversationId) =>
+    set((state) => ({
+      pendingMessages: state.pendingMessages.map((m) =>
+        m.id === id ? { ...m, conversationId } : m
+      ),
+    })),
   removeFromPendingQueue: (id) =>
     set((state) => ({
       pendingMessages: state.pendingMessages.filter((m) => m.id !== id),

@@ -126,6 +126,7 @@ function cloneAttachmentsForMessageDisplay(attachments: Attachment[]): Attachmen
 
 export function useHermesChatActions(params: UseHermesChatActionsParams): HermesChatActions {
   const retriedPendingMessageIdsRef = useRef<Set<string>>(new Set());
+  const lastCreatedConversationIdRef = useRef<string | null>(null);
   const {
     currentConversationId,
     selectedMCPServerIds,
@@ -258,6 +259,10 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
         pendingNewConversationMcpServerIds = targetMcpServerIds.length > 0 ? targetMcpServerIds : null;
         pendingNewConversationSkillIds = targetSkillIds.length > 0 ? targetSkillIds : null;
         pendingNewConversationExtensionIds = targetExtensionIds.length > 0 ? targetExtensionIds : null;
+        if (content) {
+          renameConversation(targetTeamId, conversation.id, generateTitle(content)).catch(() => undefined);
+        }
+        lastCreatedConversationIdRef.current = conversation.id;
       } catch {
         chatStore.addMessage({
           id: crypto.randomUUID(),
@@ -377,8 +382,6 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
       if (conversationId) {
         conversationService.addMessage(targetTeamId, conversationId, { role: 'user', content: userMessage.content })
           .catch(() => appendLocalErrorMessage(historyUserSyncFailedMessage));
-        const currentConv = conversations.find((conversation) => conversation.id === conversationId);
-        if (currentConv && !currentConv.title) renameConversation(targetTeamId, conversationId, generateTitle(userMessage.content));
       }
       return true;
     } catch (error) {
@@ -389,12 +392,13 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
       if (!gatewayConnected && retryCount < MAX_RETRIES) {
         useChatStore.getState().deleteMessage(runId);
         if (!options?.skipLocalMessage) {
+          const pendingConversationId = conversationId ?? lastCreatedConversationIdRef.current ?? undefined;
           useChatStore.getState().addToPendingQueue({
             id: userMessage.id,
             content: userMessage.content,
             retryCount: retryCount + 1,
             timestamp: Date.now(),
-            conversationId,
+            conversationId: pendingConversationId,
             teamId: targetTeamId,
             expertId: currentExpertId,
             mcpServerIds: [...targetMcpServerIds],
