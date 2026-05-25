@@ -168,6 +168,14 @@ export interface CreateUsageLogDto {
   errorMessage?: string;
 }
 
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  modelCount?: number;
+  sampleModelId?: string | null;
+  baseUrl?: string;
+}
+
 // API Response types
 export interface Provider {
   id: string;
@@ -400,7 +408,7 @@ export const aiModelsApi = {
 
   // Test Connection
   testConnection: (providerId: string) =>
-    api.post<{ success: boolean; data: { success: boolean; message: string } }>(`/admin/ai/providers/${providerId}/test-connection`),
+    api.post<{ success: boolean; data: TestConnectionResult }>(`/admin/ai/providers/${providerId}/test-connection`),
 
   // Usage Logs
   getUsageLogs: (params?: { teamId?: string; limit?: number; offset?: number }) =>

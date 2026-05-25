@@ -12,6 +12,8 @@ interface HermesCapabilityBarProps {
   lingqiEstimate?: string;
   selectedExpertName?: string;
   selectedMcpCount: number;
+  selectedSkillsCount?: number;
+  selectedPluginsCount?: number;
   attachmentCount: number;
   onModelClick: () => void;
   onExpertClick: () => void;
@@ -28,6 +30,8 @@ function HermesCapabilityBar({
   lingqiEstimate,
   selectedExpertName,
   selectedMcpCount,
+  selectedSkillsCount = 0,
+  selectedPluginsCount = 0,
   attachmentCount,
   onModelClick,
   onExpertClick,
@@ -78,12 +82,16 @@ function HermesCapabilityBar({
 
       <Button type="button" variant="ghost" size="sm" onClick={onSkillsClick} className="gap-1">
         <Wrench className="h-4 w-4" />
-        {t('chat.capabilities.skills')}
+        {selectedSkillsCount > 0
+          ? `${t('chat.capabilities.skills')} (${selectedSkillsCount})`
+          : t('chat.capabilities.skills')}
       </Button>
 
       <Button type="button" variant="ghost" size="sm" onClick={onPluginsClick} className="gap-1">
         <Puzzle className="h-4 w-4" />
-        {t('chat.capabilities.plugins')}
+        {selectedPluginsCount > 0
+          ? `${t('chat.capabilities.plugins')} (${selectedPluginsCount})`
+          : t('chat.capabilities.plugins')}
       </Button>
 
       <Button type="button" variant="ghost" size="sm" onClick={onAttachClick} className="gap-1">

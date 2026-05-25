@@ -1,15 +1,12 @@
 import { Sparkles } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { formatLingqiAmount } from '@/lib/lingqi';
 import type { LingqiStatus } from '@/services/lingqi-service';
 
 interface LingqiStatusCardProps {
   status: LingqiStatus | null;
   isCollapsed?: boolean;
   onOpen: () => void;
-}
-
-function formatLingqiAmount(value: number): string {
-  return new Intl.NumberFormat('zh-CN').format(value);
 }
 
 function getRealmName(status: LingqiStatus): string {
@@ -70,7 +67,7 @@ export function LingqiStatusCard({
       type="button"
       onClick={onOpen}
       title="打开灵气阁"
-      aria-label={`打开灵气阁，当前余额 ${status.balance} 灵气`}
+      aria-label={`打开灵气阁，当前余额 ${formatLingqiAmount(status.balance)} 灵气`}
       className="w-full rounded-2xl border border-teal-100 bg-gradient-to-br from-white via-teal-50/70 to-lime-50 p-3 text-left shadow-sm shadow-teal-100/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-300 focus-visible:ring-offset-2"
     >
       <span className="mb-3 flex items-center justify-between gap-2">

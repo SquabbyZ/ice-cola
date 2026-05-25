@@ -1,12 +1,12 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { SkillsController } from './skills.controller';
+import { ConversationSkillsController, SkillsController } from './skills.controller';
 import { SkillsService } from './skills.service';
 import { DatabaseModule } from '../database/database.module';
 
 @Module({
   imports: [DatabaseModule, JwtModule.register({})],
-  controllers: [SkillsController],
+  controllers: [SkillsController, ConversationSkillsController],
   providers: [SkillsService],
   exports: [SkillsService],
 })

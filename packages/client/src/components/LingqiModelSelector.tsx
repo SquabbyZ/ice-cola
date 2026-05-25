@@ -82,6 +82,7 @@ export function LingqiModelSelector({
         ref={triggerRef}
         type="button"
         variant="outline"
+        data-chat-selector-trigger="model"
         aria-controls={listboxId}
         aria-expanded={isOpen}
         aria-haspopup="menu"

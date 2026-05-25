@@ -19,6 +19,7 @@ import {
   appendLocalErrorMessage,
   COMPACT_CHAT_MEDIA_QUERY,
   formatLingqiAmount,
+  getCapabilitySelectorTrigger,
   LINGQI_ESTIMATE_DEBOUNCE_MS,
   type LocationState,
 } from './chat/chatPageUtils';
@@ -67,7 +68,16 @@ const Chat: React.FC = () => {
     conversations,
     renameConversation,
   } = useConversationStore();
-  const { expertId, mcpServerIds: selectedMCPServerIds, setConversationMcpServers } = useConversationCapabilities(currentConversationId);
+  const {
+    expertId,
+    setConversationExpert,
+    mcpServerIds: selectedMCPServerIds,
+    setConversationMcpServers,
+    skillIds: selectedSkillIds,
+    setConversationSkills,
+    extensionIds: selectedExtensionIds,
+    setConversationExtensions,
+  } = useConversationCapabilities(currentConversationId);
   const { isConnected: gatewayConnected, send, on } = useGateway({ autoConnect: true });
   const user = useAuthStore((state) => state.user);
   const teamId = getTeamId(user);
@@ -99,6 +109,9 @@ const Chat: React.FC = () => {
   const chatActions = useHermesChatActions({
     currentConversationId,
     selectedMCPServerIds,
+    selectedSkillIds,
+    selectedExtensionIds,
+    selectedExpertId: expertId,
     selectedModelId: selectedModel?.id,
     attachments,
     isSending,
@@ -114,7 +127,10 @@ const Chat: React.FC = () => {
     navigate,
     createConversation,
     setCurrentConversationId,
+    setConversationExpert,
     setConversationMcpServers,
+    setConversationSkills,
+    setConversationExtensions,
     renameConversation,
     estimateCost,
     refreshStatus,
@@ -208,6 +224,22 @@ const Chat: React.FC = () => {
   }, [location.pathname, location.state, navigate]);
 
   useEffect(() => {
+    // When useHermesChatActions creates a new conversation it sets
+    // currentConversationId + navigates here in the same tick (post-await).
+    // React 18 batching usually folds these into one render, but the await
+    // boundary plus zustand subscription can produce an intermediate render
+    // where currentConversationId updated but routeConversationId hasn't.
+    // Detect in-flight streams via the latest store snapshot (NOT the React
+    // state, to avoid feedback loops) and skip BOTH the wipe-on-empty-route
+    // branch AND the history refetch — history will load naturally next
+    // time the user revisits the conversation.
+    const liveMessages = useChatStore.getState().messages;
+    const hasInflightStream = liveMessages.some((msg) => msg.status === 'streaming' || msg.status === 'sending');
+    if (hasInflightStream) {
+      if (routeConversationId) setCurrentConversationId(routeConversationId);
+      setIsLoadingHistory(false);
+      return;
+    }
     if (!routeConversationId) {
       setCurrentConversationId(null);
       setMessages([]);
@@ -255,6 +287,30 @@ const Chat: React.FC = () => {
       await setConversationMcpServers(serverIds);
     } catch {
       // save failed; hook restored last confirmed MCP selection
+    }
+  };
+
+  const handleSkillSelectionChange = async (skillIds: string[]) => {
+    try {
+      await setConversationSkills(skillIds);
+    } catch {
+      // save failed; hook restored last confirmed skill selection
+    }
+  };
+
+  const handleExtensionSelectionChange = async (extensionIds: string[]) => {
+    try {
+      await setConversationExtensions(extensionIds);
+    } catch {
+      // save failed; hook restored last confirmed extension selection
+    }
+  };
+
+  const handleExpertSelectionChange = async (id: string | null) => {
+    try {
+      await setConversationExpert(id);
+    } catch {
+      // save failed; hook restored last confirmed expert selection
     }
   };
 
@@ -397,6 +453,8 @@ const Chat: React.FC = () => {
       expertPrompts={expertPrompts}
       expertId={expertId}
       selectedMCPServerIds={selectedMCPServerIds}
+      selectedSkillIds={selectedSkillIds}
+      selectedExtensionIds={selectedExtensionIds}
       selectedModelName={selectedModelName}
       lingqiBalance={lingqiBalance}
       lingqiEstimateText={lingqiEstimateText}
@@ -412,12 +470,19 @@ const Chat: React.FC = () => {
       onPromptSelect={(prompt) => chatActions.handleSendWithContent(prompt)}
       onCancelEdit={handleCancelEdit}
       onModelSelect={handleModelSelect}
-      onSelectExpert={(id) => useExpertStore.getState().setActiveExpert(id)}
+      onSelectExpert={handleExpertSelectionChange}
       onMCPSelectionChange={handleMCPSelectionChange}
+      onSkillSelectionChange={handleSkillSelectionChange}
+      onExtensionSelectionChange={handleExtensionSelectionChange}
       onCapabilityClick={(target) => {
-        if (target === 'model' || target === 'selectors') document.querySelector<HTMLButtonElement>('#chat-selectors button')?.click();
-        if (target === 'skills') navigate('/skills');
-        if (target === 'plugins') navigate('/extensions');
+        const selector = getCapabilitySelectorTrigger(target);
+        if (selector) {
+          const el = document.querySelector<HTMLButtonElement>(selector);
+          if (import.meta.env.DEV && !el) {
+            console.warn(`[Chat] No element found for capability "${target}" selector: ${selector}`);
+          }
+          el?.click();
+        }
         if (target === 'attach') fileInputRef.current?.click();
       }}
       onFileSelect={(event) => handleFileSelect(event).catch(handleFileSelectError)}

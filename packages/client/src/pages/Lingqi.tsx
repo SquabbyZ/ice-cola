@@ -9,12 +9,9 @@ import { LingqiCostPreview } from '@/components/LingqiCostPreview';
 import { LingqiModelSelector } from '@/components/LingqiModelSelector';
 import { useAuthStore } from '@/stores/authStore';
 import { useLingqiStore } from '@/stores/lingqi';
+import { formatLingqiAmount } from '@/lib/lingqi';
 import { getTeamId } from '@/lib/team';
 import type { LingqiLedgerEntry, LingqiStatus } from '@/services/lingqi-service';
-
-function formatLingqiAmount(value: number): string {
-  return new Intl.NumberFormat('zh-CN').format(value);
-}
 
 function getRealmName(status: LingqiStatus | null): string {
   return status?.cultivationRealm?.displayName ?? '凡人';
@@ -281,8 +278,9 @@ export default function Lingqi() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            {models.map((model) => (
+          <div className="max-h-[32rem] overflow-y-auto rounded-3xl border border-teal-100/60 bg-white/40 p-3 shadow-inner shadow-teal-100/40 [scrollbar-color:theme(colors.teal.300)_transparent] [scrollbar-width:thin]">
+            <div className="grid gap-4 md:grid-cols-2">
+              {models.map((model) => (
               <article
                 key={model.id}
                 className={`rounded-3xl border p-5 shadow-sm transition ${
@@ -308,7 +306,8 @@ export default function Lingqi() {
                   <span>{model.isAvailable ? '可用' : '需更高套餐'}</span>
                 </div>
               </article>
-            ))}
+              ))}
+            </div>
           </div>
         </section>
 
@@ -322,7 +321,7 @@ export default function Lingqi() {
           </CardHeader>
           <CardContent>
             {ledger.length > 0 ? (
-              <div className="space-y-3">
+              <div className="max-h-[28rem] space-y-3 overflow-y-auto pr-2 [scrollbar-color:theme(colors.teal.300)_transparent] [scrollbar-width:thin]">
                 {ledger.map((entry) => (
                   <article
                     key={entry.id}

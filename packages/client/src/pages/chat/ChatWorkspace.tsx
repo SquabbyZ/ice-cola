@@ -7,13 +7,16 @@ import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { ChatMessages } from '@/components/chat/ChatMessages';
 import { HermesCapabilityBar } from '@/components/chat/HermesCapabilityBar';
 import { ExpertSelector } from '@/components/ExpertSelector';
+import { ExtensionSelector } from '@/components/ExtensionSelector';
 import { MCPSelector } from '@/components/MCPSelector';
+import { SkillSelector } from '@/components/SkillSelector';
 import { ConversationSidebar } from '@/components/ConversationSidebar';
 import { LingqiModelSelector } from '@/components/LingqiModelSelector';
 import type { Attachment, ChatMessage } from '@/stores/chat';
 import type { Conversation } from '@/services/conversation-service';
 import type { ExpertPrompt } from '@/stores/experts';
 import type { LingqiModel } from '@/services/lingqi-service';
+import type { CapabilityTarget } from './chatPageUtils';
 
 interface ChatWorkspaceProps {
   teamId?: string | null;
@@ -39,6 +42,8 @@ interface ChatWorkspaceProps {
   expertPrompts: ExpertPrompt[];
   expertId?: string;
   selectedMCPServerIds: string[];
+  selectedSkillIds: string[];
+  selectedExtensionIds: string[];
   selectedModelName?: string;
   lingqiBalance?: string;
   lingqiEstimateText?: string;
@@ -56,7 +61,9 @@ interface ChatWorkspaceProps {
   onModelSelect: (modelId: string) => void;
   onSelectExpert: (id: string | null) => void;
   onMCPSelectionChange: (serverIds: string[]) => void;
-  onCapabilityClick: (target: 'model' | 'selectors' | 'skills' | 'plugins' | 'attach') => void;
+  onSkillSelectionChange: (skillIds: string[]) => void;
+  onExtensionSelectionChange: (extensionIds: string[]) => void;
+  onCapabilityClick: (target: CapabilityTarget) => void;
   onFileSelect: (event: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   onRemoveAttachment: (id: string) => void;
   onMessageChange: (value: string) => void;
@@ -90,6 +97,8 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     expertPrompts,
     expertId,
     selectedMCPServerIds,
+    selectedSkillIds,
+    selectedExtensionIds,
     selectedModelName,
     lingqiBalance,
     lingqiEstimateText,
@@ -164,6 +173,8 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
               <LingqiModelSelector models={lingqiModels} selectedModelId={selectedModelId} onSelect={props.onModelSelect} />
               <ExpertSelector experts={expertPrompts} activeExpertId={expertId ?? null} onSelectExpert={props.onSelectExpert} />
               <MCPSelector conversationId={currentConversationId} selectedServerIds={selectedMCPServerIds} onSelectionChange={props.onMCPSelectionChange} />
+              <SkillSelector conversationId={currentConversationId} selectedSkillIds={selectedSkillIds} onSelectionChange={props.onSkillSelectionChange} />
+              <ExtensionSelector selectedExtensionIds={selectedExtensionIds} onSelectionChange={props.onExtensionSelectionChange} />
               {lingqiError && <p role="alert" className="min-w-[180px] flex-1 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{lingqiError}</p>}
             </div>
 
@@ -174,10 +185,12 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
               lingqiEstimate={lingqiEstimateText}
               selectedExpertName={selectedExpertName}
               selectedMcpCount={selectedMCPServerIds.length}
+              selectedSkillsCount={selectedSkillIds.length}
+              selectedPluginsCount={selectedExtensionIds.length}
               attachmentCount={attachments.length}
               onModelClick={() => props.onCapabilityClick('model')}
-              onExpertClick={() => props.onCapabilityClick('selectors')}
-              onMcpClick={() => props.onCapabilityClick('selectors')}
+              onExpertClick={() => props.onCapabilityClick('expert')}
+              onMcpClick={() => props.onCapabilityClick('mcp')}
               onSkillsClick={() => props.onCapabilityClick('skills')}
               onPluginsClick={() => props.onCapabilityClick('plugins')}
               onAttachClick={() => props.onCapabilityClick('attach')}

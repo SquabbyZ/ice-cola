@@ -8,6 +8,7 @@ import { WebSocket } from 'ws';
 import { PassThrough } from 'stream';
 import { of } from 'rxjs';
 import { QuotaService } from '../quota/quota.service';
+import { SkillsService } from '../skills/skills.service';
 
 type ExtensionFixture = {
   id: string;
@@ -17,11 +18,12 @@ type ExtensionFixture = {
 
 describe('GatewayService extensions', () => {
   let service: GatewayService;
-  let db: jest.Mocked<Pick<DatabaseService, 'findAllExtensions' | 'findUserById' | 'listExperts' | 'countExperts' | 'createExpert' | 'findExpertById' | 'findExpertByIdForTeam' | 'findTeamExpertById' | 'updateExpert' | 'deleteExpert' | 'findConversationById' | 'updateConversation' | 'deleteMessagesByConversationId' | 'deleteConversation' | 'findMessagesByConversationId' | 'getConversationMCPServers' | 'getUsageStats'>>;
+  let db: jest.Mocked<Pick<DatabaseService, 'findAllExtensions' | 'findUserById' | 'listExperts' | 'countExperts' | 'createExpert' | 'findExpertById' | 'findExpertByIdForTeam' | 'findTeamExpertById' | 'updateExpert' | 'deleteExpert' | 'findConversationById' | 'updateConversation' | 'deleteMessagesByConversationId' | 'deleteConversation' | 'findMessagesByConversationId' | 'getConversationMCPServers' | 'getMCPServersByIdsForTeam' | 'findInstalledEnabledExtensionsByIdsForUser' | 'getUsageStats'>>;
   let jwtService: jest.Mocked<Pick<JwtService, 'verify' | 'signAsync'>>;
   let configService: { get: jest.Mock };
   let quotaService: jest.Mocked<Pick<QuotaService, 'estimateLingqiCost' | 'consumeLingqi' | 'refundLingqi' | 'getSelectedModelForExecution'>>;
   let aiModelsService: jest.Mocked<Pick<AiModelsService, 'findExecutableModelByModelId' | 'findActiveApiKeyByProvider' | 'getDecryptedApiKey' | 'findDefaultEndpointByProvider' | 'updateApiKeyLastUsed' | 'createUsageLog' | 'incrementTeamQuotaUsage'>>;
+  let skillsService: jest.Mocked<Pick<SkillsService, 'findEnabledSkillsForConversation' | 'findSkillsByIdsForTeam'>>;
   const socket = {} as WebSocket;
   const futureJwtExp = Math.floor(Date.now() / 1000) + 900;
 
@@ -78,6 +80,8 @@ describe('GatewayService extensions', () => {
       deleteConversation: jest.fn(),
       findMessagesByConversationId: jest.fn(),
       getConversationMCPServers: jest.fn(),
+      getMCPServersByIdsForTeam: jest.fn(),
+      findInstalledEnabledExtensionsByIdsForUser: jest.fn(),
       getUsageStats: jest.fn(),
     };
     jwtService = {
@@ -105,6 +109,10 @@ describe('GatewayService extensions', () => {
       createUsageLog: jest.fn().mockResolvedValue(undefined),
       incrementTeamQuotaUsage: jest.fn().mockResolvedValue(undefined),
     };
+    skillsService = {
+      findEnabledSkillsForConversation: jest.fn().mockResolvedValue([]),
+      findSkillsByIdsForTeam: jest.fn().mockResolvedValue([]),
+    };
 
     service = new GatewayService(
       db as unknown as DatabaseService,
@@ -113,6 +121,7 @@ describe('GatewayService extensions', () => {
       { post: jest.fn(), get: jest.fn() } as unknown as HttpService,
       aiModelsService as unknown as AiModelsService,
       quotaService as unknown as QuotaService,
+      skillsService as unknown as SkillsService,
     );
   });
 
@@ -176,6 +185,130 @@ describe('GatewayService extensions', () => {
       { name: 'remote-tools', type: 'https', config: { url: 'https://mcp.example.com/sse' } },
     ]);
     expect(options.headers['X-Hermes-Internal-MCP-Key']).toBe('internal-secret');
+  });
+
+  it('uses explicit mcpServerIds instead of persisted conversation MCP servers', async () => {
+    configService.get.mockReturnValue('internal-secret');
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1' } as any);
+    db.findMessagesByConversationId.mockResolvedValue([]);
+    db.getMCPServersByIdsForTeam.mockResolvedValue([
+      { id: 'mcp-override', name: 'override-tools', server_type: 'https', config: { url: 'https://override.example.com/sse', token: 'hidden' } },
+    ] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+    const resultPromise = (service as any).sendHermesAgentMessage({
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      teamId: 'team-1',
+      message: 'hello',
+      mcpServerIds: ['mcp-override'],
+    });
+    stream.end('data: [DONE]\n\n');
+    await resultPromise;
+
+    expect(db.getMCPServersByIdsForTeam).toHaveBeenCalledWith(['mcp-override'], 'team-1');
+    expect(db.getConversationMCPServers).not.toHaveBeenCalled();
+    const [, body] = post.mock.calls[0];
+    expect(body.mcp_servers).toEqual([
+      { name: 'override-tools', type: 'https', config: { url: 'https://override.example.com/sse' } },
+    ]);
+  });
+
+  it('loads persisted conversation expert when expertId is omitted', async () => {
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1', expert_id: 'expert-persisted' } as any);
+    db.findMessagesByConversationId.mockResolvedValue([]);
+    db.findExpertByIdForTeam.mockResolvedValue({ systemPrompt: 'Persisted expert prompt' } as any);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+    const resultPromise = (service as any).sendHermesAgentMessage({
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      teamId: 'team-1',
+      message: 'Current user message',
+    });
+    stream.end('data: [DONE]\n\n');
+    await resultPromise;
+
+    expect(db.findExpertByIdForTeam).toHaveBeenCalledWith('expert-persisted', 'team-1');
+    const [, body] = post.mock.calls[0];
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'Persisted expert prompt' },
+      { role: 'user', content: 'Current user message' },
+    ]);
+  });
+
+  it('uses explicit expertId instead of persisted conversation expert', async () => {
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1', expert_id: 'expert-persisted' } as any);
+    db.findMessagesByConversationId.mockResolvedValue([]);
+    db.findExpertByIdForTeam.mockResolvedValue({ systemPrompt: 'Explicit expert prompt' } as any);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+    const resultPromise = (service as any).sendHermesAgentMessage({
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      expertId: 'expert-explicit',
+      teamId: 'team-1',
+      message: 'Current user message',
+    });
+    stream.end('data: [DONE]\n\n');
+    await resultPromise;
+
+    expect(db.findExpertByIdForTeam).toHaveBeenCalledWith('expert-explicit', 'team-1');
+    expect(db.findExpertByIdForTeam).not.toHaveBeenCalledWith('expert-persisted', 'team-1');
+    const [, body] = post.mock.calls[0];
+    expect(body.messages).toEqual([
+      { role: 'system', content: 'Explicit expert prompt' },
+      { role: 'user', content: 'Current user message' },
+    ]);
+  });
+
+  it('loads only installed enabled extensionIds and injects safe extension metadata', async () => {
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1' } as any);
+    db.findMessagesByConversationId.mockResolvedValue([]);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    db.findInstalledEnabledExtensionsByIdsForUser.mockResolvedValue([
+      {
+        id: 'extension-1',
+        name: 'GitHub Tools',
+        description: 'Search GitHub repositories',
+        category: 'developer',
+        tags: ['github', 'search'],
+        instructions: 'Use GitHub context when relevant.',
+        config: { token: 'must-not-leak' },
+      },
+    ] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+    const resultPromise = (service as any).sendHermesAgentMessage({
+      sessionId: 'session-1',
+      conversationId: 'conversation-1',
+      teamId: 'team-1',
+      userId: 'user-1',
+      message: 'Current user message',
+      extensionIds: ['extension-1', 'disabled-extension'],
+    });
+    stream.end('data: [DONE]\n\n');
+    await resultPromise;
+
+    expect(db.findInstalledEnabledExtensionsByIdsForUser).toHaveBeenCalledWith(['extension-1', 'disabled-extension'], 'user-1');
+    const [, body] = post.mock.calls[0];
+    expect(body.messages[0].role).toBe('system');
+    expect(body.messages[0].content).toContain('GitHub Tools');
+    expect(body.messages[0].content).toContain('Search GitHub repositories');
+    expect(body.messages[0].content).toContain('developer');
+    expect(body.messages[0].content).toContain('github, search');
+    expect(body.messages[0].content).toContain('Use GitHub context when relevant.');
+    expect(body.messages[0].content).not.toContain('must-not-leak');
   });
 
   it('builds expert context before conversation history and the current message', async () => {
@@ -727,6 +860,55 @@ describe('GatewayService extensions', () => {
     }));
   });
 
+  it('sends skills as top-level system prompt for MiniMax Anthropic-compatible models', async () => {
+    quotaService.estimateLingqiCost.mockResolvedValue(successfulLingqiEstimate());
+    quotaService.getSelectedModelForExecution.mockResolvedValue({ id: 'model-1', modelName: 'provider-model' });
+    quotaService.consumeLingqi.mockResolvedValue({ balance: 90, totalConsumed: 10 });
+    jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(false);
+    jest.spyOn(service as any, 'checkQuota').mockResolvedValue(null);
+    db.findConversationById.mockResolvedValue({ id: 'conversation-1', teamId: 'team-1' } as any);
+    db.findMessagesByConversationId.mockResolvedValue([] as any);
+    db.getConversationMCPServers.mockResolvedValue([] as any);
+    skillsService.findSkillsByIdsForTeam.mockResolvedValue([
+      { id: 'skill-1', content: 'Answer like a pirate.' },
+    ] as any);
+    const stream = new PassThrough();
+    const post = jest.fn().mockReturnValue(of({ data: stream, status: 200 }));
+    (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+    aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture({
+      provider_code: 'minimax',
+      provider_name: 'MiniMax',
+    }));
+    aiModelsService.findDefaultEndpointByProvider.mockResolvedValue({
+      base_url: 'https://api.minimaxi.com/anthropic',
+    } as any);
+
+    const resultPromise = service.sendHermesMessage({
+      sessionId: 'session-1',
+      userId: 'user-1',
+      teamId: 'team-1',
+      message: 'hello',
+      model: 'model-1',
+      conversationId: 'conversation-1',
+      messageId: 'message-1',
+      skillIds: ['skill-1'],
+    }, socket);
+    stream.end(
+      'data: {"type":"message_start","message":{"usage":{"input_tokens":8,"output_tokens":0}}}\n\n' +
+      'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Ahoy"}}\n\n' +
+      'data: {"type":"message_delta","usage":{"output_tokens":3}}\n\n' +
+      'data: {"type":"message_stop"}\n\n',
+    );
+    const result = await resultPromise;
+
+    const [, body] = post.mock.calls[0];
+    expect(body.system).toBe('Answer like a pirate.');
+    expect(body.messages).toEqual([
+      { role: 'user', content: 'hello' },
+    ]);
+    expect(result).toEqual({ ok: true, messageId: 'message-1' });
+  });
+
   it('does not refund prepaid Lingqi after an aborted provider stream with billable output', async () => {
     quotaService.estimateLingqiCost.mockResolvedValue(successfulLingqiEstimate());
     quotaService.getSelectedModelForExecution.mockResolvedValue({ id: 'model-1', modelName: 'provider-model' });
@@ -972,7 +1154,8 @@ describe('GatewayService extensions', () => {
       expect.objectContaining({
         headers: {
           'Content-Type': 'application/json',
-          'X-Api-Key': 'secret-key',
+          'Authorization': 'Bearer secret-key',
+          'anthropic-version': '2023-06-01',
         },
       }),
     );
@@ -1136,7 +1319,7 @@ describe('GatewayService extensions', () => {
       messageId: 'message-1',
     });
 
-    expect(result).toEqual({ ok: false, messageId: 'message-1', error: 'Provider request failed' });
+    expect(result).toEqual({ ok: false, messageId: 'message-1', error: expect.stringMatching(/^Provider 调用失败/) });
     expect(sendLegacyHermesMessage).not.toHaveBeenCalled();
     expect(quotaService.refundLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
       amount: 10,
@@ -1430,5 +1613,228 @@ describe('GatewayService extensions', () => {
     await expect(service.deleteExpert({ id: 'global-expert', teamId: 'team-1' })).rejects.toThrow('Expert not found');
 
     expect(db.deleteExpert).not.toHaveBeenCalled();
+  });
+
+  describe('hermes-agent admin provider credential forwarding', () => {
+    it('injects admin MiniMax baseUrl + apiKey + x-api-key headers when override is provided', async () => {
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'JWT_SECRET') return 'test-secret';
+        if (key === 'HERMES_INTERNAL_MCP_KEY') return 'internal-secret';
+        return undefined;
+      });
+      const stream = new PassThrough();
+      const post = jest.fn().mockReturnValue(of({ data: stream }));
+      (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+      const providerOverride = {
+        baseUrl: 'https://api.minimaxi.com/anthropic',
+        apiKey: 'sk-minimax-real',
+        authStyle: 'x-api-key' as const,
+        modelId: 'MiniMax-M2.7',
+        providerCode: 'minimax',
+      };
+
+      const resultPromise = (service as any).sendHermesAgentMessage(
+        {
+          sessionId: 'session-1',
+          message: 'hello',
+        } as any,
+        undefined,
+        'MiniMax-M2.7',
+        undefined,
+        providerOverride,
+      );
+      stream.end('data: [DONE]\n\n');
+      await resultPromise;
+
+      expect(post).toHaveBeenCalled();
+      const [, , options] = post.mock.calls[0];
+      expect(options.headers['X-Hermes-Internal-MCP-Key']).toBe('internal-secret');
+      expect(options.headers['X-Hermes-Provider-Base-Url']).toBe('https://api.minimaxi.com/anthropic');
+      expect(options.headers['X-Hermes-Provider-Api-Key']).toBe('sk-minimax-real');
+      expect(options.headers['X-Hermes-Provider-Auth-Style']).toBe('x-api-key');
+      expect(options.headers['X-Hermes-Provider-Model']).toBe('MiniMax-M2.7');
+      expect(options.headers['X-Hermes-Provider-Code']).toBe('minimax');
+    });
+
+    it('omits provider headers when no override is provided (backward compatible)', async () => {
+      configService.get.mockReturnValue('internal-secret');
+      const stream = new PassThrough();
+      const post = jest.fn().mockReturnValue(of({ data: stream }));
+      (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+      const resultPromise = (service as any).sendHermesAgentMessage({
+        sessionId: 'session-1',
+        message: 'hello',
+      } as any);
+      stream.end('data: [DONE]\n\n');
+      await resultPromise;
+
+      const [, , options] = post.mock.calls[0];
+      expect(options.headers['X-Hermes-Provider-Base-Url']).toBeUndefined();
+      expect(options.headers['X-Hermes-Provider-Api-Key']).toBeUndefined();
+      expect(options.headers['X-Hermes-Provider-Auth-Style']).toBeUndefined();
+    });
+
+    it('throws when provider override is set but HERMES_INTERNAL_MCP_KEY is missing', async () => {
+      configService.get.mockReturnValue(undefined);
+      const stream = new PassThrough();
+      const post = jest.fn().mockReturnValue(of({ data: stream }));
+      (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+      await expect(
+        (service as any).sendHermesAgentMessage(
+          { sessionId: 'session-1', message: 'hello' } as any,
+          undefined,
+          'MiniMax-M2.7',
+          undefined,
+          {
+            baseUrl: 'https://api.minimaxi.com/anthropic',
+            apiKey: 'sk-x',
+            authStyle: 'x-api-key',
+            modelId: 'MiniMax-M2.7',
+            providerCode: 'minimax',
+          },
+        ),
+      ).resolves.toEqual(expect.objectContaining({ ok: false }));
+    });
+
+    it('tryBuildHermesProviderOverride returns MiniMax override when admin has configured key + endpoint', async () => {
+      aiModelsService.findExecutableModelByModelId.mockResolvedValueOnce(providerModelFixture({
+        provider_code: 'minimax',
+        provider_name: 'MiniMax',
+        model_id: 'MiniMax-M2.7',
+      }));
+      aiModelsService.findActiveApiKeyByProvider.mockResolvedValueOnce({ id: 'key-mm' } as any);
+      aiModelsService.getDecryptedApiKey.mockResolvedValueOnce('sk-mm-real');
+      aiModelsService.findDefaultEndpointByProvider.mockResolvedValueOnce({
+        base_url: 'https://api.minimaxi.com/anthropic',
+      } as any);
+
+      const override = await (service as any).tryBuildHermesProviderOverride({
+        executionModelName: 'MiniMax-M2.7',
+      });
+
+      expect(override).toEqual({
+        baseUrl: 'https://api.minimaxi.com/anthropic',
+        apiKey: 'sk-mm-real',
+        authStyle: 'bearer',
+        modelId: 'MiniMax-M2.7',
+        providerCode: 'minimax',
+      });
+    });
+
+    it('tryBuildHermesProviderOverride returns undefined when admin has no endpoint configured', async () => {
+      aiModelsService.findExecutableModelByModelId.mockResolvedValueOnce(providerModelFixture({
+        provider_code: 'minimax',
+        provider_name: 'MiniMax',
+        model_id: 'MiniMax-M2.7',
+      }));
+      aiModelsService.findActiveApiKeyByProvider.mockResolvedValueOnce({ id: 'key-mm' } as any);
+      aiModelsService.getDecryptedApiKey.mockResolvedValueOnce('sk-mm-real');
+      aiModelsService.findDefaultEndpointByProvider.mockResolvedValueOnce(null as any);
+
+      const override = await (service as any).tryBuildHermesProviderOverride({
+        executionModelName: 'MiniMax-M2.7',
+      });
+
+      expect(override).toBeUndefined();
+    });
+
+    it('tryBuildHermesProviderOverride returns undefined when admin has no api key', async () => {
+      aiModelsService.findExecutableModelByModelId.mockResolvedValueOnce(providerModelFixture({
+        provider_code: 'minimax',
+        provider_name: 'MiniMax',
+        model_id: 'MiniMax-M2.7',
+      }));
+      aiModelsService.findActiveApiKeyByProvider.mockResolvedValueOnce(null as any);
+
+      const override = await (service as any).tryBuildHermesProviderOverride({
+        executionModelName: 'MiniMax-M2.7',
+      });
+
+      expect(override).toBeUndefined();
+    });
+  });
+
+  describe('admin-configured provider bypasses Hermes Agent', () => {
+    function preparedHealthyLingqi() {
+      quotaService.estimateLingqiCost.mockResolvedValue(successfulLingqiEstimate());
+      quotaService.getSelectedModelForExecution.mockResolvedValue({ id: 'model-1', modelName: 'MiniMax-M2.7' });
+      quotaService.consumeLingqi.mockResolvedValue({ balance: 90, totalConsumed: 10 });
+      quotaService.refundLingqi.mockResolvedValue({ balance: 100, totalConsumed: 0 });
+      jest.spyOn(service as any, 'checkQuota').mockResolvedValue(null);
+      db.getConversationMCPServers.mockResolvedValue([] as any);
+    }
+
+    it('bypasses Hermes Agent and routes directly to MiniMax when admin has configured key + endpoint', async () => {
+      preparedHealthyLingqi();
+      const checkHealth = jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(true);
+      const sendHermesAgentSpy = jest.spyOn(service as any, 'sendHermesAgentMessage');
+      aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture({
+        provider_code: 'minimax',
+        provider_name: 'MiniMax',
+        model_id: 'MiniMax-M2.7',
+      }));
+      aiModelsService.findActiveApiKeyByProvider.mockResolvedValue({ id: 'key-mm' } as any);
+      aiModelsService.getDecryptedApiKey.mockResolvedValue('sk-mm-real');
+      aiModelsService.findDefaultEndpointByProvider.mockResolvedValue({
+        base_url: 'https://api.minimaxi.com/anthropic',
+      } as any);
+      const stream = new PassThrough();
+      const post = jest.fn().mockReturnValue(of({ data: stream, status: 200 }));
+      (service as any).httpService = { post, get: jest.fn() } as unknown as HttpService;
+
+      const resultPromise = service.sendHermesMessage({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        teamId: 'team-1',
+        message: 'hello',
+        model: 'MiniMax-M2.7',
+        messageId: 'msg-mm-1',
+      }, socket);
+      stream.end('data: [DONE]\n\n');
+      await resultPromise;
+
+      // Hermes health check must be skipped because we already have admin override.
+      expect(checkHealth).not.toHaveBeenCalled();
+      expect(sendHermesAgentSpy).not.toHaveBeenCalled();
+      // POST must have gone to MiniMax /v1/messages with Authorization: Bearer
+      // (per MiniMax Anthropic-compatible API docs).
+      const [calledUrl, , options] = post.mock.calls[0];
+      expect(calledUrl).toBe('https://api.minimaxi.com/anthropic/v1/messages');
+      expect(options.headers['Authorization']).toBe('Bearer sk-mm-real');
+      expect(options.headers['anthropic-version']).toBe('2023-06-01');
+    });
+
+    it('returns LINGQI_MODEL_UNAVAILABLE when no admin endpoint configured and Hermes Agent is unhealthy (G3 fix)', async () => {
+      preparedHealthyLingqi();
+      jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(false);
+      aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture({
+        provider_code: 'minimax',
+        provider_name: 'MiniMax',
+        model_id: 'MiniMax-M2.7',
+      }));
+      aiModelsService.findActiveApiKeyByProvider.mockResolvedValue({ id: 'key-mm' } as any);
+      aiModelsService.getDecryptedApiKey.mockResolvedValue('sk-mm-real');
+      aiModelsService.findDefaultEndpointByProvider.mockResolvedValue(null as any);
+
+      const result = await service.sendHermesMessage({
+        sessionId: 'session-1',
+        userId: 'user-1',
+        teamId: 'team-1',
+        message: 'hello',
+        model: 'MiniMax-M2.7',
+        messageId: 'msg-mm-2',
+      } as any, socket);
+
+      expect(result).toEqual(expect.objectContaining({
+        ok: false,
+        messageId: 'msg-mm-2',
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      }));
+      // Critical: must NOT fall back to HERMES_ENDPOINT (G3 regression guard).
+      expect(quotaService.refundLingqi).toHaveBeenCalled();
+    });
   });
 });

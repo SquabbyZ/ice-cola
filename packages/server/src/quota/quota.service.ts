@@ -520,13 +520,31 @@ export class QuotaService {
     const account = accountOverride ?? await this.ensureLingqiAccount(teamId);
     const realms = await this.getCultivationRealms();
     const subscription = await this.getActiveSubscription(teamId);
-    const totalConsumed = Number(account.total_consumed_amt);
+
+    // Refund-aware net totals. The raw `total_consumed_amt` / `total_granted_amt`
+    // columns are audit accumulators that never decrement, so when a chat
+    // pre-pay is followed by a `chat_refund` grant they BOTH grow by the
+    // same amount even though the user spent nothing. Surface the
+    // refund-adjusted figures so "累计消耗" matches user intuition.
+    const refundRow = await this.db.queryOne<{ total: string | null }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS total
+         FROM lingqi_ledger_entries
+        WHERE team_id = $1
+          AND direction = 'grant'
+          AND source_type LIKE '%_refund'`,
+      [teamId],
+    );
+    const totalRefunded = Number(refundRow?.total ?? 0);
+    const rawConsumed = Number(account.total_consumed_amt);
+    const rawGranted = Number(account.total_granted_amt);
+    const totalConsumed = Math.max(0, rawConsumed - totalRefunded);
+    const totalGranted = Math.max(0, rawGranted - totalRefunded);
     const { currentRealm, nextRealm, progress } = this.deriveRealmProgress(realms, totalConsumed);
 
     return {
       teamId,
       balance: Number(account.balance_amt),
-      totalGranted: Number(account.total_granted_amt),
+      totalGranted,
       totalConsumed,
       cultivationRealm: currentRealm,
       nextCultivationRealm: nextRealm,

@@ -271,7 +271,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async updateConversation(conversationId: string, data: { title?: string; sessionId?: string }) {
+  async updateConversation(conversationId: string, data: { title?: string; sessionId?: string; expertId?: string | null }) {
     const updates: string[] = [];
     const values: any[] = [];
     let paramIndex = 1;
@@ -283,6 +283,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (data.sessionId !== undefined) {
       updates.push(`"sessionId" = $${paramIndex++}`);
       values.push(data.sessionId);
+    }
+    if (data.expertId !== undefined) {
+      updates.push(`expert_id = $${paramIndex++}`);
+      values.push(data.expertId);
     }
     updates.push(`"updatedAt" = NOW()`);
     values.push(conversationId);
@@ -1047,19 +1051,49 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  async setConversationMCPServers(conversationId: string, serverIds: string[]) {
-    await this.query(
-      `UPDATE conversation_mcp_servers SET enabled = false, updated_at = NOW() WHERE conversation_id = $1`,
-      [conversationId]
+  async getMCPServersByIdsForTeam(serverIds: string[], teamId: string) {
+    if (serverIds.length === 0) return [];
+    return this.query(
+      `SELECT id, name, description, version, author, category, icon, color, config_schema,
+              instructions, server_type, config
+       FROM mcp_servers
+       WHERE id = ANY($1) AND (team_id = $2 OR team_id IS NULL) AND enabled = true`,
+      [serverIds, teamId]
     );
-    if (serverIds.length > 0) {
-      await this.query(
-        `UPDATE conversation_mcp_servers SET enabled = true, updated_at = NOW()
-         WHERE conversation_id = $1 AND server_id = ANY($2)`,
-        [conversationId, serverIds]
+  }
+
+  async setConversationMCPServers(conversationId: string, serverIds: string[]) {
+    const uniqueIds = [...new Set(serverIds.filter(Boolean))];
+    return this.transaction(async (client) => {
+      await client.query(
+        `UPDATE conversation_mcp_servers SET enabled = false, updated_at = NOW() WHERE conversation_id = $1`,
+        [conversationId]
       );
-    }
-    return this.getConversationMCPServers(conversationId);
+      for (const serverId of uniqueIds) {
+        await client.query(
+          `INSERT INTO conversation_mcp_servers (id, conversation_id, server_id, server_name, server_type, config, enabled, created_at, updated_at)
+           SELECT $1, $2, ms.id, ms.name, COALESCE(ms.server_type, 'stdio'), NULL, true, NOW(), NOW()
+           FROM mcp_servers ms
+           WHERE ms.id = $3
+           ON CONFLICT (conversation_id, server_id) DO UPDATE SET
+             server_name = EXCLUDED.server_name,
+             server_type = EXCLUDED.server_type,
+             enabled = true,
+             updated_at = NOW()`,
+          [this.generateUUID(), conversationId, serverId]
+        );
+      }
+      const result = await client.query(
+        `SELECT cms.*, ms.name, ms.description, ms.version, ms.author, ms.category,
+                ms.icon, ms.color, ms.config_schema, ms.instructions
+         FROM conversation_mcp_servers cms
+         INNER JOIN mcp_servers ms ON cms.server_id = ms.id
+         WHERE cms.conversation_id = $1 AND cms.enabled = true
+         ORDER BY cms.created_at ASC`,
+        [conversationId]
+      );
+      return result.rows;
+    });
   }
 
   async clearConversationMCPServers(conversationId: string) {
@@ -1087,6 +1121,59 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
        WHERE umc.user_id = $1 AND umc.status = 'connected'`,
       [userId]
     );
+  }
+
+  async findInstalledEnabledExtensionsByIdsForUser(extensionIds: string[], userId: string) {
+    if (extensionIds.length === 0) return [];
+    return this.query(
+      `SELECT e.id, e.name, e.description, e.category, e.icon, e.homepage, e.repository, e.tags, e.instructions
+       FROM extensions e
+       INNER JOIN user_extensions ue ON e.id = ue."extensionId"
+       WHERE e.id = ANY($1)
+         AND ue."userId" = $2
+         AND e.enabled = true
+         AND ue.enabled = true`,
+      [extensionIds, userId]
+    );
+  }
+
+  async getConversationExtensionIds(conversationId: string, userId: string) {
+    const rows = await this.query<{ extension_id: string }>(
+      `SELECT ce.extension_id
+       FROM conversation_extensions ce
+       INNER JOIN extensions e ON e.id = ce.extension_id
+       INNER JOIN user_extensions ue ON ue."extensionId" = e.id
+       WHERE ce.conversation_id = $1
+         AND ce.enabled = true
+         AND ue."userId" = $2
+         AND e.enabled = true
+         AND ue.enabled = true
+       ORDER BY ce.created_at ASC`,
+      [conversationId, userId]
+    );
+    return rows.map(row => row.extension_id);
+  }
+
+  async setConversationExtensions(conversationId: string, extensionIds: string[], userId: string) {
+    const uniqueIds = [...new Set(extensionIds.filter(Boolean))];
+    const validRows = uniqueIds.length > 0
+      ? await this.findInstalledEnabledExtensionsByIdsForUser(uniqueIds, userId)
+      : [];
+    const validIds = new Set(validRows.map((row: { id: string }) => row.id));
+    const filteredIds = uniqueIds.filter(id => validIds.has(id));
+
+    return this.transaction(async (client) => {
+      await client.query('DELETE FROM conversation_extensions WHERE conversation_id = $1', [conversationId]);
+      for (const extensionId of filteredIds) {
+        await client.query(
+          `INSERT INTO conversation_extensions (id, conversation_id, extension_id, enabled, created_at, updated_at)
+           VALUES ($1, $2, $3, true, NOW(), NOW())
+           ON CONFLICT (conversation_id, extension_id) DO UPDATE SET enabled = true, updated_at = NOW()`,
+          [this.generateUUID(), conversationId, extensionId]
+        );
+      }
+      return filteredIds;
+    });
   }
 
   private generateUUID(): string {

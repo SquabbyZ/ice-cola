@@ -23,6 +23,9 @@ interface HermesSendParams {
   expertId?: string;
   model?: string;
   messageId?: string;
+  skillIds?: string[];
+  mcpServerIds?: string[];
+  extensionIds?: string[];
   attachments?: HermesAttachmentParams[];
 }
 
@@ -213,7 +216,7 @@ export class GatewayGateway implements OnModuleInit {
             const clientInfo = this.requireClientContext(ws);
             const hermesParams = this.validateHermesSendParams(params);
             result = await this.gatewayService.sendHermesMessage(
-              { ...hermesParams, teamId: clientInfo.teamId, userId: clientInfo.userId },
+              { ...hermesParams, teamId: clientInfo.teamId, userId: clientInfo.userId, role: clientInfo.role },
               ws,
             );
           }
@@ -292,10 +295,26 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.updateExtensionConfig({ ...params, userId: this.requireUserContext(ws).userId });
           break;
         case 'skills.list':
-          result = await this.gatewayService.listSkills({ ...params, teamId: this.requireClientContext(ws).teamId });
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.listSkills({
+              ...params,
+              teamId: clientInfo.teamId,
+              userId: clientInfo.userId,
+              role: clientInfo.role,
+            });
+          }
           break;
         case 'skills.get':
-          result = await this.gatewayService.getSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.getSkill({
+              ...params,
+              teamId: clientInfo.teamId,
+              userId: clientInfo.userId,
+              role: clientInfo.role,
+            });
+          }
           break;
         case 'skills.create':
           {
@@ -308,7 +327,15 @@ export class GatewayGateway implements OnModuleInit {
           }
           break;
         case 'skills.update':
-          result = await this.gatewayService.updateSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.updateSkill({
+              ...params,
+              teamId: clientInfo.teamId,
+              userId: clientInfo.userId,
+              role: clientInfo.role,
+            });
+          }
           break;
         case 'skills.publishTeam':
           result = await this.gatewayService.requestPublishSkillToTeam(params, this.requireClientContext(ws));
@@ -326,7 +353,15 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.listMarketplaceSkills(params);
           break;
         case 'skills.delete':
-          result = await this.gatewayService.deleteSkill({ ...params, teamId: this.requireClientContext(ws).teamId });
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.deleteSkill({
+              ...params,
+              teamId: clientInfo.teamId,
+              userId: clientInfo.userId,
+              role: clientInfo.role,
+            });
+          }
           break;
         default:
           this.logger.warn(`Unknown method: ${method}`);
@@ -370,6 +405,9 @@ export class GatewayGateway implements OnModuleInit {
       'Invalid hermes send attachment type',
       'Invalid hermes send attachment MIME type',
       'Invalid hermes send attachment data',
+      'Invalid hermes send skillIds',
+      'Invalid hermes send mcpServerIds',
+      'Invalid hermes send extensionIds',
     ]);
 
     return publicMessages.has(error.message) ? error.message : 'Internal error';
@@ -453,6 +491,27 @@ export class GatewayGateway implements OnModuleInit {
         throw new Error('Invalid hermes send attachments');
       }
       result.attachments = params.attachments.map((attachment) => this.validateHermesAttachment(attachment));
+    }
+
+    if (params.skillIds !== undefined) {
+      if (!Array.isArray(params.skillIds) || params.skillIds.length > 20) {
+        throw new Error('Invalid hermes send skillIds');
+      }
+      result.skillIds = params.skillIds.map((id) => this.requireBoundedString(id, 'skillId', 1, 64));
+    }
+
+    if (params.mcpServerIds !== undefined) {
+      if (!Array.isArray(params.mcpServerIds) || params.mcpServerIds.length > 20) {
+        throw new Error('Invalid hermes send mcpServerIds');
+      }
+      result.mcpServerIds = params.mcpServerIds.map((id) => this.requireBoundedString(id, 'mcpServerId', 1, 64));
+    }
+
+    if (params.extensionIds !== undefined) {
+      if (!Array.isArray(params.extensionIds) || params.extensionIds.length > 20) {
+        throw new Error('Invalid hermes send extensionIds');
+      }
+      result.extensionIds = params.extensionIds.map((id) => this.requireBoundedString(id, 'extensionId', 1, 64));
     }
 
     return result;

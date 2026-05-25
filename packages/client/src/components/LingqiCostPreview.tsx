@@ -1,11 +1,8 @@
+import { formatLingqiAmount } from '@/lib/lingqi';
 import type { LingqiEstimate } from '@/services/lingqi-service';
 
 interface LingqiCostPreviewProps {
   estimate: LingqiEstimate | null;
-}
-
-function formatLingqiAmount(value: number): string {
-  return new Intl.NumberFormat('zh-CN').format(value);
 }
 
 export function LingqiCostPreview({ estimate }: LingqiCostPreviewProps) {

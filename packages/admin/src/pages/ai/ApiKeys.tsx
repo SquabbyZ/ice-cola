@@ -17,11 +17,11 @@ import {
   useUsageStats,
   useTestConnection,
   useUpdateProvider,
-  useEndpoints,
 } from '../../hooks/useAiModels';
 import { useAuthStore } from '../../stores/authStore';
 import { ProviderCard } from '../../components/ai/ProviderCard';
 import { AddProviderDialog } from '../../components/ai/AddProviderDialog';
+import { aiModelsApi } from '../../services/aiModelsApi';
 import { Button } from '../../components/ui/button';
 import { PasswordInput } from '../../components/ui/password-input';
 import { Spinner } from '../../components/ui/spinner';
@@ -50,7 +50,6 @@ export default function ApiKeys() {
   const fetchModels = useFetchModelsFromProvider();
   const setDefaultModel = useCreateDefaultModel();
   const { data: usageStats } = useUsageStats({ period: 'month' });
-  const { data: endpoints } = useEndpoints();
 
   const currentUser = useAuthStore((state) => state.user);
   const canEdit = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';
@@ -63,6 +62,13 @@ export default function ApiKeys() {
   const [copied, setCopied] = React.useState(false);
   const [togglingId, setTogglingId] = React.useState<string | null>(null);
   const [testingConnectionId, setTestingConnectionId] = React.useState<string | null>(null);
+  const [testConnectionResult, setTestConnectionResult] = React.useState<{
+    success: boolean;
+    message: string;
+    modelCount?: number;
+    sampleModelId?: string | null;
+    baseUrl?: string;
+  } | null>(null);
   const testConnection = useTestConnection();
   const updateProvider = useUpdateProvider();
 
@@ -166,22 +172,25 @@ export default function ApiKeys() {
     setDeleteKeyId(id);
   };
 
-  const handleEditKey = (id: string, keyName: string) => {
+  const handleEditKey = async (id: string, keyName: string) => {
     const key = apiKeys?.find(k => k.id === id);
-    if (key) {
-      const endpoint = endpoints?.find(e => e.providerId === key.providerId && e.isDefault);
-      // Fetch decrypted key for echo-back
-      decryptKey.mutate(id, {
-        onSuccess: (decrypted) => {
-          setEditingKey({ id, keyName, endpointUrl: endpoint?.baseUrl, decryptedKey: decrypted || '••••••••••' });
-        },
-        onError: () => {
-          setEditingKey({ id, keyName, endpointUrl: endpoint?.baseUrl, decryptedKey: '••••••••••' });
-        },
-      });
-    } else {
+    if (!key) {
       setEditingKey({ id, keyName, endpointUrl: undefined });
+      return;
     }
+    // Fetch this provider's endpoints directly (cached useEndpoints may not
+    // have data for the provider, and admin policy forbids decrypting the
+    // stored API key, so we never echo plaintext back).
+    let endpointUrl: string | undefined;
+    try {
+      const res = await aiModelsApi.getEndpoints(key.providerId);
+      const providerEndpoints = res.data?.data ?? [];
+      const defaultEndpoint = providerEndpoints.find((e) => e.isDefault) ?? providerEndpoints[0];
+      endpointUrl = defaultEndpoint?.baseUrl;
+    } catch {
+      endpointUrl = undefined;
+    }
+    setEditingKey({ id, keyName, endpointUrl, decryptedKey: undefined });
   };
 
   const confirmDelete = () => {
@@ -206,18 +215,31 @@ export default function ApiKeys() {
   const handleTestConnection = (providerId: string) => {
     setTestingConnectionId(providerId);
     testConnection.mutate(providerId, {
-      onSuccess: () => {
-        alert(t('ai.settings.testConnectionSuccess'));
-        updateProvider.mutate(
-          { id: providerId, data: { status: 'active' } },
-          {
-            onSettled: () => setTestingConnectionId(null),
-          },
-        );
+      onSuccess: (result) => {
+        setTestConnectionResult({
+          success: result?.success ?? true,
+          message: result?.message || t('ai.apiKeys.testConnectionSuccess'),
+          modelCount: result?.modelCount,
+          sampleModelId: result?.sampleModelId,
+          baseUrl: result?.baseUrl,
+        });
+        if (result?.success) {
+          updateProvider.mutate(
+            { id: providerId, data: { status: 'active' } },
+            {
+              onSettled: () => setTestingConnectionId(null),
+            },
+          );
+        } else {
+          setTestingConnectionId(null);
+        }
       },
       onError: (error: unknown) => {
         const err = error as { response?: { data?: { message?: string } } };
-        alert(err.response?.data?.message || t('ai.settings.testConnectionFailed'));
+        setTestConnectionResult({
+          success: false,
+          message: err.response?.data?.message || t('ai.apiKeys.testConnectionFailed'),
+        });
         setTestingConnectionId(null);
       },
     });
@@ -357,6 +379,7 @@ export default function ApiKeys() {
             <DialogDescription>{t('ai.apiKeys.editKeyDescription')}</DialogDescription>
           </DialogHeader>
           <form
+            key={editingKey?.id ?? 'edit-key-form'}
             onSubmit={(e) => {
               e.preventDefault();
               const formData = new FormData(e.currentTarget);
@@ -397,9 +420,10 @@ export default function ApiKeys() {
                 id="apiKey"
                 name="apiKey"
                 autoComplete="new-password"
-                defaultValue={editingKey?.decryptedKey}
+                placeholder={t('ai.apiKeys.keyEditHint')}
+                defaultValue=""
               />
-              <p className="text-xs text-muted-foreground">{t('ai.apiKeys.keyRevealed')}</p>
+              <p className="text-xs text-muted-foreground">{t('ai.apiKeys.keyEditHint')}</p>
             </div>
             <div className="space-y-2">
               <label htmlFor="endpointUrl" className="text-sm font-medium">
@@ -422,6 +446,60 @@ export default function ApiKeys() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={testConnectionResult !== null}
+        onOpenChange={(open) => { if (!open) setTestConnectionResult(null); }}
+      >
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>{t('ai.apiKeys.testConnectionResultTitle')}</DialogTitle>
+            <DialogDescription>
+              {testConnectionResult?.success
+                ? t('ai.apiKeys.testConnectionResultSuccess')
+                : t('ai.apiKeys.testConnectionResultFailure')}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-sm">
+            <div
+              className={
+                testConnectionResult?.success
+                  ? 'rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100'
+                  : 'rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100'
+              }
+            >
+              {testConnectionResult?.message}
+            </div>
+            {testConnectionResult?.success && (
+              <dl className="space-y-1.5">
+                {typeof testConnectionResult.modelCount === 'number' && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">{t('ai.apiKeys.testConnectionModelCount')}</dt>
+                    <dd className="font-medium">{testConnectionResult.modelCount}</dd>
+                  </div>
+                )}
+                {testConnectionResult.sampleModelId && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">{t('ai.apiKeys.testConnectionSampleModel')}</dt>
+                    <dd className="font-mono text-xs">{testConnectionResult.sampleModelId}</dd>
+                  </div>
+                )}
+                {testConnectionResult.baseUrl && (
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">{t('ai.apiKeys.testConnectionBaseUrl')}</dt>
+                    <dd className="break-all font-mono text-xs">{testConnectionResult.baseUrl}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </div>
+          <DialogFooter>
+            <Button type="button" onClick={() => setTestConnectionResult(null)}>
+              {t('ai.apiKeys.testConnectionClose')}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

@@ -7,6 +7,7 @@ import { HttpService } from '@nestjs/axios';
 import { AiModelsService } from '../ai-models/ai-models.service';
 import { normalizeTrustedModelProviderBaseUrl } from '../ai-models/api-client';
 import { QuotaService } from '../quota/quota.service';
+import { SkillsService } from '../skills/skills.service';
 import { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -65,6 +66,15 @@ interface ConversationMcpServerRow {
   config?: Record<string, unknown> | null;
 }
 
+interface ExtensionContextRow {
+  id: string;
+  name: string;
+  description?: string | null;
+  category?: string | null;
+  tags?: string[] | null;
+  instructions?: string | null;
+}
+
 type HermesMessageContent = string | Array<{
   type: string;
   text?: string;
@@ -80,6 +90,7 @@ interface HermesChatRequestBody {
   model: string;
   messages: HermesChatMessage[];
   stream: boolean;
+  system?: string;
   mcp_servers?: HermesMCPServer[];
   temperature?: number;
   max_tokens?: number;
@@ -116,10 +127,14 @@ interface HermesMessageParams {
   message: string;
   userId?: string;
   teamId?: string;
+  role?: string;
   conversationId?: string;
   expertId?: string;
   model?: string;
   messageId?: string;
+  skillIds?: string[];
+  mcpServerIds?: string[];
+  extensionIds?: string[];
   attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }>;
 }
 
@@ -158,6 +173,14 @@ interface ProviderModelRow {
   top_p?: number | null;
 }
 
+interface HermesAgentProviderOverride {
+  baseUrl: string;
+  apiKey: string;
+  authStyle: 'x-api-key' | 'bearer';
+  modelId: string;
+  providerCode: string;
+}
+
 interface ConversationPromptMessage {
   role: string;
   content: HermesMessageContent;
@@ -180,6 +203,7 @@ export class GatewayService {
     private httpService: HttpService,
     private aiModelsService: AiModelsService,
     private quotaService: QuotaService,
+    private skillsService: SkillsService,
   ) {
     this.hermesAgentUrl = this.normalizeInternalServiceUrl(
       this.configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
@@ -569,19 +593,47 @@ export class GatewayService {
     conversationId?: string;
     expertId?: string;
     teamId?: string;
-  }): Promise<{ messages: ConversationPromptMessage[]; mcpServers: HermesMCPServer[] }> {
+    userId?: string;
+    role?: string;
+    skillIds?: string[];
+    mcpServerIds?: string[];
+    extensionIds?: string[];
+  }): Promise<{ messages: ConversationPromptMessage[]; mcpServers: HermesMCPServer[]; hasMcpSelection: boolean }> {
     const messages: ConversationPromptMessage[] = [];
     let isConversationAuthorized = false;
+    let persistedExpertId: string | undefined;
+
+    const hasExtensionOverride = Array.isArray(params.extensionIds) && params.extensionIds.length > 0;
+    if (hasExtensionOverride && params.userId) {
+      const extensionMessages = await this.getSafeExtensionPromptMessages(params.extensionIds!, params.userId);
+      messages.push(...extensionMessages);
+    }
 
     if (params.expertId) {
+      await this.addExpertPrompt(messages, params.expertId, params.teamId);
+    }
+
+    const hasSkillOverride = Array.isArray(params.skillIds) && params.skillIds.length > 0;
+    if (hasSkillOverride && params.teamId) {
       try {
-        const expert = await this.db.findExpertByIdForTeam(params.expertId, params.teamId);
-        const prompt = expert?.systemprompt || expert?.systemPrompt;
-        if (prompt) {
-          messages.push({ role: 'system', content: prompt });
+        const skills = await this.skillsService.findSkillsByIdsForTeam(
+          params.skillIds!,
+          params.teamId,
+          params.userId,
+          params.role,
+        );
+        const skillsById = new Map(skills.map((skill) => [skill.id, skill]));
+        for (const skillId of params.skillIds!) {
+          const skill = skillsById.get(skillId);
+          if (skill?.content && typeof skill.content === 'string') {
+            messages.push({ role: 'system', content: skill.content });
+          }
         }
       } catch (err) {
-        this.logger.warn(`Failed to load expert ${params.expertId}:`, err);
+        this.logger.warn(
+          `Failed to load override skills [${params.skillIds!.join(',')}]:`,
+          err,
+        );
       }
     }
 
@@ -590,6 +642,44 @@ export class GatewayService {
         const conversation = await this.db.findConversationById(params.conversationId, params.teamId);
         if (conversation) {
           isConversationAuthorized = true;
+
+          persistedExpertId = typeof conversation.expert_id === 'string'
+            ? conversation.expert_id
+            : typeof conversation.expertId === 'string'
+              ? conversation.expertId
+              : undefined;
+
+          if (!params.expertId && persistedExpertId) {
+            await this.addExpertPrompt(messages, persistedExpertId, params.teamId);
+          }
+
+          if (!hasSkillOverride) {
+            try {
+              const skills = await this.skillsService.findEnabledSkillsForConversation(
+                params.conversationId,
+                params.teamId,
+                params.userId,
+                params.role,
+              );
+              for (const skill of skills) {
+                if (skill.content && typeof skill.content === 'string') {
+                  messages.push({ role: 'system', content: skill.content });
+                }
+              }
+            } catch (err) {
+              this.logger.warn(
+                `Failed to load conversation skills for ${params.conversationId}:`,
+                err,
+              );
+            }
+          }
+
+          if (!hasExtensionOverride && params.userId) {
+            const extensionIds = await this.db.getConversationExtensionIds(params.conversationId, params.userId);
+            const extensionMessages = await this.getSafeExtensionPromptMessages(extensionIds, params.userId);
+            messages.push(...extensionMessages);
+          }
+
           const history = await this.db.findMessagesByConversationId(params.conversationId);
           const recentHistory = history.slice(-20);
           for (const msg of recentHistory) {
@@ -603,24 +693,95 @@ export class GatewayService {
       }
     }
 
-    const mcpServers = params.conversationId && isConversationAuthorized
-      ? await this.getConversationHermesMcpServers(params.conversationId)
+    const hasMcpOverride = Array.isArray(params.mcpServerIds) && params.mcpServerIds.length > 0;
+    const persistedMcpServerIds = !hasMcpOverride && params.conversationId && isConversationAuthorized
+      ? await this.db.getConversationMCPServers(params.conversationId)
       : [];
+    const mcpServers = hasMcpOverride && params.teamId
+      ? await this.getHermesMcpServersByIds(params.mcpServerIds!, params.teamId)
+      : this.toSafeHermesMcpServers(persistedMcpServerIds);
+    const hasMcpSelection = hasMcpOverride || persistedMcpServerIds.length > 0;
 
-    return { messages, mcpServers };
+    return { messages, mcpServers, hasMcpSelection };
+  }
+
+  private async hasConversationMcpSelection(params: HermesMessageParams): Promise<boolean> {
+    if (Array.isArray(params.mcpServerIds) && params.mcpServerIds.length > 0) {
+      return true;
+    }
+    if (!params.conversationId || !params.teamId) {
+      return false;
+    }
+    const conversation = await this.db.findConversationById(params.conversationId, params.teamId);
+    if (!conversation) {
+      return false;
+    }
+    const rows = await this.db.getConversationMCPServers(params.conversationId);
+    return rows.length > 0;
+  }
+
+  private async addExpertPrompt(messages: ConversationPromptMessage[], expertId: string, teamId?: string): Promise<void> {
+    try {
+      const expert = await this.db.findExpertByIdForTeam(expertId, teamId);
+      const prompt = expert?.systemprompt || expert?.systemPrompt;
+      if (prompt) {
+        messages.push({ role: 'system', content: prompt });
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to load expert ${expertId}:`, err);
+    }
+  }
+
+  private async getSafeExtensionPromptMessages(extensionIds: string[], userId: string): Promise<ConversationPromptMessage[]> {
+    try {
+      const rows = await this.db.findInstalledEnabledExtensionsByIdsForUser(extensionIds, userId) as ExtensionContextRow[];
+      const extensionPrompts = rows.map((extension) => this.toSafeExtensionPrompt(extension)).filter((prompt) => prompt.length > 0);
+      if (extensionPrompts.length === 0) return [];
+      return [{ role: 'system', content: `Enabled plugins for this conversation:\n${extensionPrompts.join('\n')}` }];
+    } catch (err) {
+      this.logger.warn('Failed to load selected extensions:', err);
+      return [];
+    }
+  }
+
+  private toSafeExtensionPrompt(extension: ExtensionContextRow): string {
+    const parts = [
+      `- ${extension.name}`,
+      extension.description ? `description: ${extension.description}` : undefined,
+      extension.category ? `category: ${extension.category}` : undefined,
+      Array.isArray(extension.tags) && extension.tags.length > 0 ? `tags: ${extension.tags.join(', ')}` : undefined,
+      extension.instructions ? `instructions: ${extension.instructions}` : undefined,
+    ].filter((part): part is string => Boolean(part));
+    return parts.join('; ');
   }
 
   private async getConversationHermesMcpServers(conversationId: string): Promise<HermesMCPServer[]> {
     try {
       const rows = await this.db.getConversationMCPServers(conversationId);
-      return rows.reduce<HermesMCPServer[]>((servers, row: ConversationMcpServerRow) => {
-        const server = this.toSafeHermesMcpServer(row);
-        return server ? [...servers, server] : servers;
-      }, []);
+      return this.toSafeHermesMcpServers(rows);
     } catch (error) {
       this.logger.warn(`Failed to load MCP servers for conversation ${conversationId}:`, error);
       return [];
     }
+  }
+
+  private async getHermesMcpServersByIds(serverIds: string[], teamId: string): Promise<HermesMCPServer[]> {
+    try {
+      const rows = await this.db.getMCPServersByIdsForTeam(serverIds, teamId);
+      const rowsById = new Map(rows.map((row: ConversationMcpServerRow & { id?: string }) => [row.id, row]));
+      const orderedRows = serverIds.map((id) => rowsById.get(id)).filter((row): row is ConversationMcpServerRow => Boolean(row));
+      return this.toSafeHermesMcpServers(orderedRows);
+    } catch (error) {
+      this.logger.warn('Failed to load selected MCP servers:', error);
+      return [];
+    }
+  }
+
+  private toSafeHermesMcpServers(rows: ConversationMcpServerRow[]): HermesMCPServer[] {
+    return rows.reduce<HermesMCPServer[]>((servers, row) => {
+      const server = this.toSafeHermesMcpServer(row);
+      return server ? [...servers, server] : servers;
+    }, []);
   }
 
   private toSafeHermesMcpServer(row: ConversationMcpServerRow): HermesMCPServer | null {
@@ -667,6 +828,7 @@ export class GatewayService {
     senderWs?: WebSocket,
     modelName = 'hermes-agent',
     prepaid?: ActiveStreamEntry['prepaid'],
+    providerOverride?: HermesAgentProviderOverride,
   ) {
     const messageId = params.messageId || this.generateUUID();
     this.logger.log(`Routing to hermes-agent at ${this.hermesAgentUrl}`);
@@ -676,6 +838,11 @@ export class GatewayService {
         conversationId: params.conversationId,
         expertId: params.expertId,
         teamId: params.teamId,
+        skillIds: params.skillIds,
+        mcpServerIds: params.mcpServerIds,
+        extensionIds: params.extensionIds,
+        userId: params.userId,
+        role: params.role,
       });
 
     const messages: HermesChatMessage[] = [...conversationMessages];
@@ -718,6 +885,18 @@ export class GatewayService {
           throw new Error('Internal MCP key is required when forwarding request-scoped MCP servers');
         }
         headers['X-Hermes-Internal-MCP-Key'] = internalKey;
+      }
+      if (providerOverride) {
+        const internalKey = this.configService.get<string>('HERMES_INTERNAL_MCP_KEY');
+        if (!internalKey) {
+          throw new Error('Internal MCP key is required when forwarding admin provider credentials');
+        }
+        headers['X-Hermes-Internal-MCP-Key'] = internalKey;
+        headers['X-Hermes-Provider-Base-Url'] = providerOverride.baseUrl;
+        headers['X-Hermes-Provider-Api-Key'] = providerOverride.apiKey;
+        headers['X-Hermes-Provider-Auth-Style'] = providerOverride.authStyle;
+        headers['X-Hermes-Provider-Model'] = providerOverride.modelId;
+        headers['X-Hermes-Provider-Code'] = providerOverride.providerCode;
       }
       const response = await firstValueFrom(
         this.httpService.post(`${this.hermesAgentUrl}/v1/chat/completions`, requestBody, {
@@ -908,12 +1087,17 @@ export class GatewayService {
       return prepaidCharge.error;
     }
 
-    const hermesHealthy = await this.checkHermesAgentHealth();
+    const providerOverride = await this.tryBuildHermesProviderOverride(lingqiCharge);
+    const mcpSelection = await this.hasConversationMcpSelection(requestParams);
+
+    // Admin-configured providers use the direct path unless MCP is selected;
+    // MCP needs Hermes Agent so tools and provider override can be forwarded together.
+    const hermesHealthy = (!providerOverride || mcpSelection) && await this.checkHermesAgentHealth();
     if (hermesHealthy) {
       const result = await this.sendHermesAgentMessage(requestParams, senderWs, lingqiCharge.executionModelName, {
         params: requestParams,
         charge: lingqiCharge.charge,
-      }) as HermesSendResult;
+      }, providerOverride) as HermesSendResult;
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, result);
     }
 
@@ -963,11 +1147,22 @@ export class GatewayService {
     }
 
     const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerId);
+    if (!endpoint?.base_url) {
+      this.logger.warn(`No active endpoint configured for provider ${providerModel.provider_name}`);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      }, senderWs);
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'LINGQI_MODEL_UNAVAILABLE',
+      });
+    }
+
     let baseUrl: string;
     try {
-      baseUrl = this.normalizeProviderBaseUrl(
-        endpoint?.base_url || this.configService.get<string>('HERMES_ENDPOINT') || 'http://localhost:9119',
-      );
+      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
     } catch (error: unknown) {
       this.logger.warn('Invalid provider endpoint URL configuration');
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
@@ -992,16 +1187,17 @@ export class GatewayService {
 
     const isMiniMaxAnthropicProvider = this.isMiniMaxAnthropicProvider(providerModel, baseUrl);
 
-    // Build request headers and body
-    const headers: Record<string, string> = isMiniMaxAnthropicProvider
-      ? {
-          'Content-Type': 'application/json',
-          'X-Api-Key': decryptedKey,
-        }
-      : {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${decryptedKey}`,
-        };
+    // Build request headers and body.
+    // MiniMax Anthropic-compatible endpoint requires `Authorization: Bearer <key>`
+    // per https://platform.minimaxi.com/docs/guides/text-generation; using
+    // `X-Api-Key` against /anthropic/v1/messages returns HTTP 429 from MiniMax.
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${decryptedKey}`,
+    };
+    if (isMiniMaxAnthropicProvider) {
+      headers['anthropic-version'] = '2023-06-01';
+    }
     try {
       if (endpoint?.headers) {
         const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
@@ -1018,23 +1214,58 @@ export class GatewayService {
     }
 
     // Build model params from config
-    const { messages } = await this.resolveConversationPromptContext({
+    const { messages, hasMcpSelection } = await this.resolveConversationPromptContext({
       conversationId: requestParams.conversationId,
       expertId: requestParams.expertId,
       teamId: requestParams.teamId,
+      skillIds: requestParams.skillIds,
+      mcpServerIds: requestParams.mcpServerIds,
+      extensionIds: requestParams.extensionIds,
+      userId: requestParams.userId,
+      role: requestParams.role,
     });
+    if (hasMcpSelection) {
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: 'MCP servers require Hermes Agent routing',
+      }, senderWs);
+      return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
+        ok: false,
+        messageId,
+        error: 'MCP servers require Hermes Agent routing',
+      });
+    }
     messages.push({ role: 'user', content: requestParams.message });
+
+    const systemMessages = messages.filter((message) => message.role === 'system');
+    const providerMessages = isMiniMaxAnthropicProvider
+      ? messages.filter((message) => message.role !== 'system')
+      : messages;
 
     const requestBody: HermesChatRequestBody = {
       model: modelCode,
-      messages,
+      messages: providerMessages,
       stream: true,
     };
+    if (isMiniMaxAnthropicProvider && systemMessages.length > 0) {
+      const systemPrompt = systemMessages
+        .map((message) => message.content)
+        .filter((content): content is string => typeof content === 'string' && content.trim().length > 0)
+        .join('\n\n');
+      if (systemPrompt) {
+        requestBody.system = systemPrompt;
+      }
+    }
     if (providerModel.temperature !== null && providerModel.temperature !== undefined) {
       requestBody.temperature = providerModel.temperature;
     }
     if (providerModel.max_tokens !== null && providerModel.max_tokens !== undefined) {
       requestBody.max_tokens = providerModel.max_tokens;
+    } else if (isMiniMaxAnthropicProvider) {
+      // Anthropic Messages API (and MiniMax's Anthropic-compatible endpoint)
+      // requires `max_tokens` as a top-level field. Fall back to a safe default
+      // when the model row doesn't define one, otherwise MiniMax returns 429.
+      requestBody.max_tokens = 1024;
     }
     if (providerModel.top_p !== null && providerModel.top_p !== undefined) {
       requestBody.top_p = providerModel.top_p;
@@ -1266,15 +1497,62 @@ export class GatewayService {
       });
 
     } catch (error) {
-      this.logger.error(`Failed to call ${providerModel.provider_name} API.`);
+      const err = error as { message?: string; response?: { status?: number; data?: unknown }; code?: string };
+      let bodyPreview = 'n/a';
+      let providerMessage: string | undefined;
+      const raw = err.response?.data;
+      // axios with responseType:'stream' delivers errors with `data` still as a
+      // readable stream — drain it so we can surface MiniMax's real reason.
+      if (raw && typeof (raw as { on?: unknown }).on === 'function') {
+        const streamLike = raw as NodeJS.ReadableStream;
+        const chunks: Buffer[] = [];
+        try {
+          await new Promise<void>((resolve) => {
+            streamLike.on('data', (chunk: Buffer | string) =>
+              chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk),
+            );
+            streamLike.on('end', () => resolve());
+            streamLike.on('error', () => resolve());
+            setTimeout(() => resolve(), 2000);
+          });
+        } catch {
+          // ignore
+        }
+        const text = Buffer.concat(chunks).toString('utf8');
+        bodyPreview = text.slice(0, 400);
+        try {
+          const parsed = JSON.parse(text) as { error?: { message?: string; type?: string }; message?: string; base_resp?: { status_msg?: string } };
+          providerMessage = parsed.error?.message || parsed.message || parsed.base_resp?.status_msg;
+        } catch {
+          providerMessage = text.slice(0, 200);
+        }
+      } else if (raw && typeof raw === 'object') {
+        const errObj = (raw as { error?: { message?: string; type?: string; code?: string } }).error;
+        const messageField = (raw as { message?: string }).message;
+        if (errObj) {
+          bodyPreview = `${errObj.type ?? ''}:${errObj.code ?? ''}:${(errObj.message ?? '').slice(0, 200)}`;
+          providerMessage = errObj.message;
+        } else if (messageField) {
+          bodyPreview = String(messageField).slice(0, 200);
+          providerMessage = String(messageField);
+        }
+      } else if (typeof raw === 'string') {
+        bodyPreview = raw.slice(0, 200);
+        providerMessage = raw.slice(0, 200);
+      }
+      const status = err.response?.status;
+      this.logger.error(
+        `Failed to call ${providerModel.provider_name} API. status=${status ?? 'n/a'} code=${err.code ?? 'n/a'} message=${err.message ?? 'unknown'} body=${bodyPreview}`,
+      );
+      const userFacingError = this.buildProviderErrorMessage(providerModel.provider_name, status, providerMessage);
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: 'Provider request failed',
+        error: userFacingError,
       }, senderWs);
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
         ok: false,
         messageId,
-        error: 'Provider request failed',
+        error: userFacingError,
       });
     }
   }
@@ -1327,6 +1605,47 @@ export class GatewayService {
     }
 
     return this.aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
+  }
+
+  private async tryBuildHermesProviderOverride(
+    lingqiCharge: LingqiChargeDecision,
+  ): Promise<HermesAgentProviderOverride | undefined> {
+    const providerModel = await this.resolveProviderModelForLingqiCharge(lingqiCharge);
+    if (!providerModel) {
+      return undefined;
+    }
+
+    const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerModel.provider_id);
+    if (!apiKeyRecord) {
+      return undefined;
+    }
+
+    const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
+    if (!decryptedKey) {
+      return undefined;
+    }
+
+    const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerModel.provider_id);
+    if (!endpoint?.base_url) {
+      return undefined;
+    }
+
+    let baseUrl: string;
+    try {
+      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
+    } catch {
+      return undefined;
+    }
+
+    const providerCode = (providerModel.provider_code || providerModel.provider_name || '').toLowerCase();
+
+    return {
+      baseUrl,
+      apiKey: decryptedKey,
+      authStyle: 'bearer',
+      modelId: providerModel.model_id,
+      providerCode,
+    };
   }
 
   private async prepayLingqiCharge(
@@ -2025,6 +2344,30 @@ export class GatewayService {
     return normalizeTrustedModelProviderBaseUrl(value);
   }
 
+  private buildProviderErrorMessage(
+    providerName: string,
+    status: number | undefined,
+    providerMessage: string | undefined,
+  ): string {
+    const trimmed = providerMessage?.trim();
+    if (status === 401 || status === 403) {
+      return `${providerName} 鉴权失败 (${status})${trimmed ? `：${trimmed}` : '；请检查 API Key 与权限'}`;
+    }
+    if (status === 429) {
+      return `${providerName} 限流或配额耗尽 (429)${trimmed ? `：${trimmed}` : '；请检查 token plan 余额、是否开通对应接口、或稍后重试'}`;
+    }
+    if (status === 404) {
+      return `${providerName} 接口或模型不存在 (404)${trimmed ? `：${trimmed}` : '；请确认模型 ID 与 endpoint'}`;
+    }
+    if (status && status >= 500) {
+      return `${providerName} 服务端故障 (${status})${trimmed ? `：${trimmed}` : '；请稍后重试'}`;
+    }
+    if (status) {
+      return `${providerName} 调用失败 (${status})${trimmed ? `：${trimmed}` : ''}`;
+    }
+    return `${providerName} 调用失败${trimmed ? `：${trimmed}` : ''}`;
+  }
+
   private isMiniMaxAnthropicProvider(providerModel: ProviderModelRow, baseUrl: string): boolean {
     const providerCode = providerModel.provider_code?.toLowerCase();
     const providerName = providerModel.provider_name.toLowerCase();
@@ -2159,16 +2502,16 @@ export class GatewayService {
 
   // ===== Skills Methods =====
 
-  async listSkills(params: { teamId: string; status?: string }): Promise<unknown[]> {
+  async listSkills(params: { teamId: string; userId: string; role?: string; status?: string }): Promise<unknown[]> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
-    return service.findAll(params.teamId, params.status);
+    return service.findAll(params.teamId, params.status, params.userId, params.role);
   }
 
-  async getSkill(params: { id: string; teamId: string }): Promise<unknown> {
+  async getSkill(params: { id: string; teamId: string; userId: string; role?: string }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
-    return service.findOne(params.id, params.teamId);
+    return service.findOne(params.id, params.teamId, params.userId, params.role);
   }
 
   async createSkill(params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
@@ -2187,7 +2530,7 @@ export class GatewayService {
     return service.create(params.teamId, params.authorId, dto);
   }
 
-  async updateSkill(params: { id: string; teamId: string; name?: string; description?: string; version?: string; content?: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
+  async updateSkill(params: { id: string; teamId: string; userId: string; role?: string; name?: string; description?: string; version?: string; content?: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
     const { SkillsService } = await import('../skills/skills.service');
     const { UpdateSkillDto } = await import('../skills/dto/update-skill.dto');
     const service = new SkillsService(this.db);
@@ -2201,7 +2544,11 @@ export class GatewayService {
     dto.tags = params.tags;
     dto.config = params.config;
     dto.configSchema = params.configSchema;
-    return service.update(params.id, params.teamId, dto);
+    return service.update(params.id, params.teamId, dto, {
+      userId: params.userId,
+      teamId: params.teamId,
+      role: params.role,
+    });
   }
 
   async requestPublishSkillToTeam(params: { id: string; accessPolicy?: { mode: 'all' | 'users' | 'role'; userIds?: string[]; minimumRole?: 'MEMBER' | 'ADMIN' | 'OWNER' } }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
@@ -2228,10 +2575,14 @@ export class GatewayService {
     return service.requestPublishToMarketplace(params.id, actor.userId, params.note, actor);
   }
 
-  async deleteSkill(params: { id: string; teamId: string }): Promise<void> {
+  async deleteSkill(params: { id: string; teamId: string; userId: string; role?: string }): Promise<void> {
     const { SkillsService } = await import('../skills/skills.service');
     const service = new SkillsService(this.db);
-    return service.delete(params.id, params.teamId);
+    return service.delete(params.id, params.teamId, {
+      userId: params.userId,
+      teamId: params.teamId,
+      role: params.role,
+    });
   }
 
   // ===== Marketplace Skills Methods =====

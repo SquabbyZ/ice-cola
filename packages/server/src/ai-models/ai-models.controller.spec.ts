@@ -20,6 +20,7 @@ type MockAiModelsService = {
   updateModel: jest.Mock;
   deleteModel: jest.Mock;
   fetchModelsFromProvider: jest.Mock;
+  testProviderConnection: jest.Mock;
   createApiKey: jest.Mock;
   findAllApiKeys: jest.Mock;
   findApiKeysByProvider: jest.Mock;
@@ -74,6 +75,13 @@ function createController() {
     updateModel: jest.fn().mockResolvedValue({ id: 'model-1', model_name: 'gpt-4o' }),
     deleteModel: jest.fn().mockResolvedValue({ deleted: true }),
     fetchModelsFromProvider: jest.fn().mockResolvedValue([{ id: 'model-2', model_name: 'gpt-4o' }]),
+    testProviderConnection: jest.fn().mockResolvedValue({
+      success: true,
+      message: 'Connection successful, 3 model(s) available',
+      model_count: 3,
+      sample_model_id: 'MiniMax-M2.7',
+      base_url: 'https://api.minimaxi.com/anthropic',
+    }),
     createApiKey: jest.fn().mockResolvedValue({ id: 'key-1', key_name: 'primary' }),
     findAllApiKeys: jest.fn().mockResolvedValue({ ok: true }),
     findApiKeysByProvider: jest.fn().mockResolvedValue({ ok: true }),
@@ -135,6 +143,7 @@ type OwnerOrAdminMethod =
   | 'updateModel'
   | 'deleteModel'
   | 'fetchModelsFromProvider'
+  | 'testProviderConnection'
   | 'createApiKey'
   | 'findApiKeys'
   | 'decryptApiKey'
@@ -186,6 +195,7 @@ describe('AiModelsController authorization metadata', () => {
     'updateModel',
     'deleteModel',
     'fetchModelsFromProvider',
+    'testProviderConnection',
     'createApiKey',
     'findApiKeys',
     'decryptApiKey',
@@ -284,6 +294,22 @@ describe('AiModelsController admin AI configuration routes', () => {
     expect(service.updateModel).toHaveBeenCalledWith('model-1', updateBody);
     expect(service.deleteModel).toHaveBeenCalledWith('model-1');
     expect(service.fetchModelsFromProvider).toHaveBeenCalledWith('provider-1');
+  });
+
+  it('delegates testProviderConnection and wraps service response with camelCase keys', async () => {
+    const { controller, service } = createController();
+
+    await expect(controller.testProviderConnection('provider-1')).resolves.toEqual({
+      success: true,
+      data: {
+        success: true,
+        message: 'Connection successful, 3 model(s) available',
+        modelCount: 3,
+        sampleModelId: 'MiniMax-M2.7',
+        baseUrl: 'https://api.minimaxi.com/anthropic',
+      },
+    });
+    expect(service.testProviderConnection).toHaveBeenCalledWith('provider-1');
   });
 
   it('allows owner or admin API key methods to delegate to the service', async () => {

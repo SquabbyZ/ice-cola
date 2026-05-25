@@ -11,7 +11,8 @@
     "next": "Next",
     "error": "Error",
     "success": "Success",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "optional": "optional"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -394,6 +395,7 @@
       "copyKey": "Copy",
       "copied": "Copied!",
       "keyRevealed": "Key Revealed",
+      "keyEditHint": "For security, the stored API key is never displayed. Enter a new value to replace it, or leave empty to keep the existing key.",
       "never": "Never",
       "deactivate": "Deactivate",
       "activate": "Activate",
@@ -402,7 +404,14 @@
       "endpointUrl": "Endpoint URL",
       "testConnection": "Test Connection",
       "testConnectionSuccess": "Connection successful!",
-      "testConnectionFailed": "Connection failed, please check your configuration"
+      "testConnectionFailed": "Connection failed, please check your configuration",
+      "testConnectionResultTitle": "Connection Test Result",
+      "testConnectionResultSuccess": "Connection Successful",
+      "testConnectionResultFailure": "Connection Failed",
+      "testConnectionModelCount": "Models Available",
+      "testConnectionSampleModel": "Sample Model",
+      "testConnectionBaseUrl": "Endpoint",
+      "testConnectionClose": "Close"
     },
     "settings": {
       "title": "AI Settings",

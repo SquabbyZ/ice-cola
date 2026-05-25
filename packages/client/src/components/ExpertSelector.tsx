@@ -39,7 +39,9 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
+        type="button"
         variant="outline"
+        data-chat-selector-trigger="expert"
         className={`gap-2 min-w-[160px] transition-all duration-200 ${
           isOpen
             ? 'border-zinc-400 bg-zinc-50/80 shadow-md'

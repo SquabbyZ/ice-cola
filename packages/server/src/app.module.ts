@@ -17,6 +17,7 @@ import { TeamsModule } from './teams/teams.module';
 import { McpModule } from './mcp/mcp.module';
 import { AiModelsModule } from './ai-models/ai-models.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
+import { ConversationCapabilitiesModule } from './conversation-capabilities/conversation-capabilities.module';
 import { getRequiredJwtSecret } from './config/security-config';
 
 @Module({
@@ -52,6 +53,7 @@ import { getRequiredJwtSecret } from './config/security-config';
     McpModule,
     AiModelsModule,
     MarketplaceModule,
+    ConversationCapabilitiesModule,
     CommonModule,
   ],
 })

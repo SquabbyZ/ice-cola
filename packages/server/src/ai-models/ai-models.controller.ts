@@ -159,6 +159,15 @@ export class AiModelsController {
     return { success: true, data: convertKeys(result) };
   }
 
+  // ==================== TEST CONNECTION ====================
+
+  @Post('providers/:id/test-connection')
+  @AdminRoles(AdminRole.OWNER, AdminRole.ADMIN)
+  async testProviderConnection(@Param('id') id: string) {
+    const result = await this.aiModelsService.testProviderConnection(id);
+    return { success: true, data: convertKeys(result) };
+  }
+
   // ==================== API KEYS ====================
 
   @Post('api-keys')
@@ -223,7 +232,7 @@ export class AiModelsController {
   @AdminRoles(AdminRole.OWNER, AdminRole.ADMIN)
   async findEndpoints(@Query('providerId') providerId: string) {
     const result = await this.aiModelsService.findEndpointsByProvider(providerId);
-    return { success: true, data: result };
+    return { success: true, data: convertKeys(result) };
   }
 
   @Get('endpoints/:id')

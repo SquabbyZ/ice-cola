@@ -1,10 +1,15 @@
 import { useChatStore, type Attachment } from '@/stores/chat';
+import { formatLingqiAmount } from '@/lib/lingqi';
+
+export { formatLingqiAmount };
 
 export interface StreamContext {
   conversationId?: string;
   teamId: string;
   expertId?: string;
   mcpServerIds: string[];
+  skillIds: string[];
+  extensionIds: string[];
   modelId?: string;
   content: string;
   attachments: Attachment[];
@@ -40,8 +45,23 @@ export interface HermesToolEvent extends HermesMessageEvent {
   status?: 'running' | 'complete' | 'error';
 }
 
+export type CapabilityTarget = 'model' | 'expert' | 'mcp' | 'skills' | 'plugins' | 'attach';
+
 export const COMPACT_CHAT_MEDIA_QUERY = '(max-width: 1180px), (max-height: 700px)';
 export const LINGQI_ESTIMATE_DEBOUNCE_MS = 250;
+
+const CAPABILITY_SELECTOR_TRIGGERS: Record<Exclude<CapabilityTarget, 'attach'>, string> = {
+  model: '[data-chat-selector-trigger="model"]',
+  expert: '[data-chat-selector-trigger="expert"]',
+  mcp: '[data-chat-selector-trigger="mcp"]',
+  skills: '[data-chat-selector-trigger="skills"]',
+  plugins: '[data-chat-selector-trigger="plugins"]',
+};
+
+export function getCapabilitySelectorTrigger(target: CapabilityTarget): string | null {
+  if (target === 'attach') return null;
+  return CAPABILITY_SELECTOR_TRIGGERS[target];
+}
 
 export function readFileAsBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,10 +73,6 @@ export function readFileAsBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
-}
-
-export function formatLingqiAmount(value: number): string {
-  return new Intl.NumberFormat('zh-CN').format(value);
 }
 
 export function appendLocalErrorMessage(content: string): void {

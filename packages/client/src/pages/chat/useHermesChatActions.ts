@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { NavigateFunction } from 'react-router-dom';
 import { conversationService } from '@/services/conversation-service';
 import { useChatStore, type Attachment, type ChatMessage, type PendingMessage } from '@/stores/chat';
-import { useExpertStore } from '@/stores/experts';
 import type { Conversation } from '@/services/conversation-service';
 import type { HermesStreamRefs } from './useHermesStreamEvents';
 import {
@@ -15,7 +14,7 @@ import {
 const MAX_RETRIES = 3;
 const STREAM_TIMEOUT_MS = 30000;
 
-type PendingSnapshot = Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'modelId' | 'attachments'>;
+type PendingSnapshot = Pick<PendingMessage, 'conversationId' | 'teamId' | 'expertId' | 'mcpServerIds' | 'skillIds' | 'extensionIds' | 'modelId' | 'attachments'>;
 
 interface LingqiStatus {
   balance: number;
@@ -35,6 +34,9 @@ interface SendOptions {
 interface UseHermesChatActionsParams {
   currentConversationId: string | null;
   selectedMCPServerIds: string[];
+  selectedSkillIds: string[];
+  selectedExtensionIds: string[];
+  selectedExpertId?: string;
   selectedModelId?: string;
   attachments: Attachment[];
   isSending: boolean;
@@ -50,7 +52,10 @@ interface UseHermesChatActionsParams {
   navigate: NavigateFunction;
   createConversation: (teamId: string, title: string) => Promise<Conversation>;
   setCurrentConversationId: (id: string | null) => void;
-  setConversationMcpServers: (serverIds: string[]) => Promise<void>;
+  setConversationExpert: (expertId: string | null, targetConversationId?: string) => Promise<void>;
+  setConversationMcpServers: (serverIds: string[], targetConversationId?: string) => Promise<void>;
+  setConversationSkills: (skillIds: string[], targetConversationId?: string) => Promise<void>;
+  setConversationExtensions: (extensionIds: string[], targetConversationId?: string) => Promise<void>;
   renameConversation: (teamId: string, id: string, title: string) => Promise<void>;
   estimateCost: (teamId: string, input: { transactionType: 'chat_message'; modelId: string; context: { conversationId?: string } }) => Promise<LingqiEstimate>;
   refreshStatus: (teamId: string) => Promise<unknown>;
@@ -124,6 +129,9 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
   const {
     currentConversationId,
     selectedMCPServerIds,
+    selectedSkillIds,
+    selectedExtensionIds,
+    selectedExpertId,
     selectedModelId,
     attachments,
     isSending,
@@ -139,7 +147,10 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
     navigate,
     createConversation,
     setCurrentConversationId,
+    setConversationExpert,
     setConversationMcpServers,
+    setConversationSkills,
+    setConversationExtensions,
     renameConversation,
     estimateCost,
     refreshStatus,
@@ -189,13 +200,15 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
     const chatStore = useChatStore.getState();
     let conversationId = pendingSnapshot?.conversationId ?? currentConversationId ?? undefined;
     const targetTeamId = pendingSnapshot?.teamId ?? teamId;
-    const currentExpertId = pendingSnapshot?.expertId ?? (useExpertStore.getState().activeExpertId || undefined);
+    const currentExpertId = pendingSnapshot?.expertId ?? selectedExpertId;
     if (!targetTeamId) {
       chatStore.setError(teamRequiredMessage);
       return false;
     }
 
     const targetMcpServerIds = pendingSnapshot?.mcpServerIds ?? [...selectedMCPServerIds];
+    const targetSkillIds = pendingSnapshot?.skillIds ?? [...selectedSkillIds];
+    const targetExtensionIds = pendingSnapshot?.extensionIds ?? [...selectedExtensionIds];
     const targetModelId = pendingSnapshot?.modelId ?? selectedModelId;
     const targetAttachments = normalizePendingAttachments(pendingSnapshot?.attachments) ?? (attachments.length > 0 ? [...attachments] : []);
     const messageAttachments = cloneAttachmentsForMessageDisplay(targetAttachments);
@@ -231,13 +244,20 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
       }
     }
 
+    let pendingNewConversationId: string | null = null;
+    let pendingNewConversationExpertId: string | null = null;
+    let pendingNewConversationMcpServerIds: string[] | null = null;
+    let pendingNewConversationSkillIds: string[] | null = null;
+    let pendingNewConversationExtensionIds: string[] | null = null;
     if (!conversationId && !pendingSnapshot) {
       try {
         const conversation = await createConversation(targetTeamId, '');
         conversationId = conversation.id;
-        setCurrentConversationId(conversation.id);
-        navigate(`/chat/${conversation.id}`, { replace: true });
-        if (targetMcpServerIds.length > 0) await setConversationMcpServers(targetMcpServerIds);
+        pendingNewConversationId = conversation.id;
+        pendingNewConversationExpertId = currentExpertId ?? null;
+        pendingNewConversationMcpServerIds = targetMcpServerIds.length > 0 ? targetMcpServerIds : null;
+        pendingNewConversationSkillIds = targetSkillIds.length > 0 ? targetSkillIds : null;
+        pendingNewConversationExtensionIds = targetExtensionIds.length > 0 ? targetExtensionIds : null;
       } catch {
         chatStore.addMessage({
           id: crypto.randomUUID(),
@@ -270,6 +290,8 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
       teamId: targetTeamId,
       expertId: currentExpertId,
       mcpServerIds: [...targetMcpServerIds],
+      skillIds: [...targetSkillIds],
+      extensionIds: [...targetExtensionIds],
       modelId: targetModelId,
       content: userMessage.content,
       attachments: targetAttachments,
@@ -277,6 +299,26 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
     chatStore.addMessage({ id: runId, role: 'assistant', content: '', timestamp: Date.now(), status: 'streaming', runId });
     chatStore.setActiveStreamId(runId);
     chatStore.setSending(true);
+
+    // Navigate AFTER the streaming placeholder has been added to the chat
+    // store so Chat.tsx's route-change effect sees status === 'streaming'
+    // and skips the empty-history wipe + refetch.
+    if (pendingNewConversationId) {
+      setCurrentConversationId(pendingNewConversationId);
+      navigate(`/chat/${pendingNewConversationId}`, { replace: true });
+      if (pendingNewConversationExpertId) {
+        setConversationExpert(pendingNewConversationExpertId, pendingNewConversationId).catch(() => undefined);
+      }
+      if (pendingNewConversationMcpServerIds) {
+        setConversationMcpServers(pendingNewConversationMcpServerIds, pendingNewConversationId).catch(() => undefined);
+      }
+      if (pendingNewConversationSkillIds) {
+        setConversationSkills(pendingNewConversationSkillIds, pendingNewConversationId).catch(() => undefined);
+      }
+      if (pendingNewConversationExtensionIds) {
+        setConversationExtensions(pendingNewConversationExtensionIds, pendingNewConversationId).catch(() => undefined);
+      }
+    }
 
     streamRefs.timeoutManager.current.set(runId, () => {
       const currentMessages = streamRefs.messagesRef.current;
@@ -309,6 +351,9 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
         expertId: currentExpertId,
         model: targetModelId,
         messageId: runId,
+        mcpServerIds: targetMcpServerIds.length > 0 ? targetMcpServerIds : undefined,
+        skillIds: targetSkillIds.length > 0 ? targetSkillIds : undefined,
+        extensionIds: targetExtensionIds.length > 0 ? targetExtensionIds : undefined,
         attachments: targetAttachments.length > 0 ? targetAttachments.map(({ type, name, mimeType, data }) => ({ type, name, mimeType, data })) : undefined,
       });
 
@@ -353,6 +398,8 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
             teamId: targetTeamId,
             expertId: currentExpertId,
             mcpServerIds: [...targetMcpServerIds],
+            skillIds: [...targetSkillIds],
+            extensionIds: [...targetExtensionIds],
             modelId: targetModelId,
             attachments: targetAttachments.map(({ type, name, mimeType, data, sizeBytes }) => ({ type, name, mimeType, data, sizeBytes })),
           });
@@ -369,7 +416,7 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
       useChatStore.getState().setSending(false);
       return false;
     }
-  }, [attachmentOnlyMessage, attachments, chargeUnknownSuffix, conversations, createConversation, currentConversationId, errorSendFailed, estimateCost, estimateFailedMessage, gatewayConnected, getErrorMessage, historyUserSyncFailedMessage, insufficientLingqiMessage, isSending, lingqiStatus, navigate, newConversationFailedMessage, notChargedSuffix, refreshStatus, renameConversation, selectedMCPServerIds, selectedModelId, send, sessionKey, setAttachments, setConversationMcpServers, setCurrentConversationId, setMessage, streamRefs, teamId, teamRequiredMessage, timeoutAbortSyncFailedMessage, timeoutHistorySyncFailedMessage, timeoutKeyword, timeoutRetry]);
+  }, [attachmentOnlyMessage, attachments, chargeUnknownSuffix, conversations, createConversation, currentConversationId, errorSendFailed, estimateCost, estimateFailedMessage, gatewayConnected, getErrorMessage, historyUserSyncFailedMessage, insufficientLingqiMessage, isSending, lingqiStatus, navigate, newConversationFailedMessage, notChargedSuffix, refreshStatus, renameConversation, selectedMCPServerIds, selectedSkillIds, selectedExtensionIds, selectedExpertId, selectedModelId, send, sessionKey, setAttachments, setConversationExpert, setConversationExtensions, setConversationMcpServers, setConversationSkills, setCurrentConversationId, setMessage, streamRefs, teamId, teamRequiredMessage, timeoutAbortSyncFailedMessage, timeoutHistorySyncFailedMessage, timeoutKeyword, timeoutRetry]);
 
   useEffect(() => {
     if (!gatewayConnected || isSending) return;

@@ -426,16 +426,16 @@ export class AiModelsService implements OnModuleInit {
       } else {
         const id = this.generateUUID();
         const row = await this.db.queryOne(
-          `INSERT INTO ai_models (id, provider_id, name, model_id, description, capabilities, pricing, sort_order, enabled, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, NOW(), NOW())
+          `INSERT INTO ai_models (id, provider_id, name, model_id, model_type, description, capabilities, sort_order, status, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active', NOW(), NOW())
            RETURNING *`,
           [
             id,
             providerId,
             remote.name || modelIdStr,
             modelIdStr,
+            'chat',
             null,
-            JSON.stringify({}),
             JSON.stringify({}),
             0,
           ],
@@ -1126,6 +1126,62 @@ export class AiModelsService implements OnModuleInit {
       await seedAiModels(this.db, this.encryption);
     } catch (error) {
       console.error('Failed to seed AI models:', error);
+    }
+  }
+
+  async testProviderConnection(providerId: string): Promise<{
+    success: boolean;
+    message: string;
+    modelCount?: number;
+    sampleModelId?: string | null;
+    baseUrl?: string;
+  }> {
+    const provider = await this.findProviderById(providerId);
+    if (!provider) {
+      return { success: false, message: 'Provider not found' };
+    }
+
+    const apiKey = await this.findActiveApiKeyByProvider(providerId);
+    if (!apiKey) {
+      return { success: false, message: 'No active API key configured for this provider' };
+    }
+
+    const decryptedKey = await this.getDecryptedApiKey(apiKey.id);
+    if (!decryptedKey) {
+      return { success: false, message: 'Failed to decrypt API key' };
+    }
+
+    const endpoint = await this.findDefaultEndpointByProvider(providerId);
+    const baseUrl = endpoint?.base_url || this.defaultProviderUrls[provider.code];
+    if (!baseUrl) {
+      return { success: false, message: 'No endpoint configured and no default URL for this provider' };
+    }
+
+    try {
+      const body = await this.apiClient.fetchModels(baseUrl, decryptedKey, 15000);
+      let remoteModels: Array<{ id: string; name?: string }> = [];
+      if (Array.isArray(body?.data)) remoteModels = body.data;
+      else if (Array.isArray(body?.models)) remoteModels = body.models;
+      else if (Array.isArray(body)) remoteModels = body;
+
+      return {
+        success: true,
+        message: `Connection successful, ${remoteModels.length} model(s) available`,
+        modelCount: remoteModels.length,
+        sampleModelId: remoteModels[0]?.id ?? null,
+        baseUrl,
+      };
+    } catch (error: unknown) {
+      const status = (error as any)?.response?.status;
+      const remoteMessage =
+        (error as any)?.response?.data?.error?.message ||
+        (error as any)?.response?.data?.message;
+      const errorMessage = remoteMessage || (error instanceof Error ? error.message : 'Unknown error');
+      return {
+        success: false,
+        message: `Connection failed (${status || 'network'}): ${errorMessage}`,
+        baseUrl,
+      };
     }
   }
 

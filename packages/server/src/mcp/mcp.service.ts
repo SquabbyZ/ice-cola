@@ -12,9 +12,15 @@ type MCPServerRow = {
 };
 
 type ConversationMCPServerRow = {
-  name: string;
+  id?: string;
+  server_id?: string;
+  server_name?: string;
   server_type?: string;
   config?: Record<string, unknown>;
+  name: string;
+  description?: string;
+  category?: string;
+  icon?: string;
 };
 
 type ConversationMCPConfig = {
@@ -261,9 +267,15 @@ export class McpService {
   async getConversationMCPServers(conversationId: string): Promise<ConversationMCPServerRow[]> {
     const rows = await this.db.getConversationMCPServers(conversationId);
     return rows.map((row) => ({
-      name: row.name,
+      id: row.id,
+      server_id: row.server_id,
+      server_name: row.server_name,
       server_type: row.server_type,
       config: row.config,
+      name: row.name,
+      description: row.description,
+      category: row.category,
+      icon: row.icon,
     }));
   }
 

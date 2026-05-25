@@ -15,6 +15,14 @@ type AuthenticatedRequest = {
   };
 };
 
+function toSkillActor(req: AuthenticatedRequest) {
+  return {
+    userId: req.user.id,
+    teamId: req.user.teamId,
+    role: req.user.role,
+  };
+}
+
 @Controller('teams/:teamId/skills')
 @UseGuards(JwtAuthGuard)
 export class SkillsController {
@@ -38,7 +46,7 @@ export class SkillsController {
     @Query('status') status?: string,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.findAll(req.user.teamId, status);
+    const result = await this.skillsService.findAll(req.user.teamId, status, req.user.id, req.user.role);
     return { success: true, data: result };
   }
 
@@ -58,7 +66,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.findTeamSkills(req.user.teamId);
+    const result = await this.skillsService.findTeamSkills(req.user.teamId, req.user.id, req.user.role);
     return { success: true, data: result };
   }
 
@@ -68,7 +76,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.findMarketplace(req.user.teamId);
+    const result = await this.skillsService.findMarketplace(req.user.teamId, req.user.id, req.user.role);
     return { success: true, data: result };
   }
 
@@ -79,7 +87,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.findOne(skillId, req.user.teamId);
+    const result = await this.skillsService.findOne(skillId, req.user.teamId, req.user.id, req.user.role);
     return { success: true, data: result };
   }
 
@@ -91,7 +99,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.update(skillId, req.user.teamId, body);
+    const result = await this.skillsService.update(skillId, req.user.teamId, body, toSkillActor(req));
     return { success: true, data: result };
   }
 
@@ -102,7 +110,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    await this.skillsService.delete(skillId, req.user.teamId);
+    await this.skillsService.delete(skillId, req.user.teamId, toSkillActor(req));
     return { success: true, data: null };
   }
 
@@ -113,7 +121,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.getVersions(skillId, req.user.teamId);
+    const result = await this.skillsService.getVersions(skillId, req.user.teamId, toSkillActor(req));
     return { success: true, data: result };
   }
 
@@ -125,7 +133,7 @@ export class SkillsController {
     @Request() req: AuthenticatedRequest,
   ) {
     this.assertTeamRouteAccess(teamId, req);
-    const result = await this.skillsService.revertToVersion(skillId, versionId, req.user.id, req.user.teamId);
+    const result = await this.skillsService.revertToVersion(skillId, versionId, req.user.id, req.user.teamId, toSkillActor(req));
     return { success: true, data: result };
   }
 
@@ -202,5 +210,43 @@ export class SkillsController {
     if (teamId !== req.user.teamId) {
       throw new ForbiddenException('Team access denied');
     }
+  }
+}
+
+@Controller('skills/conversation/:conversationId')
+@UseGuards(JwtAuthGuard)
+export class ConversationSkillsController {
+  constructor(private readonly skillsService: SkillsService) {}
+
+  @Get()
+  async list(
+    @Param('conversationId') conversationId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    await this.skillsService.assertConversationAccess(conversationId, req.user.teamId);
+    const data = await this.skillsService.findEnabledSkillsForConversation(conversationId, req.user.teamId, req.user.id, req.user.role);
+    return { success: true, data };
+  }
+
+  @Post()
+  async set(
+    @Param('conversationId') conversationId: string,
+    @Body() body: { skillIds: string[] },
+    @Request() req: AuthenticatedRequest,
+  ) {
+    await this.skillsService.assertConversationAccess(conversationId, req.user.teamId);
+    const skillIds = Array.isArray(body?.skillIds) ? body.skillIds : [];
+    const data = await this.skillsService.setConversationSkills(conversationId, req.user.teamId, skillIds, req.user.id, req.user.role);
+    return { success: true, data };
+  }
+
+  @Delete()
+  async clear(
+    @Param('conversationId') conversationId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    await this.skillsService.assertConversationAccess(conversationId, req.user.teamId);
+    await this.skillsService.setConversationSkills(conversationId, req.user.teamId, [], req.user.id, req.user.role);
+    return { success: true, data: [] };
   }
 }

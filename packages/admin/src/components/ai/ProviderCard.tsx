@@ -232,7 +232,7 @@ export function ProviderCard({
                       className="h-7 w-7"
                       onClick={() => onTestConnection(provider.id)}
                       disabled={isTestingConnection}
-                      title={t('ai.settings.testConnection')}
+                      title={t('ai.apiKeys.testConnection')}
                     >
                       {isTestingConnection ? (
                         <Spinner className="h-3.5 w-3.5" />

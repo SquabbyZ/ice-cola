@@ -52,12 +52,12 @@ export class SkillsService {
     return rows[0];
   }
 
-  async findAll(teamId: string, status?: string) {
-    let query = 'SELECT * FROM skills WHERE team_id = $1';
-    const params: SkillQueryParam[] = [teamId];
+  async findAll(teamId: string, status?: string, userId?: string, role?: string | null) {
+    let query = `SELECT * FROM skills WHERE team_id = $1 AND ${this.skillAccessSql('skills', 2, 3)}`;
+    const params: SkillQueryParam[] = [teamId, userId || null, role || null];
 
     if (status) {
-      query += ' AND status = $2';
+      query += ' AND status = $4';
       params.push(status);
     }
 
@@ -72,26 +72,41 @@ export class SkillsService {
     );
   }
 
-  async findTeamSkills(teamId: string) {
+  async findTeamSkills(teamId: string, userId?: string, role?: string | null) {
     return this.db.query(
-      `SELECT * FROM skills WHERE team_id = $1 AND status IN ('team', 'team_pending', 'marketplace_pending', 'marketplace') ORDER BY created_at DESC`,
-      [teamId]
+      `SELECT * FROM skills
+       WHERE team_id = $1
+         AND status IN ('team', 'team_pending', 'marketplace_pending', 'marketplace')
+         AND ${this.skillAccessSql('skills', 2, 3)}
+       ORDER BY created_at DESC`,
+      [teamId, userId || null, role || null]
     );
   }
 
-  async findMarketplace(teamId: string) {
+  async findMarketplace(teamId: string, userId?: string, role?: string | null) {
     return this.db.query(
-      `SELECT * FROM skills WHERE team_id = $1 AND status IN ('team', 'marketplace') ORDER BY ratings DESC, installs DESC`,
-      [teamId]
+      `SELECT * FROM skills
+       WHERE team_id = $1
+         AND status IN ('team', 'marketplace')
+         AND ${this.skillAccessSql('skills', 2, 3)}
+       ORDER BY ratings DESC, installs DESC`,
+      [teamId, userId || null, role || null]
     );
   }
 
-  async findOne(id: string, teamId: string) {
-    const rows = await this.db.query('SELECT * FROM skills WHERE id = $1 AND team_id = $2', [id, teamId]);
+  async findOne(id: string, teamId: string, userId?: string, role?: string | null) {
+    const rows = await this.db.query(
+      `SELECT * FROM skills
+       WHERE id = $1
+         AND team_id = $2
+         AND ${this.skillAccessSql('skills', 3, 4)}`,
+      [id, teamId, userId || null, role || null]
+    );
     return rows[0];
   }
 
-  async update(id: string, teamId: string, dto: UpdateSkillDto) {
+  async update(id: string, teamId: string, dto: UpdateSkillDto, actor?: SkillActor) {
+    await this.assertCanModifySkill(id, teamId, actor);
     const fieldMap: Array<[keyof UpdateSkillDto, string]> = [
       ['name', 'name'],
       ['description', 'description'],
@@ -130,8 +145,87 @@ export class SkillsService {
     return rows[0];
   }
 
-  async delete(id: string, teamId: string) {
+  async delete(id: string, teamId: string, actor?: SkillActor) {
+    await this.assertCanModifySkill(id, teamId, actor);
     await this.db.query('DELETE FROM skills WHERE id = $1 AND team_id = $2', [id, teamId]);
+  }
+
+  async assertConversationAccess(conversationId: string, teamId: string): Promise<void> {
+    const rows = await this.db.query<{ id: string }>(
+      'SELECT id FROM conversations WHERE id = $1 AND "teamId" = $2',
+      [conversationId, teamId]
+    );
+    if (rows.length === 0) {
+      throw new ForbiddenException('Conversation access denied');
+    }
+  }
+
+  async findEnabledSkillsForConversation(conversationId: string, teamId: string, userId?: string, role?: string | null): Promise<SkillRow[]> {
+    return this.db.query<SkillRow>(
+      `SELECT s.* FROM skills s
+       INNER JOIN conversation_skills cs ON cs.skill_id = s.id
+       WHERE cs.conversation_id = $1
+         AND cs.enabled = true
+         AND s.team_id = $2
+         AND ${this.skillAccessSql('s', 3, 4)}
+       ORDER BY cs.created_at ASC`,
+      [conversationId, teamId, userId || null, role || null]
+    );
+  }
+
+  async findSkillsByIdsForTeam(skillIds: string[], teamId: string, userId?: string, role?: string | null): Promise<SkillRow[]> {
+    const uniqueIds = [...new Set(skillIds.filter(Boolean))];
+    if (uniqueIds.length === 0) {
+      return [];
+    }
+    return this.db.query<SkillRow>(
+      `SELECT * FROM skills
+       WHERE id = ANY($1)
+         AND team_id = $2
+         AND ${this.skillAccessSql('skills', 3, 4)}`,
+      [uniqueIds, teamId, userId || null, role || null]
+    );
+  }
+
+  async getConversationSkillIds(conversationId: string, teamId: string): Promise<string[]> {
+    const rows = await this.db.query<{ skill_id: string }>(
+      `SELECT cs.skill_id FROM conversation_skills cs
+       INNER JOIN skills s ON s.id = cs.skill_id
+       WHERE cs.conversation_id = $1 AND s.team_id = $2`,
+      [conversationId, teamId]
+    );
+    return rows.map(r => r.skill_id);
+  }
+
+  async setConversationSkills(conversationId: string, teamId: string, skillIds: string[], userId?: string, role?: string | null): Promise<string[]> {
+    const uniqueIds = [...new Set(skillIds.filter(Boolean))];
+
+    if (uniqueIds.length > 0) {
+      const valid = await this.db.query<{ id: string }>(
+        `SELECT id FROM skills
+         WHERE id = ANY($1)
+           AND team_id = $2
+           AND ${this.skillAccessSql('skills', 3, 4)}`,
+        [uniqueIds, teamId, userId || null, role || null]
+      );
+      const validIds = new Set(valid.map(v => v.id));
+      const filtered = uniqueIds.filter(id => validIds.has(id));
+
+      return this.db.transaction(async (client) => {
+        await client.query('DELETE FROM conversation_skills WHERE conversation_id = $1', [conversationId]);
+        for (const skillId of filtered) {
+          await client.query(
+            `INSERT INTO conversation_skills (conversation_id, skill_id, enabled) VALUES ($1, $2, true)
+             ON CONFLICT (conversation_id, skill_id) DO UPDATE SET enabled = true, updated_at = CURRENT_TIMESTAMP`,
+            [conversationId, skillId]
+          );
+        }
+        return filtered;
+      });
+    }
+
+    await this.db.query('DELETE FROM conversation_skills WHERE conversation_id = $1', [conversationId]);
+    return [];
   }
 
   async saveVersion(skillId: string, version: string, content: string, configSchema: Record<string, unknown> | null | undefined, createdBy: string) {
@@ -143,7 +237,8 @@ export class SkillsService {
     return rows[0];
   }
 
-  async getVersions(skillId: string, teamId: string) {
+  async getVersions(skillId: string, teamId: string, actor?: SkillActor) {
+    await this.assertCanModifySkill(skillId, teamId, actor);
     return this.db.query(
       `SELECT sv.*, u.name as created_by_name
        FROM skill_versions sv
@@ -155,7 +250,8 @@ export class SkillsService {
     );
   }
 
-  async revertToVersion(skillId: string, versionId: string, userId: string, teamId: string) {
+  async revertToVersion(skillId: string, versionId: string, userId: string, teamId: string, actor?: SkillActor) {
+    await this.assertCanModifySkill(skillId, teamId, actor ?? { userId, teamId });
     const versionRows = await this.db.query<{ content: string; config_schema?: Record<string, unknown> | null }>(
       `SELECT sv.*
        FROM skill_versions sv
@@ -171,7 +267,7 @@ export class SkillsService {
       [version.content, version.config_schema, skillId, teamId]
     );
 
-    return this.findOne(skillId, teamId);
+    return this.findOne(skillId, teamId, actor?.userId ?? userId, actor?.role);
   }
 
   async requestPublishToTeam(id: string, actor: SkillActor, accessPolicy: TeamSkillAccessPolicy = { mode: 'all' }) {
@@ -325,6 +421,25 @@ export class SkillsService {
     return rest;
   }
 
+  private async assertCanModifySkill(id: string, teamId: string, actor?: SkillActor): Promise<void> {
+    const skill = await this.findOneById(id) as SkillRow | undefined;
+    if (!skill || skill.team_id !== teamId) {
+      throw new NotFoundException('Skill 不存在');
+    }
+    if (!actor?.teamId || actor.teamId !== teamId) {
+      throw new ForbiddenException('不能修改其他团队的 Skill');
+    }
+    if (skill.status === 'personal' || skill.status === 'team_pending' || skill.status === 'marketplace_pending') {
+      if (skill.author_id !== actor.userId) {
+        throw new ForbiddenException('只能修改自己的 Skill');
+      }
+      return;
+    }
+    if (actor.role !== 'ADMIN' && actor.role !== 'OWNER') {
+      throw new ForbiddenException('只有团队管理员或所有者可以修改团队 Skill');
+    }
+  }
+
   private assertTeamReviewer(skill: SkillRow, actor: SkillActor): void {
     if (!actor.teamId || !skill.team_id || actor.teamId !== skill.team_id) {
       throw new ForbiddenException('不能审批其他团队的 Skill');
@@ -336,6 +451,22 @@ export class SkillsService {
 
   private isTeamRole(role: unknown): role is TeamMinimumRole {
     return role === 'MEMBER' || role === 'ADMIN' || role === 'OWNER';
+  }
+
+  private skillAccessSql(alias: string, userParam: number, roleParam: number): string {
+    const configRef = alias === 'skills' ? 'config' : `${alias}.config`;
+    const statusRef = alias === 'skills' ? 'status' : `${alias}.status`;
+    const authorRef = alias === 'skills' ? 'author_id' : `${alias}.author_id`;
+    return `(
+      ${statusRef} = 'personal' AND ${authorRef} = $${userParam}
+      OR ${statusRef} IN ('team', 'marketplace') AND COALESCE(${configRef}->'teamAccess'->>'mode', 'all') = 'all'
+      OR ${statusRef} IN ('team', 'marketplace') AND ${configRef}->'teamAccess'->>'mode' = 'users' AND (${configRef}->'teamAccess'->'userIds') ? $${userParam}
+      OR ${statusRef} IN ('team', 'marketplace') AND ${configRef}->'teamAccess'->>'mode' = 'role' AND CASE ${configRef}->'teamAccess'->>'minimumRole'
+        WHEN 'OWNER' THEN $${roleParam} = 'OWNER'
+        WHEN 'ADMIN' THEN $${roleParam} IN ('ADMIN', 'OWNER')
+        ELSE $${roleParam} IN ('MEMBER', 'ADMIN', 'OWNER')
+      END
+    )`;
   }
 
   private async assertAccessPolicyUsersInTeam(skill: SkillRow, accessPolicy: TeamSkillAccessPolicy, client: PoolClient): Promise<void> {
