@@ -684,9 +684,24 @@
   },
   "forgotPassword": {
     "title": "重置密码",
+    "subtitle": "输入您的邮箱地址，我们将发送验证码帮您重置密码",
     "email": "邮箱",
     "sendCode": "发送验证码",
     "verify": "验证",
-    "reset": "重置密码"
+    "reset": "重置密码",
+    "newPassword": "新密码",
+    "confirmPassword": "确认新密码",
+    "submit": "重置密码",
+    "backToLogin": "返回登录",
+    "codeSent": "验证码已发送到您的邮箱",
+    "resetSuccess": "密码重置成功",
+    "resetFailed": "密码重置失败",
+    "enterCode": "输入验证码",
+    "codeSentTo": "我们已发送验证码到",
+    "resendCode": "重新获取验证码",
+    "resendCountdown": "秒后可重新获取验证码",
+    "verifying": "验证中...",
+    "sending": "发送中...",
+    "resetting": "重置中..."
   }
 }

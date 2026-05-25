@@ -679,9 +679,24 @@
   },
   "forgotPassword": {
     "title": "Reset Password",
+    "subtitle": "Enter your email address and we'll send you a code to reset your password",
     "email": "Email",
     "sendCode": "Send Code",
     "verify": "Verify",
-    "reset": "Reset Password"
+    "reset": "Reset Password",
+    "newPassword": "New Password",
+    "confirmPassword": "Confirm New Password",
+    "submit": "Reset Password",
+    "backToLogin": "Back to Login",
+    "codeSent": "Verification code sent to your email",
+    "resetSuccess": "Password reset successfully",
+    "resetFailed": "Password reset failed",
+    "enterCode": "Enter verification code",
+    "codeSentTo": "We've sent a verification code to",
+    "resendCode": "Resend code",
+    "resendCountdown": "seconds until you can resend",
+    "verifying": "Verifying...",
+    "sending": "Sending...",
+    "resetting": "Resetting..."
   }
 }

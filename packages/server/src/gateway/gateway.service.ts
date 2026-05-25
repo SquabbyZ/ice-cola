@@ -227,14 +227,11 @@ export class GatewayService {
     this.logger.log(`Connect attempt from client: ${JSON.stringify(params.client)}`);
 
     const protocol = 3;
-    let userId: string | undefined;
-    let teamId: string | undefined;
 
     if (!params.auth?.token) {
       throw new Error('Authentication required');
     }
 
-    let userRole: string | undefined;
     try {
       const payload = this.jwtService.verify<GatewayJwtPayload>(params.auth.token, {
         secret: getRequiredJwtSecret(this.configService),
@@ -242,29 +239,34 @@ export class GatewayService {
       if (payload.type !== 'access') {
         throw new Error('Authentication required');
       }
-      userId = payload.sub;
-      teamId = payload.teamId || undefined;
-      userRole = payload.role;
       const expiresAt = this.getTokenExpiresAt(payload);
-      this.logger.log(`Authenticated user: ${userId}`);
+      this.logger.log(`Authenticated user: ${payload.sub}`);
+
+      const user = await this.db.findUserById(payload.sub);
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+
+      const teamId = user.teamId || undefined;
+      const userRole = user.role;
 
       return {
         ok: true,
         protocol,
         expiresAt,
-        user: userId ? {
-          id: userId,
-          email: 'user@example.com',
-          name: 'User',
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
           team: teamId ? {
             id: teamId,
-            name: 'Team',
+            name: user.team_name,
             role: userRole || 'MEMBER',
           } : undefined,
-        } : undefined,
+        },
       };
-    } catch (error) {
-      this.logger.warn('Invalid token in connect params');
+    } catch (error: any) {
+      this.logger.warn(`Invalid token in connect params: ${error?.message || error}`);
       throw new Error('Authentication required');
     }
 

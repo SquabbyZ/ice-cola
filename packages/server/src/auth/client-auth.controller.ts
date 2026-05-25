@@ -1,8 +1,8 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Req } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Req, Get, NotFoundException } from '@nestjs/common';
 import type { Request } from 'express';
 import { ClientAuthService } from './client-auth.service';
 import { CaptchaService } from '../commons/captcha.service';
-import { SendCodeDto, VerifyCodeDto, ClientRegisterDto } from './client-dto/client-auth.dto';
+import { SendCodeDto, VerifyCodeDto, ClientRegisterDto, SendResetCodeDto, ResetPasswordDto } from './client-dto/client-auth.dto';
 
 @Controller('client/auth')
 export class ClientAuthController {
@@ -23,6 +23,27 @@ export class ClientAuthController {
       data: {
         token: result.token,
         imageUrl: result.imageUrl,
+        expiresAt: result.expiresAt,
+      },
+    };
+  }
+
+  /**
+   * Generate a test captcha with known answer (E2E testing only)
+   * GET /client/auth/captcha/test
+   */
+  @Get('captcha/test')
+  async generateTestCaptcha() {
+    if (process.env.NODE_ENV === 'production') {
+      throw new NotFoundException();
+    }
+    const result = await this.captchaService.generateTestCaptcha();
+    return {
+      success: true,
+      data: {
+        token: result.token,
+        imageUrl: result.imageUrl,
+        answer: result.answer,
         expiresAt: result.expiresAt,
       },
     };
@@ -54,7 +75,7 @@ export class ClientAuthController {
   @Post('verify-code')
   @HttpCode(HttpStatus.OK)
   async verifyCode(@Body() dto: VerifyCodeDto, @Req() req: Request) {
-    const isValid = await this.clientAuthService.verifyCode(dto.email, dto.code, req.ip);
+    const isValid = await this.clientAuthService.verifyCode(dto.email, dto.code, req.ip, dto.type);
     if (!isValid) {
       return {
         success: false,
@@ -80,6 +101,43 @@ export class ClientAuthController {
     return {
       success: true,
       data: result,
+    };
+  }
+
+  /**
+   * Send reset password code to email (requires captcha verification)
+   * POST /client/auth/send-reset-code
+   */
+  @Post('send-reset-code')
+  @HttpCode(HttpStatus.OK)
+  async sendResetCode(@Body() dto: SendResetCodeDto, @Req() req: Request) {
+    await this.clientAuthService.sendResetPasswordCode(
+      dto.email,
+      dto.captchaToken,
+      dto.captchaAnswer,
+      req.ip,
+    );
+    return {
+      success: true,
+      message: '验证码已发送',
+    };
+  }
+
+  /**
+   * Reset password with email verification code
+   * POST /client/auth/reset-password
+   */
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
+    await this.clientAuthService.resetPassword(
+      dto.email,
+      dto.code,
+      dto.newPassword,
+      req.ip,
+    );
+    return {
+      success: true,
+      message: '密码重置成功',
     };
   }
 }

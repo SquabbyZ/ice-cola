@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Pool, PoolClient } from 'pg';
 import { ConfigService } from '@nestjs/config';
+import { seedMarketplaceData } from './seed/marketplace.seed';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
@@ -17,6 +18,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit() {
     const client = await this.pool.connect();
     client.release();
+
+    try {
+      await seedMarketplaceData(this);
+    } catch (error) {
+      console.error('Failed to seed marketplace data:', error);
+    }
   }
 
   async onModuleDestroy() {

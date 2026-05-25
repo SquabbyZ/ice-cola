@@ -53,7 +53,7 @@ export class SkillsService {
   }
 
   async findAll(teamId: string, status?: string, userId?: string, role?: string | null) {
-    let query = `SELECT * FROM skills WHERE team_id = $1 AND ${this.skillAccessSql('skills', 2, 3)}`;
+    let query = `SELECT * FROM skills WHERE (team_id = $1 OR team_id IS NULL) AND ${this.skillAccessSql('skills', 2, 3)}`;
     const params: SkillQueryParam[] = [teamId, userId || null, role || null];
 
     if (status) {
@@ -75,7 +75,7 @@ export class SkillsService {
   async findTeamSkills(teamId: string, userId?: string, role?: string | null) {
     return this.db.query(
       `SELECT * FROM skills
-       WHERE team_id = $1
+       WHERE (team_id = $1 OR team_id IS NULL)
          AND status IN ('team', 'team_pending', 'marketplace_pending', 'marketplace')
          AND ${this.skillAccessSql('skills', 2, 3)}
        ORDER BY created_at DESC`,
@@ -86,7 +86,7 @@ export class SkillsService {
   async findMarketplace(teamId: string, userId?: string, role?: string | null) {
     return this.db.query(
       `SELECT * FROM skills
-       WHERE team_id = $1
+       WHERE (team_id = $1 OR team_id IS NULL)
          AND status IN ('team', 'marketplace')
          AND ${this.skillAccessSql('skills', 2, 3)}
        ORDER BY ratings DESC, installs DESC`,
@@ -98,7 +98,7 @@ export class SkillsService {
     const rows = await this.db.query(
       `SELECT * FROM skills
        WHERE id = $1
-         AND team_id = $2
+         AND (team_id = $2 OR team_id IS NULL)
          AND ${this.skillAccessSql('skills', 3, 4)}`,
       [id, teamId, userId || null, role || null]
     );
@@ -166,7 +166,7 @@ export class SkillsService {
        INNER JOIN conversation_skills cs ON cs.skill_id = s.id
        WHERE cs.conversation_id = $1
          AND cs.enabled = true
-         AND s.team_id = $2
+         AND (s.team_id = $2 OR s.team_id IS NULL)
          AND ${this.skillAccessSql('s', 3, 4)}
        ORDER BY cs.created_at ASC`,
       [conversationId, teamId, userId || null, role || null]
@@ -181,7 +181,7 @@ export class SkillsService {
     return this.db.query<SkillRow>(
       `SELECT * FROM skills
        WHERE id = ANY($1)
-         AND team_id = $2
+         AND (team_id = $2 OR team_id IS NULL)
          AND ${this.skillAccessSql('skills', 3, 4)}`,
       [uniqueIds, teamId, userId || null, role || null]
     );
@@ -191,7 +191,7 @@ export class SkillsService {
     const rows = await this.db.query<{ skill_id: string }>(
       `SELECT cs.skill_id FROM conversation_skills cs
        INNER JOIN skills s ON s.id = cs.skill_id
-       WHERE cs.conversation_id = $1 AND s.team_id = $2`,
+       WHERE cs.conversation_id = $1 AND (s.team_id = $2 OR s.team_id IS NULL)`,
       [conversationId, teamId]
     );
     return rows.map(r => r.skill_id);
@@ -204,7 +204,7 @@ export class SkillsService {
       const valid = await this.db.query<{ id: string }>(
         `SELECT id FROM skills
          WHERE id = ANY($1)
-           AND team_id = $2
+           AND (team_id = $2 OR team_id IS NULL)
            AND ${this.skillAccessSql('skills', 3, 4)}`,
         [uniqueIds, teamId, userId || null, role || null]
       );

@@ -97,14 +97,14 @@ export class ClientAuthService {
   /**
    * Verify email code
    */
-  async verifyCode(email: string, code: string, clientIp = 'unknown'): Promise<boolean> {
+  async verifyCode(email: string, code: string, clientIp = 'unknown', type = 'register'): Promise<boolean> {
     this.checkRateLimit(clientIp);
 
     // Find valid code in database
-    const record = await this.db.findValidVerificationCode(email, code, 'register');
+    const record = await this.db.findValidVerificationCode(email, code, type);
 
     if (!record) {
-      const latestRecord = await this.db.findLatestVerificationCode(email, 'register');
+      const latestRecord = await this.db.findLatestVerificationCode(email, type);
       if (latestRecord) {
         const updatedRecord = await this.db.incrementVerificationAttempts(latestRecord.id);
         const attempts = Number(updatedRecord?.attempts || latestRecord.attempts || 0);
@@ -215,6 +215,86 @@ export class ClientAuthService {
     }
 
     entry.count++;
+  }
+
+  // ========== Password Reset ==========
+
+  /**
+   * Send reset password code to email after captcha verification
+   * Silently returns if email not found (does not reveal existence)
+   */
+  async sendResetPasswordCode(
+    email: string,
+    captchaToken: string,
+    captchaAnswer: string[],
+    clientIp = 'unknown',
+  ): Promise<void> {
+    this.checkRateLimit(clientIp);
+
+    const isCaptchaValid = await this.captchaService.verifyCaptcha(captchaToken, captchaAnswer);
+    if (!isCaptchaValid) {
+      throw new AppError('INVALID_CAPTCHA', '图形验证码错误或已过期', 400);
+    }
+
+    // Silently return if user not found — don't reveal email existence
+    const user = await this.db.findUserByEmail(email);
+    if (!user) {
+      return;
+    }
+
+    await this.db.deleteExpiredVerificationCodes(email);
+
+    const code = this.generateCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await this.db.createVerificationCode({
+      email,
+      code,
+      type: 'reset_password',
+      expiresAt,
+    });
+
+    await this.emailService.sendVerificationCode(email, code);
+
+    this.logger.log(`Password reset code sent to ${email}`);
+  }
+
+  /**
+   * Verify reset code and set new password
+   */
+  async resetPassword(
+    email: string,
+    code: string,
+    newPassword: string,
+    clientIp = 'unknown',
+  ): Promise<void> {
+    this.checkRateLimit(clientIp);
+
+    const user = await this.db.findUserByEmail(email);
+    if (!user) {
+      throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
+    }
+
+    // Verify the reset code (must be already verified by verifyCode step)
+    const record = await this.db.findVerifiedVerificationCode(email, code, 'reset_password');
+    if (!record) {
+      throw new AppError('INVALID_CODE', '验证码无效或已过期', 400);
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await this.db.query(
+      `UPDATE users SET password = $1, "updatedAt" = NOW() WHERE id = $2`,
+      [hashedPassword, user.id],
+    );
+
+    // Delete the used code
+    await this.db.query(
+      `DELETE FROM client_verification_codes WHERE email = $1 AND type = 'reset_password'`,
+      [email],
+    );
+
+    this.logger.log(`Password reset successfully for ${email}`);
   }
 
   /**

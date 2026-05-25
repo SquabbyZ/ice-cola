@@ -112,8 +112,11 @@ export class AuthService {
     await axios.post(`${API_BASE}/client/auth/send-code`, data);
   }
 
-  async verifyCode(data: { email: string; code: string }): Promise<boolean> {
-    const response = await axios.post(`${API_BASE}/client/auth/verify-code`, data);
+  async verifyCode(data: { email: string; code: string; type?: string }): Promise<boolean> {
+    const response = await axios.post(`${API_BASE}/client/auth/verify-code`, {
+      ...data,
+      type: data.type || 'register',
+    });
     return response.data.success;
   }
 
@@ -137,6 +140,22 @@ export class AuthService {
     await axios.post(`${API_BASE}/auth/change-password`, data, {
       headers: this.getAuthHeaders(),
     });
+  }
+
+  async sendResetCode(data: {
+    email: string;
+    captchaToken: string;
+    captchaAnswer: string[];
+  }): Promise<void> {
+    await axios.post(`${API_BASE}/client/auth/send-reset-code`, data);
+  }
+
+  async resetPassword(data: {
+    email: string;
+    code: string;
+    newPassword: string;
+  }): Promise<void> {
+    await axios.post(`${API_BASE}/client/auth/reset-password`, data);
   }
 }
 

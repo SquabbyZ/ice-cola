@@ -158,6 +158,28 @@ export class CaptchaService implements OnModuleDestroy {
   }
 
   /**
+   * Generate a captcha with a known answer (for E2E testing only)
+   * Returns both the token and the answer so the test can submit the correct answer
+   */
+  async generateTestCaptcha(): Promise<{
+    token: string;
+    imageUrl: string;
+    answer: string[];
+    expiresAt: Date;
+  }> {
+    const answer = ['天', '地', '玄', '黄'];
+    const token = randomUUID();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    this.captchaStore.set(token, { answer, expiresAt });
+
+    const svg = this.generateSvgImage(answer);
+    const imageUrl = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+
+    return { token, imageUrl, answer, expiresAt };
+  }
+
+  /**
    * Clean up expired captchas
    */
   private cleanup(): void {
