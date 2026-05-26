@@ -34,12 +34,14 @@ export class ConversationService {
     teamId: string,
     title: string,
     userId?: string,
+    id?: string,
   ) {
     const conversation = await this.db.createConversation({
       teamId,
       userId: userId || '',
       title,
       platform: 'hermes',
+      id,
     });
 
     return conversation;

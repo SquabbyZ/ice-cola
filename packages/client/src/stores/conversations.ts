@@ -18,7 +18,8 @@ interface ConversationState {
 
   // Async actions
   loadConversations: (teamId: string) => Promise<void>;
-  createConversation: (teamId: string, title: string) => Promise<Conversation>;
+  createConversation: (teamId: string, title: string, id?: string) => Promise<Conversation>;
+  addConversation: (conversation: Conversation) => void;
   deleteConversation: (teamId: string, conversationId: string) => Promise<void>;
   renameConversation: (teamId: string, conversationId: string, title: string) => Promise<void>;
 }
@@ -54,10 +55,10 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     }
   },
   
-  createConversation: async (teamId: string, title: string) => {
+  createConversation: async (teamId: string, title: string, id?: string) => {
     set({ isLoading: true, error: null });
     try {
-      const conversation = await conversationService.create(teamId, title);
+      const conversation = await conversationService.create(teamId, title, id);
       // Add to the beginning of the list
       set((state) => ({
         conversations: [conversation, ...state.conversations],
@@ -70,6 +71,13 @@ export const useConversationStore = create<ConversationState>((set, get) => ({
     } finally {
       set({ isLoading: false });
     }
+  },
+
+  addConversation: (conversation: Conversation) => {
+    set((state) => ({
+      conversations: [conversation, ...state.conversations],
+      currentConversationId: conversation.id,
+    }));
   },
   
   deleteConversation: async (teamId: string, conversationId: string) => {

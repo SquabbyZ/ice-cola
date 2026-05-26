@@ -22,11 +22,11 @@ export class ConversationController {
   @Post()
   async create(
     @Param('teamId') teamId: string,
-    @Body() body: { title: string },
+    @Body() body: { title: string; id?: string },
     @Req() req: any,
   ) {
     this.assertTeamAccess(teamId, req);
-    const result = await this.conversationService.create(req.user.teamId, body.title, req.user.sub);
+    const result = await this.conversationService.create(req.user.teamId, body.title, req.user.sub, body.id);
     return { success: true, data: result };
   }
 

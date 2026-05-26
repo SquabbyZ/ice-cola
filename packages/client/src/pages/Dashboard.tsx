@@ -16,22 +16,21 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { useGateway } from '@/hooks/useGateway';
-import { useUsageStore } from '@/stores/usage';
-import { useQuotaStore } from '@/stores/quota';
+import { useLingqiStore } from '@/stores/lingqi';
 import { useExpertStore } from '@/stores/experts';
 import { useMCPStore } from '@/stores/mcpStore';
 import { useConversationStore } from '@/stores/conversations';
 import { useAuthStore } from '@/stores/authStore';
 import { QuotaProgressBar } from '@/components/QuotaProgressBar';
 import { getTeamId } from '@/lib/team';
+import { formatLingqiAmount } from '@/lib/lingqi';
 
 const Dashboard: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   useGateway({ autoConnect: true });
 
-  const { stats, refreshAllStats } = useUsageStore();
-  const { loadConfig, refreshStatus } = useQuotaStore();
+  const { status: lingqiStatus, loadLingqi } = useLingqiStore();
   const { prompts: experts, loadPrompts } = useExpertStore();
   const { servers, loadServers } = useMCPStore();
   const { conversations, loadConversations } = useConversationStore();
@@ -40,10 +39,10 @@ const Dashboard: React.FC = () => {
 
   const [isLoading, setIsLoading] = useState(true);
 
-  const activeSessions = isLoading ? 0 : stats.month.requestCount;
   const skillCount = isLoading ? 0 : experts.length;
   const activeExperts = isLoading ? 0 : experts.length;
   const mcpServices = isLoading ? 0 : servers.length;
+  const lingqiBalance = isLoading ? 0 : (lingqiStatus?.balance ?? 0);
   const recentConversations = conversations.slice(0, 5);
 
   useEffect(() => {
@@ -51,14 +50,12 @@ const Dashboard: React.FC = () => {
       setIsLoading(true);
       try {
         const requests: Promise<unknown>[] = [
-          refreshAllStats(),
-          loadConfig(),
-          refreshStatus(),
           loadPrompts(),
           loadServers(),
         ];
 
         if (teamId) {
+          requests.push(loadLingqi(teamId));
           requests.push(loadConversations(teamId));
         }
 
@@ -68,7 +65,7 @@ const Dashboard: React.FC = () => {
       }
     };
     loadData();
-  }, [refreshAllStats, loadConfig, refreshStatus, loadPrompts, loadServers, loadConversations, teamId]);
+  }, [loadLingqi, loadPrompts, loadServers, loadConversations, teamId]);
 
   const workspaceActions = [
     {
@@ -170,7 +167,7 @@ const Dashboard: React.FC = () => {
 
               {/* Stats grid - icon as top-right watermark, more compact */}
               <div className="grid grid-cols-2 gap-2">
-                {/* Stat 1: Active Sessions */}
+                {/* Stat 1: Lingqi Balance */}
                 <div className="bg-white/80 backdrop-blur-sm rounded-lg px-3 py-2.5 border border-zinc-200/50 group hover:shadow-md hover:shadow-zinc-200/30 transition-all duration-300 cursor-pointer relative overflow-hidden">
                   <div className="absolute top-1 right-1 w-8 h-8 opacity-10 group-hover:opacity-20 transition-opacity">
                     <MessageSquare className="w-full h-full text-blue-600" />
@@ -179,9 +176,9 @@ const Dashboard: React.FC = () => {
                     {isLoading ? (
                       <Skeleton className="h-7 w-12 rounded" />
                     ) : (
-                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{activeSessions}</div>
+                      <div className="text-xl font-bold text-zinc-900 font-mono tracking-tight leading-none">{formatLingqiAmount(lingqiBalance)}</div>
                     )}
-                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('dashboard.todayConversations')}</div>
+                    <div className="text-[10px] text-zinc-500 mt-0.5 leading-tight">{t('common.quota')}</div>
                   </div>
                 </div>
 

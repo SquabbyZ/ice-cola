@@ -38,6 +38,7 @@ const Chat: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastFetchedConversationIdRef = useRef<string | null>(null);
 
   const {
     attachments,
@@ -241,24 +242,27 @@ const Chat: React.FC = () => {
       return;
     }
     if (!routeConversationId) {
+      lastFetchedConversationIdRef.current = null;
       setCurrentConversationId(null);
       setMessages([]);
       setIsLoadingHistory(false);
       return;
     }
-    if (routeConversationId === currentConversationId) return;
+    // Use a ref to guard against duplicate fetches instead of depending on
+    // currentConversationId, which triggers re-renders via setCurrentConversationId
+    // mid-effect and can cancel in-flight API calls via cleanup.
+    if (lastFetchedConversationIdRef.current === routeConversationId) return;
     if (!teamId) {
       setMessages([]);
       setIsLoadingHistory(false);
       return;
     }
 
-    let isCurrent = true;
+    lastFetchedConversationIdRef.current = routeConversationId;
     setIsLoadingHistory(true);
     setCurrentConversationId(routeConversationId);
     conversationService.getById(teamId, routeConversationId)
       .then((detail) => {
-        if (!isCurrent) return;
         setMessages(detail.messages.map((msg) => ({
           id: msg.id,
           role: msg.role as 'user' | 'assistant',
@@ -268,19 +272,16 @@ const Chat: React.FC = () => {
         })));
       })
       .catch(() => {
-        if (isCurrent) setMessages([]);
+        setMessages([]);
       })
       .finally(() => {
-        if (isCurrent) setIsLoadingHistory(false);
+        setIsLoadingHistory(false);
       });
-    return () => {
-      isCurrent = false;
-    };
-  }, [routeConversationId, currentConversationId, setCurrentConversationId, setMessages, teamId]);
+  }, [routeConversationId, setCurrentConversationId, setMessages, teamId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, isLoadingHistory]);
 
   const handleMCPSelectionChange = async (serverIds: string[]) => {
     try {
@@ -332,22 +333,12 @@ const Chat: React.FC = () => {
     }
   };
 
-  const handleNewConversation = async () => {
-    if (!teamId) {
-      useChatStore.getState().setError(t('chat.errors.teamRequired'));
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: t('chat.errors.newConversationTeamRequired'), timestamp: Date.now(), status: 'error' });
-      return;
-    }
-    try {
-      const conversation = await createConversation(teamId, '');
-      setMessages([]);
-      setCurrentConversationId(conversation.id);
-      clearSelectedModel();
-      if (isCompactLayout) setIsSidebarOpen(false);
-      navigate(`/chat/${conversation.id}`);
-    } catch {
-      addMessage({ id: crypto.randomUUID(), role: 'assistant', content: t('chat.errors.newConversationFailed'), timestamp: Date.now(), status: 'error' });
-    }
+  const handleNewConversation = () => {
+    setMessages([]);
+    setCurrentConversationId(null);
+    clearSelectedModel();
+    if (isCompactLayout) setIsSidebarOpen(false);
+    navigate('/chat');
   };
 
   const handleSelectConversation = async (conversationId: string) => {

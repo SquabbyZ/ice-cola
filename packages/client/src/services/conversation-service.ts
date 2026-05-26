@@ -76,10 +76,10 @@ class ConversationService {
   /**
    * 创建新对话
    */
-  async create(teamId: string, title: string): Promise<Conversation> {
+  async create(teamId: string, title: string, id?: string): Promise<Conversation> {
     const response = await axios.post(
       `${API_BASE}/teams/${teamId}/conversations`,
-      { title },
+      { title, id },
       {
         headers: this.getAuthHeaders(),
       }

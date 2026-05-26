@@ -261,8 +261,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     title: string;
     platform?: string;
     sessionId?: string;
+    id?: string;
   }) {
-    const id = this.generateUUID();
+    const id = data.id || this.generateUUID();
     return this.queryOne(
       `INSERT INTO conversations (id, "teamId", "userId", platform, "sessionId", title, "createdAt", "updatedAt")
        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())

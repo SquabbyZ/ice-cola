@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, Sparkles } from 'lucide-react';
 import { useGatewayStore } from '@/stores/gateway';
-import { useTeamStore } from '@/stores/team';
+import { useLingqiStore } from '@/stores/lingqi';
+import { useAuthStore } from '@/stores/authStore';
+import { getTeamId } from '@/lib/team';
+import { formatLingqiAmount } from '@/lib/lingqi';
 import { Button } from '@/components/ui/button';
 import {
   Tooltip,
@@ -14,9 +17,17 @@ import {
 const TopBar: React.FC = () => {
   const { t } = useTranslation();
   const { isRunning, isConnected } = useGatewayStore();
-  const { totalQuota, usedQuota } = useTeamStore();
+  const { status: lingqiStatus, loadLingqi } = useLingqiStore();
+  const user = useAuthStore((state) => state.user);
+  const teamId = getTeamId(user);
 
-  const usagePercentage = totalQuota > 0 ? (usedQuota / totalQuota) * 100 : 0;
+  useEffect(() => {
+    if (teamId) loadLingqi(teamId).catch(() => undefined);
+  }, [teamId, loadLingqi]);
+
+  const totalGranted = lingqiStatus?.totalGranted ?? 0;
+  const totalConsumed = lingqiStatus?.totalConsumed ?? 0;
+  const usagePercentage = totalGranted > 0 ? (totalConsumed / totalGranted) * 100 : 0;
   const isOnline = isRunning && isConnected;
 
   return (
@@ -62,19 +73,31 @@ const TopBar: React.FC = () => {
           </Tooltip>
         </TooltipProvider>
 
-        {/* Quota indicator */}
-        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50/70">
-          <span className="text-[11px] text-stone-500 font-medium">{t('common.quota')}</span>
-          <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-[hsl(350,85%,65%)] to-[hsl(165,55%,45%)] rounded-full transition-all duration-500"
-              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-            />
-          </div>
-          <span className="text-[11px] font-mono text-stone-600">
-            {Math.round(usagePercentage)}%
-          </span>
-        </div>
+        {/* Quota indicator - Lingqi balance */}
+        {lingqiStatus && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-50/70 cursor-default">
+                  <span className="text-[11px] text-stone-500 font-medium">{t('common.quota')}</span>
+                  <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-[hsl(350,85%,65%)] to-[hsl(165,55%,45%)] rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-mono text-stone-600">
+                    {formatLingqiAmount(lingqiStatus.balance)}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="text-xs">
+                <p>{t('chat.capabilities.balance', { amount: formatLingqiAmount(lingqiStatus.balance) })}</p>
+                <p className="text-zinc-400">{formatLingqiAmount(totalConsumed)} / {formatLingqiAmount(totalGranted)}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
 
         {/* Notification Bell */}
         <Button

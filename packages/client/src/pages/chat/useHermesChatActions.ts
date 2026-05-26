@@ -50,7 +50,7 @@ interface UseHermesChatActionsParams {
   conversations: Conversation[];
   streamRefs: HermesStreamRefs;
   navigate: NavigateFunction;
-  createConversation: (teamId: string, title: string) => Promise<Conversation>;
+  createConversation: (teamId: string, title: string, id?: string) => Promise<Conversation>;
   setCurrentConversationId: (id: string | null) => void;
   setConversationExpert: (expertId: string | null, targetConversationId?: string) => Promise<void>;
   setConversationMcpServers: (serverIds: string[], targetConversationId?: string) => Promise<void>;
@@ -252,7 +252,8 @@ export function useHermesChatActions(params: UseHermesChatActionsParams): Hermes
     let pendingNewConversationExtensionIds: string[] | null = null;
     if (!conversationId && !pendingSnapshot) {
       try {
-        const conversation = await createConversation(targetTeamId, '');
+        pendingNewConversationId = crypto.randomUUID();
+        const conversation = await createConversation(targetTeamId, '', pendingNewConversationId);
         conversationId = conversation.id;
         pendingNewConversationId = conversation.id;
         pendingNewConversationExpertId = currentExpertId ?? null;
