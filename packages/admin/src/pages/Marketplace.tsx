@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Eye, Archive, ChevronLeft, ChevronRight, RefreshCw, Upload, Trash2 } from 'lucide-react';
+import { Search, Eye, Archive, ChevronLeft, ChevronRight, RefreshCw, Upload, Trash2, Plus, Pencil } from 'lucide-react';
 import { Spinner } from '../components/ui/spinner';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -43,6 +43,8 @@ import {
   type MarketplaceItemType,
   type MarketplaceItemStatus,
 } from '../services/marketplaceApi';
+import CreateItemDialog from '../components/marketplace/CreateItemDialog';
+import EditItemDialog from '../components/marketplace/EditItemDialog';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -60,6 +62,8 @@ const Marketplace: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [editItem, setEditItem] = useState<MarketplaceItem | null>(null);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['marketplace-items', activeTab, search, statusFilter, categoryFilter, page],
@@ -179,6 +183,10 @@ const Marketplace: React.FC = () => {
               {syncMessage && (
                 <span className="text-sm text-muted-foreground">{syncMessage}</span>
               )}
+              <Button onClick={() => setShowCreateDialog(true)} size="sm">
+                <Plus className="w-4 h-4 mr-1" />
+                {t('marketplace.createItem')}
+              </Button>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button onClick={handleSync} disabled={isSyncing} variant="outline" size="icon">
@@ -198,6 +206,7 @@ const Marketplace: React.FC = () => {
               <TabsTrigger value="skill">{t('marketplace.tabSkill')}</TabsTrigger>
               <TabsTrigger value="mcp">{t('marketplace.tabMcp')}</TabsTrigger>
               <TabsTrigger value="plugin">{t('marketplace.tabPlugin')}</TabsTrigger>
+              <TabsTrigger value="expert">{t('marketplace.tabExpert')}</TabsTrigger>
             </TabsList>
 
             <TabsContent value={activeTab} className="space-y-4">
@@ -282,6 +291,14 @@ const Marketplace: React.FC = () => {
                                 onClick={() => setDetailItem(item)}
                               >
                                 <Eye className="h-4 w-4 text-muted-foreground" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                title={t('marketplace.edit')}
+                                onClick={() => setEditItem(item)}
+                              >
+                                <Pencil className="h-4 w-4 text-muted-foreground" />
                               </Button>
                               {item.status === 'approved' ? (
                                 <Button
@@ -452,6 +469,22 @@ const Marketplace: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Create Item Dialog */}
+      <CreateItemDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        defaultType={activeTab}
+        onSuccess={() => refetch()}
+      />
+
+      {/* Edit Item Dialog */}
+      <EditItemDialog
+        open={!!editItem}
+        onOpenChange={(open) => { if (!open) setEditItem(null); }}
+        item={editItem}
+        onSuccess={() => refetch()}
+      />
     </div>
   );
 };

@@ -1,13 +1,13 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AnyJwtAuthGuard } from '../auth/any-jwt-auth.guard';
 
 @Controller('extensions')
 export class ExtensionsController {
   constructor(private readonly db: DatabaseService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async list(
     @Query('category') category?: string,
     @Query('search') search?: string,
@@ -41,7 +41,7 @@ export class ExtensionsController {
   }
 
   @Get('categories')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async getCategories() {
     const data = await this.db.query(
       'SELECT DISTINCT category FROM extensions WHERE category IS NOT NULL AND enabled = true ORDER BY category'
@@ -50,7 +50,7 @@ export class ExtensionsController {
   }
 
   @Get('installed')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async getInstalled(@Request() req: any) {
     const userId = req.user.sub || req.user.id;
     const data = await this.db.query(
@@ -65,14 +65,14 @@ export class ExtensionsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findOne(@Param('id') id: string) {
     const ext = await this.db.queryOne('SELECT * FROM extensions WHERE id = $1', [id]);
     return { code: 0, data: ext, message: '操作成功' };
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async create(@Body() body: {
     name: string;
     description?: string;
@@ -110,7 +110,7 @@ export class ExtensionsController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async update(@Param('id') id: string, @Body() body: Record<string, any>) {
     const allowed = ['name', 'description', 'version', 'author', 'category', 'icon', 'color', 'homepage', 'repository', 'config_schema', 'instructions', 'enabled'];
     const fields: string[] = [];
@@ -141,14 +141,14 @@ export class ExtensionsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async remove(@Param('id') id: string) {
     await this.db.queryOne('DELETE FROM extensions WHERE id = $1 RETURNING *', [id]);
     return { code: 0, data: null, message: '删除成功' };
   }
 
   @Post(':id/install')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async install(@Param('id') id: string, @Request() req: any) {
     const userId = req.user.sub || req.user.id;
     const installId = this.db.generateUUID();
@@ -167,7 +167,7 @@ export class ExtensionsController {
   }
 
   @Delete(':id/install')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async uninstall(@Param('id') id: string, @Request() req: any) {
     const userId = req.user.sub || req.user.id;
     await this.db.queryOne(

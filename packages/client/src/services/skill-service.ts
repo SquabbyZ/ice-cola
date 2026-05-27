@@ -6,6 +6,8 @@
 
 import { getServiceContainer } from './service-container';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export type TeamSkillAccessPolicy =
   | { mode: 'all' }
   | { mode: 'users'; userIds: string[] }
@@ -132,6 +134,23 @@ export class SkillService {
       return result;
     }
     return [];
+  }
+
+  /**
+   * 从统一管理后台市场 API 获取技能数据
+   */
+  async getMarketplaceSkillsFromApi(): Promise<unknown[]> {
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`${API_BASE}/marketplace/items?type=skill`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      const json = await res.json();
+      return json.data?.items || json.data || [];
+    } catch (err) {
+      console.error('[SkillService] Failed to fetch marketplace skills from API:', err);
+      return [];
+    }
   }
 
   /**

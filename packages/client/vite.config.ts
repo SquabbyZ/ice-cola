@@ -26,6 +26,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/mcp/, '/mcp'),
       },
+      '/marketplace': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
       '/auth': {
         target: 'http://localhost:3000',
         changeOrigin: true,

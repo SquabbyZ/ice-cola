@@ -73,11 +73,11 @@ export class MarketplaceService {
       params,
     );
 
-    // Transform items to match expected format (especially for MCP type)
+    // Transform items to match expected format
     const transformedItems = items.map((item: any) => {
       const transformed: any = { ...item };
-      // Map category_slug to category for MCP type (client expects string like 'data', 'tool')
-      if (item.type === 'mcp' && item.category_slug) {
+      // Map category_slug to category for all types (client expects string like 'data', 'tool')
+      if (item.category_slug) {
         transformed.category = item.category_slug;
       }
       // Parse config_schema if it's a string
@@ -141,9 +141,25 @@ export class MarketplaceService {
       throw new BadRequestException('同一类型下 slug 已存在');
     }
 
+    // Resolve category string to categoryId
+    let categoryId = dto.categoryId || null;
+    if (!categoryId && dto.category) {
+      let cat = await this.db.queryOne<{ id: number }>(
+        'SELECT id FROM marketplace_categories WHERE name = $1 AND item_type = $2',
+        [dto.category, dto.type],
+      );
+      if (!cat) {
+        cat = await this.db.queryOne<{ id: number }>(
+          'INSERT INTO marketplace_categories (name, slug, item_type) VALUES ($1, $2, $3) RETURNING id',
+          [dto.category, dto.category.toLowerCase().replace(/\s+/g, '-'), dto.type],
+        );
+      }
+      categoryId = cat?.id || null;
+    }
+
     const item = await this.db.queryOne(
-      `INSERT INTO marketplace_items (type, name, slug, description, version, author_id, icon, color, category_id, tags, metadata, source_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO marketplace_items (type, name, slug, description, version, author_id, icon, color, category_id, tags, metadata, source_id, config_schema)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         dto.type,
@@ -154,23 +170,25 @@ export class MarketplaceService {
         authorId,
         dto.icon || null,
         dto.color || null,
-        dto.categoryId || null,
+        categoryId,
         dto.tags || [],
         dto.metadata ? JSON.stringify(dto.metadata) : null,
         dto.sourceId || null,
+        dto.config_schema ? JSON.stringify(dto.config_schema) : null,
       ],
     );
     return item;
   }
 
-  async updateItem(id: number, userId: string, dto: UpdateItemDto) {
+  async updateItem(id: number, userId: string, dto: UpdateItemDto, isAdmin = false) {
     const item = await this.findItemById(id);
 
-    // Only the author can edit, and only draft items
-    if (item.author_id !== userId) {
+    // Only the author can edit, or admin users can edit any item
+    if (!isAdmin && item.author_id !== userId) {
       throw new ForbiddenException('只有作者可以编辑市场项');
     }
-    if (item.status !== 'draft') {
+    // Admin can edit any status; regular users can only edit draft
+    if (!isAdmin && item.status !== 'draft') {
       throw new ForbiddenException('只有草稿状态的市场项可以编辑');
     }
 
@@ -211,13 +229,13 @@ export class MarketplaceService {
     return updated;
   }
 
-  async deleteItem(id: number, userId: string) {
+  async deleteItem(id: number, userId: string, isAdmin = false) {
     const item = await this.findItemById(id);
 
-    if (item.author_id !== userId) {
+    if (!isAdmin && item.author_id !== userId) {
       throw new ForbiddenException('只有作者可以删除市场项');
     }
-    if (item.status !== 'draft') {
+    if (!isAdmin && item.status !== 'draft') {
       throw new ForbiddenException('只有草稿状态的市场项可以删除');
     }
 
@@ -246,13 +264,18 @@ export class MarketplaceService {
       tags: 'tags',
       metadata: 'metadata',
       status: 'status',
+      config_schema: 'config_schema',
     };
 
     for (const [key, dbKey] of Object.entries(fieldMap)) {
       const value = (dto as Record<string, unknown>)[key];
       if (value !== undefined) {
         fields.push(`${dbKey} = $${paramIndex++}`);
-        values.push(key === 'metadata' ? JSON.stringify(value) : value);
+        if (key === 'metadata' || key === 'config_schema') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value);
+        }
       }
     }
 

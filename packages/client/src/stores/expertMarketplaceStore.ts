@@ -59,6 +59,45 @@ export const EXPERT_CATEGORIES = [
   { value: 'education', label: '教育' },
 ];
 
+interface MarketplaceItem {
+  id: string | number;
+  name?: string;
+  description?: string;
+  config_schema?: Record<string, unknown>;
+  icon?: string;
+  color?: string;
+  category?: string;
+  rating?: number;
+  install_count?: number;
+  tags?: string | string[];
+}
+
+function transformExpert(item: MarketplaceItem): Expert {
+  const cfg = item.config_schema ?? {};
+  const rawTags = item.tags;
+  let tags: string[] = [];
+  if (Array.isArray(rawTags)) {
+    tags = rawTags;
+  } else if (typeof rawTags === 'string') {
+    try {
+      tags = JSON.parse(rawTags);
+    } catch {
+      tags = [];
+    }
+  }
+
+  return {
+    id: String(item.id),
+    name: item.name ?? '',
+    description: item.description ?? '',
+    systemPrompt: String(cfg.systemPrompt ?? cfg.system_prompt ?? ''),
+    icon: item.icon,
+    color: item.color,
+    category: item.category,
+    isInstalled: false,
+  };
+}
+
 const INSTALLED_EXPERT_IDS_KEY = 'expert-marketplace-installed-expert-ids';
 
 function readInstalledExpertIds(): Record<string, string> {
@@ -108,23 +147,12 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
   loadExperts: async () => {
     set({ isLoading: true, error: null });
     try {
-      // 从 REST API 获取专家列表
-      const response = await fetch(`${API_BASE}/experts`, {
+      const res = await fetch(`${API_BASE}/marketplace/items?type=expert`, {
         headers: getAuthHeader(),
       });
-      const result = await response.json();
-      const rawExperts = result.data || [];
-
-      const marketplaceExperts: Expert[] = rawExperts.map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        description: e.description || '',
-        systemPrompt: e.systemPrompt || '',
-        icon: e.icon,
-        color: e.color,
-        category: e.category,
-        isInstalled: false,
-      }));
+      const json = await res.json();
+      const items: MarketplaceItem[] = json.data?.items || json.data || [];
+      const marketplaceExperts: Expert[] = items.map(transformExpert);
 
       // 获取用户已创建的专家（可能从市场克隆）
       let userExperts: MarketplaceExpertPrompt[] = [];

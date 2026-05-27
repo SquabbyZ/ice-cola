@@ -1,6 +1,6 @@
 import api from './api';
 
-export type MarketplaceItemType = 'skill' | 'mcp' | 'plugin';
+export type MarketplaceItemType = 'skill' | 'mcp' | 'plugin' | 'expert';
 
 export type MarketplaceItemStatus = 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived';
 
@@ -105,6 +105,32 @@ export interface GetSubmissionsParams {
   pageSize?: number;
 }
 
+export interface CreateMarketplaceItemDto {
+  type: MarketplaceItemType;
+  name: string;
+  slug: string;
+  version?: string;
+  description?: string;
+  author?: string;
+  category?: string;
+  config_schema?: Record<string, any>;
+  tags?: string[];
+  icon?: string;
+  color?: string;
+}
+
+export interface UpdateMarketplaceItemDto {
+  name?: string;
+  version?: string;
+  description?: string;
+  category?: string;
+  status?: MarketplaceItemStatus;
+  config_schema?: Record<string, any>;
+  tags?: string[];
+  icon?: string;
+  color?: string;
+}
+
 function resourcePath(basePath: string, id: ResourceId, suffix = '') {
   return `${basePath}/${encodeURIComponent(String(id))}${suffix}`;
 }
@@ -183,7 +209,7 @@ export async function getMarketplaceItem(id: ResourceId) {
   return mapMarketplaceItem(response.data.data);
 }
 
-export async function updateMarketplaceItem(id: ResourceId, data: Partial<Pick<MarketplaceItem, 'status' | 'category'>>) {
+export async function updateMarketplaceItem(id: ResourceId, data: UpdateMarketplaceItemDto) {
   const response = await api.put<ApiEnvelope<BackendMarketplaceItem>>(resourcePath('/marketplace/items', id), data);
   return mapMarketplaceItem(response.data.data);
 }
@@ -228,6 +254,11 @@ export async function adminUpdateItem(id: ResourceId, data: { status?: Marketpla
 export async function adminDeleteItem(id: ResourceId) {
   const response = await api.delete<ApiEnvelope<null>>(resourcePath('/marketplace/items', id, '/admin'));
   return response.data.data;
+}
+
+export async function createMarketplaceItem(data: CreateMarketplaceItemDto) {
+  const response = await api.post<ApiEnvelope<BackendMarketplaceItem>>('/marketplace/items', data);
+  return mapMarketplaceItem(response.data.data);
 }
 
 export async function syncMcps() {

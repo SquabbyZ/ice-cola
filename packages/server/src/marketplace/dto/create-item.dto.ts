@@ -4,6 +4,7 @@ export enum MarketplaceItemType {
   SKILL = 'skill',
   MCP = 'mcp',
   PLUGIN = 'plugin',
+  EXPERT = 'expert',
 }
 
 export class CreateItemDto {
@@ -36,6 +37,10 @@ export class CreateItemDto {
   @IsOptional()
   categoryId?: number;
 
+  @IsString()
+  @IsOptional()
+  category?: string;
+
   @IsArray()
   @IsOptional()
   tags?: string[];
@@ -47,4 +52,12 @@ export class CreateItemDto {
   @IsString()
   @IsOptional()
   sourceId?: string;
+
+  @IsString()
+  @IsOptional()
+  author?: string;
+
+  @IsObject()
+  @IsOptional()
+  config_schema?: Record<string, any>;
 }

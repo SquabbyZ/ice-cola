@@ -7,6 +7,13 @@
 import { create } from 'zustand';
 import { ExtensionService } from '@/services/extension-service';
 
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem('accessToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 const extensionService = new ExtensionService();
 
 export interface Extension {
@@ -47,6 +54,42 @@ export interface ExtensionState {
   reset: () => void;
 }
 
+// Transform marketplace_items to Extension format
+interface MarketplaceItem {
+  id: string | number;
+  name?: string;
+  description?: string;
+  version?: string;
+  author?: string;
+  category?: string;
+  icon?: string;
+  color?: string;
+  homepage?: string;
+  repository?: string;
+  install_count?: number;
+  config_schema?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+function transformMarketplaceItem(item: MarketplaceItem): Extension {
+  const meta = item.metadata ?? {};
+  return {
+    id: String(item.id),
+    name: item.name ?? '',
+    description: item.description ?? '',
+    version: item.version ?? '1.0.0',
+    author: item.author ?? 'Unknown',
+    category: item.category ?? '',
+    icon: item.icon,
+    color: item.color,
+    homepage: item.homepage ?? (meta as any).homepage,
+    repository: item.repository ?? (meta as any).repository,
+    downloads: item.install_count ?? 0,
+    enabled: false,
+    user_enabled: false,
+  };
+}
+
 export const useExtensionStore = create<ExtensionState>((set, get) => ({
   extensions: [],
   installedExtensions: [],
@@ -58,7 +101,12 @@ export const useExtensionStore = create<ExtensionState>((set, get) => ({
   loadExtensions: async () => {
     set({ isLoading: true, error: null });
     try {
-      const extensions = await extensionService.getAllExtensions();
+      const res = await fetch(`${API_BASE}/marketplace/items?type=plugin`, {
+        headers: getAuthHeader(),
+      });
+      const json = await res.json();
+      const items: MarketplaceItem[] = json.data?.items || json.data || [];
+      const extensions = items.map(transformMarketplaceItem);
       set({ extensions, isLoading: false });
     } catch (err) {
       set({

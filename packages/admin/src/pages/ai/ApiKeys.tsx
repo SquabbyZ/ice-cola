@@ -49,7 +49,7 @@ export default function ApiKeys() {
   const deleteApiKey = useDeleteApiKey();
   const fetchModels = useFetchModelsFromProvider();
   const setDefaultModel = useCreateDefaultModel();
-  const { data: usageStats } = useUsageStats({ period: 'month' });
+  const { data: _usageStats } = useUsageStats({ period: 'month' });
 
   const currentUser = useAuthStore((state) => state.user);
   const canEdit = currentUser?.role === 'OWNER' || currentUser?.role === 'ADMIN';

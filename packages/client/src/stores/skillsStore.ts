@@ -3,6 +3,28 @@ import { SkillService } from '@/services/skill-service';
 
 const skillService = new SkillService();
 
+function transformMarketplaceSkill(item: Record<string, unknown>): Skill {
+  const configSchema = (item.config_schema ?? {}) as Record<string, unknown>;
+  return {
+    id: String(item.id ?? ''),
+    name: String(item.name ?? ''),
+    description: String(item.description ?? ''),
+    content: String((configSchema.content as string) ?? ''),
+    configSchema,
+    config: (item.config ?? {}) as Record<string, unknown>,
+    status: 'marketplace',
+    icon: String(item.icon ?? ''),
+    category: String(item.category ?? 'general'),
+    tags: Array.isArray(item.tags) ? (item.tags as string[]) : [],
+    authorId: String(item.author_id ?? item.authorId ?? ''),
+    ratings: Number(item.ratings ?? 0),
+    installs: Number(item.installs ?? 0),
+    version: String(item.version ?? '1'),
+    createdAt: String(item.created_at ?? item.createdAt ?? new Date().toISOString()),
+    updatedAt: String(item.updated_at ?? item.updatedAt ?? new Date().toISOString()),
+  };
+}
+
 export interface Skill {
   id: string;
   name: string;
@@ -43,6 +65,7 @@ export interface SkillState {
   searchQuery: string;
   selectedCategory: string;
   isLoading: boolean;
+  isMarketplaceLoading: boolean;
   error: string | null;
 
   loadSkills: (teamId: string) => Promise<void>;
@@ -72,6 +95,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   searchQuery: '',
   selectedCategory: 'all',
   isLoading: false,
+  isMarketplaceLoading: false,
   error: null,
 
   loadSkills: async (teamId) => {
@@ -105,12 +129,14 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
   },
 
   loadMarketplaceSkills: async (_teamId) => {
-    set({ isLoading: true, error: null });
+    set({ isMarketplaceLoading: true });
     try {
-      const skills = await skillService.getMarketplaceSkills();
-      set({ marketplaceSkills: skills, isLoading: false });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : 'Failed to load marketplace skills', isLoading: false });
+      const items = await skillService.getMarketplaceSkillsFromApi();
+      const skills = items.map(transformMarketplaceSkill);
+      set({ marketplaceSkills: skills, isMarketplaceLoading: false });
+    } catch (error) {
+      console.error('[SkillsStore] Failed to load marketplace skills:', error);
+      set({ isMarketplaceLoading: false });
     }
   },
 

@@ -39,4 +39,16 @@ export class UpdateItemDto {
   @IsIn(['draft', 'pending_approval', 'approved', 'rejected', 'archived'])
   @IsOptional()
   status?: 'draft' | 'pending_approval' | 'approved' | 'rejected' | 'archived';
+
+  @IsString()
+  @IsOptional()
+  author?: string;
+
+  @IsObject()
+  @IsOptional()
+  config_schema?: Record<string, any>;
+
+  @IsString()
+  @IsOptional()
+  category?: string;
 }

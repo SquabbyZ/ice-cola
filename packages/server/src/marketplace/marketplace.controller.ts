@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request, ParseIntPipe, NotFoundException } from '@nestjs/common';
 import { MarketplaceService } from './marketplace.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AnyJwtAuthGuard } from '../auth/any-jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { TeamRole } from '../quota/quota.service';
@@ -22,10 +22,10 @@ export class MarketplaceController {
   // ============================================================
 
   @Get('items')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findItems(@Query() query: QueryItemsDto, @Request() req: any) {
     const isAdmin = req.user?.role === TeamRole.ADMIN || req.user?.role === TeamRole.OWNER;
-    const includeAll = isAdmin && req.query['includeAll'] === 'true';
+    const includeAll = isAdmin && query.includeAll === true;
     const safeQuery: QueryItemsDto = isAdmin || !query.status || query.status === MarketplaceItemStatus.APPROVED
       ? query
       : { ...query, status: MarketplaceItemStatus.APPROVED };
@@ -38,7 +38,7 @@ export class MarketplaceController {
   }
 
   @Get('items/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findItemById(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
     const result = await this.marketplaceService.findItemById(id);
     const isAdmin = req.user?.role === TeamRole.ADMIN || req.user?.role === TeamRole.OWNER;
@@ -53,7 +53,7 @@ export class MarketplaceController {
   }
 
   @Post('items')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async createItem(@Request() req: any, @Body() dto: CreateItemDto) {
     const result = await this.marketplaceService.createItem(req.user.id, dto);
     return {
@@ -64,9 +64,10 @@ export class MarketplaceController {
   }
 
   @Put('items/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async updateItem(@Param('id', ParseIntPipe) id: number, @Request() req: any, @Body() dto: UpdateItemDto) {
-    const result = await this.marketplaceService.updateItem(id, req.user.id, dto);
+    const isAdmin = req.user.authType === 'admin';
+    const result = await this.marketplaceService.updateItem(id, req.user.id, dto, isAdmin);
     return {
       code: 0,
       data: result,
@@ -75,9 +76,10 @@ export class MarketplaceController {
   }
 
   @Delete('items/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async deleteItem(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
-    await this.marketplaceService.deleteItem(id, req.user.id);
+    const isAdmin = req.user.authType === 'admin';
+    await this.marketplaceService.deleteItem(id, req.user.id, isAdmin);
     return {
       code: 0,
       data: null,
@@ -90,7 +92,7 @@ export class MarketplaceController {
   // ============================================================
 
   @Put('items/:id/admin')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async adminUpdateItem(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateItemDto) {
     const result = await this.marketplaceService.adminUpdateItem(id, dto);
@@ -102,7 +104,7 @@ export class MarketplaceController {
   }
 
   @Delete('items/:id/admin')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async adminDeleteItem(@Param('id', ParseIntPipe) id: number) {
     await this.marketplaceService.adminDeleteItem(id);
@@ -114,7 +116,7 @@ export class MarketplaceController {
   }
 
   @Post('sync/mcps')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async syncMcps() {
     const result = await this.marketplaceService.syncMcps();
@@ -130,7 +132,7 @@ export class MarketplaceController {
   // ============================================================
 
   @Post('items/:id/submit')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async submitItem(
     @Param('id', ParseIntPipe) id: number,
     @Request() req: any,
@@ -149,7 +151,7 @@ export class MarketplaceController {
   }
 
   @Get('submissions/my')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findMySubmissions(@Request() req: any) {
     const result = await this.marketplaceService.findMySubmissions(req.user.id);
     return {
@@ -160,7 +162,7 @@ export class MarketplaceController {
   }
 
   @Get('submissions')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async findSubmissions(@Query('status') status?: string) {
     const result = await this.marketplaceService.findSubmissions(status);
@@ -176,7 +178,7 @@ export class MarketplaceController {
   // ============================================================
 
   @Post('submissions/:id/approve')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async approveSubmission(
     @Param('id', ParseIntPipe) id: number,
@@ -196,7 +198,7 @@ export class MarketplaceController {
   }
 
   @Post('submissions/:id/reject')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async rejectSubmission(
     @Param('id', ParseIntPipe) id: number,
@@ -216,7 +218,7 @@ export class MarketplaceController {
   }
 
   @Get('approvals')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async findApprovals() {
     const result = await this.marketplaceService.findApprovals();
@@ -232,7 +234,7 @@ export class MarketplaceController {
   // ============================================================
 
   @Post('items/:id/install')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async installItem(
     @Param('id', ParseIntPipe) id: number,
     @Request() req: any,
@@ -251,7 +253,7 @@ export class MarketplaceController {
   }
 
   @Delete('items/:id/uninstall')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async uninstallItem(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
     await this.marketplaceService.uninstallItem(id, req.user.id);
     return {
@@ -262,7 +264,7 @@ export class MarketplaceController {
   }
 
   @Get('installations/my')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findMyInstallations(@Request() req: any) {
     const result = await this.marketplaceService.findMyInstallations(req.user.id);
     return {
@@ -277,7 +279,7 @@ export class MarketplaceController {
   // ============================================================
 
   @Get('categories')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findCategories(@Query('itemType') itemType?: string) {
     const result = await this.marketplaceService.findCategories(itemType);
     return {
@@ -288,7 +290,7 @@ export class MarketplaceController {
   }
 
   @Post('categories')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async createCategory(@Body() dto: CreateCategoryDto) {
     const result = await this.marketplaceService.createCategory(dto);
@@ -300,7 +302,7 @@ export class MarketplaceController {
   }
 
   @Put('categories/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async updateCategory(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCategoryDto) {
     const result = await this.marketplaceService.updateCategory(id, dto);
@@ -312,7 +314,7 @@ export class MarketplaceController {
   }
 
   @Delete('categories/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async deleteCategory(@Param('id', ParseIntPipe) id: number) {
     await this.marketplaceService.deleteCategory(id);
@@ -325,7 +327,7 @@ export class MarketplaceController {
 
   // Sync from skills.sh
   @Post('sync/skills-sh')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AnyJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async syncFromSkillsSh(@Request() req: any) {
     const result = await this.skillsSyncService.syncFromSkillsSh();

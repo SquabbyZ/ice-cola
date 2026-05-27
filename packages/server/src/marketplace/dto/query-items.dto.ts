@@ -1,5 +1,5 @@
-import { IsOptional, IsEnum, IsString, IsNumber } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsString, IsNumber, IsBoolean } from 'class-validator';
+import { Type, Transform } from 'class-transformer';
 import { MarketplaceItemType } from './create-item.dto';
 
 export enum MarketplaceItemStatus {
@@ -36,4 +36,8 @@ export class QueryItemsDto {
   @IsNumber()
   @IsOptional()
   limit?: number;
+
+  @Transform(({ value }) => value === 'true')
+  @IsOptional()
+  includeAll?: boolean;
 }

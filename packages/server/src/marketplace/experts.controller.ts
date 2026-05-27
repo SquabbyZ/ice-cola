@@ -1,13 +1,13 @@
 import { Controller, Get, Post, Put, Delete, Param, Body, Query, UseGuards, Request } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AnyJwtAuthGuard } from '../auth/any-jwt-auth.guard';
 
 @Controller('experts')
 export class ExpertsController {
   constructor(private readonly db: DatabaseService) {}
 
   @Get()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async list(
     @Query('teamId') teamId?: string,
     @Query('category') category?: string,
@@ -50,7 +50,7 @@ export class ExpertsController {
   }
 
   @Get('categories')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async getCategories() {
     const data = await this.db.query(
       'SELECT DISTINCT category FROM experts WHERE category IS NOT NULL ORDER BY category'
@@ -59,14 +59,14 @@ export class ExpertsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async findOne(@Param('id') id: string) {
     const expert = await this.db.queryOne('SELECT * FROM experts WHERE id = $1', [id]);
     return { code: 0, data: expert, message: '操作成功' };
   }
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async create(@Body() body: {
     name: string;
     description?: string;
@@ -98,7 +98,7 @@ export class ExpertsController {
   }
 
   @Put(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async update(@Param('id') id: string, @Body() body: Record<string, any>) {
     const allowed = ['name', 'description', 'systemPrompt', 'icon', 'color', 'category', 'enabled', 'is_default'];
     const fields: string[] = [];
@@ -130,7 +130,7 @@ export class ExpertsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AnyJwtAuthGuard)
   async remove(@Param('id') id: string) {
     await this.db.queryOne('DELETE FROM experts WHERE id = $1 RETURNING *', [id]);
     return { code: 0, data: null, message: '删除成功' };
