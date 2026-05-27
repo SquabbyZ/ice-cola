@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Bot, Check, ChevronDown, Loader2, X } from 'lucide-react';
 import { useMCPStore } from '@/stores/mcpStore';
 import { Badge } from '@/components/ui/badge';
+import { useDropdownPosition, getDropdownClasses } from '@/hooks/useDropdownPosition';
 
 interface MCPSelectorProps {
   conversationId: string | null;
@@ -19,8 +20,10 @@ interface MCPSelectorProps {
 export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const { connectedServers, loadConnectedServers, isLoading: storeLoading } = useMCPStore();
+  const dropdownPosition = useDropdownPosition(triggerRef, 'up');
 
   useEffect(() => {
     if (isOpen && connectedServers.length === 0) {
@@ -53,6 +56,7 @@ export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelecto
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
+        ref={triggerRef}
         type="button"
         variant="outline"
         data-chat-selector-trigger="mcp"
@@ -79,7 +83,7 @@ export function MCPSelector({ selectedServerIds, onSelectionChange }: MCPSelecto
       </Button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-lg border border-gray-200 shadow-lg z-50 max-h-80 overflow-hidden flex flex-col">
+        <div className={`absolute left-0 w-72 bg-white rounded-lg border border-gray-200 shadow-lg z-50 overflow-hidden flex flex-col ${getDropdownClasses(dropdownPosition.direction)}`} style={{ maxHeight: dropdownPosition.maxHeight }}>
           {/* Header */}
           <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">法宝</span>

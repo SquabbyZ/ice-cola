@@ -106,7 +106,8 @@
     "recentSessions": "最近会话",
     "viewAll": "查看全部",
     "noSessions": "暂无会话记录",
-    "startConversationHint": "开始对话以创建您的第一个会话"
+    "startConversationHint": "开始对话以创建您的第一个会话",
+    "messages": "条消息"
   },
   "chat": {
     "title": "聊天",
@@ -164,6 +165,36 @@
       "gatewayReady": "Gateway 已连接",
       "gatewayDisconnected": "Gateway 未连接",
       "teamRequired": "请先创建或加入团队后再开始问道。"
+    },
+    "lingqi": {
+      "realm": {
+        "mortal": "凡人"
+      },
+      "redeemFailed": "兑换失败，请稍后再试。",
+      "unit": "灵气",
+      "ledger": {
+        "title": "近期灵气账簿",
+        "description": "展示最近的灵气获得与消耗记录，便于追踪模型调用与兑换来源。",
+        "direction": {
+          "grant": "获得",
+          "consume": "消耗"
+        },
+        "transactionType": {
+          "chat_message": "问道",
+          "tool_call": "工具调用",
+          "expert_skill": "宗主秘籍",
+          "background_task": "后台任务",
+          "redemption_code": "兑换码"
+        },
+        "sourceType": {
+          "chat": "问道",
+          "chat_refund": "问道退款",
+          "redemption_code": "兑换码"
+        },
+        "empty": "暂无灵气账簿记录，兑换或调用模型后会在此显示。",
+        "loading": "正在载入灵气账簿...",
+        "noDescription": "灵气流转记录"
+      }
     },
     "lingqiModel": {
       "title": "灵气模型",

@@ -4,6 +4,7 @@ import { Check, ChevronDown, Loader2, Sparkles, X } from 'lucide-react';
 import { useSkillsStore, type Skill } from '@/stores/skillsStore';
 import { useAuthStore } from '@/stores/authStore';
 import { Badge } from '@/components/ui/badge';
+import { useDropdownPosition, getDropdownClasses } from '@/hooks/useDropdownPosition';
 
 interface SkillSelectorProps {
   conversationId: string | null;
@@ -14,6 +15,8 @@ interface SkillSelectorProps {
 export function SkillSelector({ selectedSkillIds, onSelectionChange }: SkillSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownPosition = useDropdownPosition(triggerRef, 'up');
 
   const { personalSkills, teamSkills, loadPersonalSkills, loadTeamSkills, isLoading } = useSkillsStore();
   const user = useAuthStore((state) => state.user);
@@ -54,6 +57,7 @@ export function SkillSelector({ selectedSkillIds, onSelectionChange }: SkillSele
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
+        ref={triggerRef}
         type="button"
         variant="outline"
         data-chat-selector-trigger="skills"
@@ -81,7 +85,7 @@ export function SkillSelector({ selectedSkillIds, onSelectionChange }: SkillSele
       </Button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-80 bg-white rounded-lg border border-gray-200 shadow-lg z-50 max-h-96 overflow-hidden flex flex-col">
+        <div className={`absolute left-0 w-80 bg-white rounded-lg border border-gray-200 shadow-lg z-50 overflow-hidden flex flex-col ${getDropdownClasses(dropdownPosition.direction)}`} style={{ maxHeight: dropdownPosition.maxHeight }}>
           <div className="px-3 py-2 border-b border-gray-100 flex items-center justify-between">
             <span className="text-sm font-medium text-gray-700">技能</span>
             <span className="text-xs text-gray-400">{availableSkills.length} 可用</span>

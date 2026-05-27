@@ -41,6 +41,7 @@ export class AdminJwtAuthGuard implements CanActivate {
       const payload = this.jwtService.verify<AdminAccessTokenPayload>(token, {
         secret: this.jwtSecret,
       });
+
       if (payload.type !== 'admin_access' || !payload.sub) {
         return false;
       }
@@ -49,6 +50,7 @@ export class AdminJwtAuthGuard implements CanActivate {
         'SELECT id, email, role FROM admin_users WHERE id = $1',
         [payload.sub],
       );
+
       if (!admin) {
         return false;
       }

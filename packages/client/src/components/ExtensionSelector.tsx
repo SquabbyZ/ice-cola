@@ -3,6 +3,7 @@ import { Check, ChevronDown, Loader2, Package, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useExtensionStore } from '@/stores/extensions';
+import { useDropdownPosition, getDropdownClasses } from '@/hooks/useDropdownPosition';
 
 interface ExtensionSelectorProps {
   selectedExtensionIds: string[];
@@ -12,7 +13,9 @@ interface ExtensionSelectorProps {
 export function ExtensionSelector({ selectedExtensionIds, onSelectionChange }: ExtensionSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const { installedExtensions, isLoading, loadInstalledExtensions } = useExtensionStore();
+  const dropdownPosition = useDropdownPosition(triggerRef, 'up');
 
   const availableExtensions = useMemo(
     () => installedExtensions.filter((extension) => extension.enabled),
@@ -47,6 +50,7 @@ export function ExtensionSelector({ selectedExtensionIds, onSelectionChange }: E
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
+        ref={triggerRef}
         type="button"
         variant="outline"
         data-chat-selector-trigger="plugins"
@@ -68,7 +72,7 @@ export function ExtensionSelector({ selectedExtensionIds, onSelectionChange }: E
       </Button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full z-50 mt-2 flex max-h-96 w-80 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
+        <div className={`absolute left-0 z-50 flex w-80 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg ${getDropdownClasses(dropdownPosition.direction)}`} style={{ maxHeight: dropdownPosition.maxHeight }}>
           <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2">
             <span className="text-sm font-medium text-gray-700">插件</span>
             <span className="text-xs text-gray-400">{availableExtensions.length} 可用</span>

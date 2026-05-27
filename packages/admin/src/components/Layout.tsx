@@ -417,7 +417,7 @@ const Layout: React.FC = () => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Page Content */}
-          <main className="flex-1 overflow-auto p-6 bg-background">
+          <main className="flex-1 overflow-hidden p-6 bg-background">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}

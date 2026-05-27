@@ -13,6 +13,7 @@ import {
   RevokeInvitationDto,
 } from './dto/invite.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminJwtAuthGuard } from '../auth/admin-jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { TeamRole } from '../quota/quota.service';
@@ -185,8 +186,8 @@ export class AdminController {
   // ========== Dashboard Stats ==========
 
   @Get('stats')
-  @UseGuards(JwtAuthGuard)
-  async getStats() {
+  @UseGuards(AdminJwtAuthGuard)
+  async getStats(@Request() req: any) {
     const stats = await this.adminService.getStats();
     return {
       success: true,
@@ -225,7 +226,7 @@ export class AdminController {
   // ========== Profile & Password ==========
 
   @Put('profile')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AdminJwtAuthGuard)
   async updateProfile(@Body() body: { name: string }, @Request() req: any) {
     const userId = req.user.sub;
     const result = await this.adminService.updateProfile(userId, body.name);
@@ -237,7 +238,7 @@ export class AdminController {
   }
 
   @Put('change-password')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AdminJwtAuthGuard)
   async changePassword(@Body() body: { currentPassword: string; newPassword: string }, @Request() req: any) {
     const userId = req.user.sub;
     await this.adminService.changePassword(userId, body.currentPassword, body.newPassword);

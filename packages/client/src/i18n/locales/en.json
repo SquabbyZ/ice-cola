@@ -103,7 +103,8 @@
     "recentSessions": "Recent Sessions",
     "viewAll": "View All",
     "noSessions": "No session records yet",
-    "startConversationHint": "Start a conversation to create your first session"
+    "startConversationHint": "Start a conversation to create your first session",
+    "messages": "messages"
   },
   "chat": {
     "title": "Chat",
@@ -161,6 +162,36 @@
       "gatewayReady": "Gateway connected",
       "gatewayDisconnected": "Gateway disconnected",
       "teamRequired": "Create or join a team before asking Hermes."
+    },
+    "lingqi": {
+      "realm": {
+        "mortal": "Mortal"
+      },
+      "redeemFailed": "Redemption failed, please try again later.",
+      "unit": "Lingqi",
+      "ledger": {
+        "title": "Recent Lingqi Ledger",
+        "description": "Recent Lingqi grants and consumptions for tracking model calls and redemption sources.",
+        "direction": {
+          "grant": "Grant",
+          "consume": "Consume"
+        },
+        "transactionType": {
+          "chat_message": "Chat",
+          "tool_call": "Tool Call",
+          "expert_skill": "Expert Skill",
+          "background_task": "Background Task",
+          "redemption_code": "Redemption Code"
+        },
+        "sourceType": {
+          "chat": "Chat",
+          "chat_refund": "Chat Refund",
+          "redemption_code": "Redemption Code"
+        },
+        "empty": "No Lingqi ledger records yet. Records will appear here after redemption or model calls.",
+        "loading": "Loading Lingqi ledger...",
+        "noDescription": "Lingqi transaction record"
+      }
     },
     "lingqiModel": {
       "title": "Lingqi model",

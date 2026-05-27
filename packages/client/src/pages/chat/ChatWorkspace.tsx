@@ -171,30 +171,12 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
 
             <div id="chat-selectors" className="flex flex-wrap items-center gap-2 rounded-2xl border border-zinc-200/70 bg-white/90 p-2 shadow-sm shadow-zinc-200/40">
               <LingqiModelSelector models={lingqiModels} selectedModelId={selectedModelId} onSelect={props.onModelSelect} />
-              <ExpertSelector experts={expertPrompts} activeExpertId={expertId ?? null} onSelectExpert={props.onSelectExpert} />
+              <ExpertSelector experts={expertPrompts} activeExpertId={expertId ?? ''} onSelectExpert={props.onSelectExpert} />
               <MCPSelector conversationId={currentConversationId} selectedServerIds={selectedMCPServerIds} onSelectionChange={props.onMCPSelectionChange} />
               <SkillSelector conversationId={currentConversationId} selectedSkillIds={selectedSkillIds} onSelectionChange={props.onSkillSelectionChange} />
               <ExtensionSelector selectedExtensionIds={selectedExtensionIds} onSelectionChange={props.onExtensionSelectionChange} />
               {lingqiError && <p role="alert" className="min-w-[180px] flex-1 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">{lingqiError}</p>}
             </div>
-
-            <HermesCapabilityBar
-              gatewayConnected={gatewayConnected}
-              selectedModelName={selectedModelName}
-              lingqiBalance={lingqiBalance}
-              lingqiEstimate={lingqiEstimateText}
-              selectedExpertName={selectedExpertName}
-              selectedMcpCount={selectedMCPServerIds.length}
-              selectedSkillsCount={selectedSkillIds.length}
-              selectedPluginsCount={selectedExtensionIds.length}
-              attachmentCount={attachments.length}
-              onModelClick={() => props.onCapabilityClick('model')}
-              onExpertClick={() => props.onCapabilityClick('expert')}
-              onMcpClick={() => props.onCapabilityClick('mcp')}
-              onSkillsClick={() => props.onCapabilityClick('skills')}
-              onPluginsClick={() => props.onCapabilityClick('plugins')}
-              onAttachClick={() => props.onCapabilityClick('attach')}
-            />
 
             <input ref={fileInputRef} type="file" multiple accept="image/*,.pdf,.txt,.csv,.json,.md" className="hidden" onChange={handleFileInputChange} />
             {attachments.length > 0 && <AttachmentTray attachments={attachments} onRemoveAttachment={props.onRemoveAttachment} />}

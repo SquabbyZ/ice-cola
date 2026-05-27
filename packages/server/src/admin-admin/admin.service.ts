@@ -106,7 +106,7 @@ export class AdminService {
       role: admin.role,
       type: 'admin_access',
     };
-
+    console.log('[AdminService] generateToken - payload:', payload);
     return this.jwtService.sign(payload);
   }
 
@@ -114,6 +114,7 @@ export class AdminService {
 
   async login(dto: LoginDto) {
     const admin = await this.findAdminByEmail(dto.email);
+    console.log('[AdminService] Login - found admin:', admin?.id, admin?.email, admin?.role);
 
     if (!admin) {
       throw new AppError('AUTH_INVALID_CREDENTIALS', '邮箱或密码错误', 401);

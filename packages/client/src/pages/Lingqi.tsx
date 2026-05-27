@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Crown, Gem, History, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -13,8 +14,8 @@ import { formatLingqiAmount } from '@/lib/lingqi';
 import { getTeamId } from '@/lib/team';
 import type { LingqiLedgerEntry, LingqiStatus } from '@/services/lingqi-service';
 
-function getRealmName(status: LingqiStatus | null): string {
-  return status?.cultivationRealm?.displayName ?? '凡人';
+function getRealmName(status: LingqiStatus | null, t: (key: string, options?: Record<string, unknown>) => string): string {
+  return status?.cultivationRealm?.displayName ?? t('chat.lingqi.realm.mortal');
 }
 
 function getProgressValue(status: LingqiStatus | null): number {
@@ -22,12 +23,26 @@ function getProgressValue(status: LingqiStatus | null): number {
   return Math.min(Math.max(percentage, 0), 100);
 }
 
-function getLedgerDirectionLabel(entry: LingqiLedgerEntry): string {
-  return entry.direction === 'grant' ? '获得' : '消耗';
+function getLedgerDirectionLabel(
+  entry: LingqiLedgerEntry,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  return entry.direction === 'grant'
+    ? t('chat.lingqi.ledger.direction.grant')
+    : t('chat.lingqi.ledger.direction.consume');
 }
 
-function getLedgerTypeLabel(entry: LingqiLedgerEntry): string {
-  return `${entry.transactionType} · ${entry.sourceType}`;
+function getLedgerTypeLabel(
+  entry: LingqiLedgerEntry,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const transactionLabel = t(`chat.lingqi.ledger.transactionType.${entry.transactionType}` as const, {
+    defaultValue: entry.transactionType,
+  });
+  const sourceLabel = t(`chat.lingqi.ledger.sourceType.${entry.sourceType}` as const, {
+    defaultValue: entry.sourceType,
+  });
+  return `${transactionLabel} · ${sourceLabel}`;
 }
 
 function formatLedgerDate(value: Date | string): string {
@@ -45,15 +60,16 @@ function formatLedgerDate(value: Date | string): string {
   }).format(date);
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, t: (key: string, options?: Record<string, unknown>) => string): string {
   if (error instanceof Error) {
     return error.message;
   }
 
-  return '兑换失败，请稍后再试。';
+  return t('chat.lingqi.redeemFailed');
 }
 
 export default function Lingqi() {
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const teamId = getTeamId(user);
   const [redeemCodeValue, setRedeemCodeValue] = useState('');
@@ -117,7 +133,7 @@ export default function Lingqi() {
       setRedeemCodeValue('');
       toast.success(`灵气到账 ${formatLingqiAmount(grantedAmount)}`);
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error));
+      toast.error(getErrorMessage(error, t));
     }
   };
 
@@ -133,7 +149,7 @@ export default function Lingqi() {
         modelId,
       });
     } catch (error: unknown) {
-      toast.error(getErrorMessage(error));
+      toast.error(getErrorMessage(error, t));
     }
   };
 
@@ -192,7 +208,7 @@ export default function Lingqi() {
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl bg-teal-50 p-4">
                   <p className="text-xs text-teal-700">当前境界</p>
-                  <p className="mt-1 text-2xl font-bold text-stone-950">{getRealmName(status)}</p>
+                  <p className="mt-1 text-2xl font-bold text-stone-950">{getRealmName(status, t)}</p>
                 </div>
                 <div className="rounded-2xl bg-lime-50 p-4">
                   <p className="text-xs text-lime-700">累计获得</p>
@@ -215,7 +231,7 @@ export default function Lingqi() {
                 <Progress
                   value={getProgressValue(status)}
                   className="h-3 bg-teal-100"
-                  aria-label={`突破进度 ${getProgressValue(status).toFixed(0)}%，当前境界 ${getRealmName(status)}`}
+                  aria-label={`突破进度 ${getProgressValue(status).toFixed(0)}%，当前境界 ${getRealmName(status, t)}`}
                 />
                 <p className="mt-2 text-xs text-stone-500">
                   {status?.nextCultivationRealm
@@ -315,9 +331,9 @@ export default function Lingqi() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-stone-950">
               <History className="h-5 w-5 text-teal-600" />
-              近期灵气账簿
+              {t('chat.lingqi.ledger.title')}
             </CardTitle>
-            <CardDescription>展示最近的灵气获得与消耗记录，便于追踪模型调用与兑换来源。</CardDescription>
+            <CardDescription>{t('chat.lingqi.ledger.description')}</CardDescription>
           </CardHeader>
           <CardContent>
             {ledger.length > 0 ? (
@@ -336,14 +352,14 @@ export default function Lingqi() {
                               : 'bg-amber-100 text-amber-700'
                           }`}
                         >
-                          {getLedgerDirectionLabel(entry)}
+                          {getLedgerDirectionLabel(entry, t)}
                         </span>
                         <span className="text-xs font-medium text-stone-500">
-                          {getLedgerTypeLabel(entry)}
+                          {getLedgerTypeLabel(entry, t)}
                         </span>
                       </div>
                       <p className="mt-2 truncate text-sm font-semibold text-stone-800">
-                        {entry.description ?? '灵气流转记录'}
+                        {entry.description ?? t('chat.lingqi.ledger.noDescription')}
                       </p>
                       <p className="mt-1 text-xs text-stone-500">{formatLedgerDate(entry.createdAt)}</p>
                     </div>
@@ -352,14 +368,14 @@ export default function Lingqi() {
                         entry.direction === 'grant' ? 'text-lime-700' : 'text-amber-700'
                       }`}
                     >
-                      {entry.direction === 'grant' ? '+' : '-'}{formatLingqiAmount(entry.amount)} 灵气
+                      {entry.direction === 'grant' ? '+' : '-'}{formatLingqiAmount(entry.amount)} {t('chat.lingqi.unit')}
                     </p>
                   </article>
                 ))}
               </div>
             ) : (
               <div className="rounded-2xl border border-dashed border-teal-200 bg-white/60 px-4 py-8 text-center text-sm text-stone-500">
-                {isLoading ? '正在载入灵气账簿...' : '暂无灵气账簿记录，兑换或调用模型后会在此显示。'}
+                {isLoading ? t('chat.lingqi.ledger.loading') : t('chat.lingqi.ledger.empty')}
               </div>
             )}
           </CardContent>

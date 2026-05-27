@@ -17,6 +17,7 @@ export interface StreamContext {
 
 export interface LocationState {
   presetMessage?: string;
+  selectedSkillIds?: string[];
 }
 
 export interface HermesMessageEvent {

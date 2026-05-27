@@ -9,18 +9,21 @@ import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Sparkles, Check, ChevronDown, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useDropdownPosition, getDropdownClasses } from '@/hooks/useDropdownPosition';
 import type { ExpertPrompt } from '@/stores/experts';
 
 interface ExpertSelectorProps {
   experts: ExpertPrompt[];
-  activeExpertId: string | null;
-  onSelectExpert: (id: string | null) => void;
+  activeExpertId: string;
+  onSelectExpert: (id: string) => void;
 }
 
 export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: ExpertSelectorProps) {
   const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownPosition = useDropdownPosition(triggerRef, 'up');
 
   // Close on outside click
   useEffect(() => {
@@ -39,6 +42,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
   return (
     <div className="relative" ref={dropdownRef}>
       <Button
+        ref={triggerRef}
         type="button"
         variant="outline"
         data-chat-selector-trigger="expert"
@@ -49,7 +53,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
         }`}
         onClick={() => setIsOpen(!isOpen)}
       >
-        {activeExpert ? (
+        {activeExpertId && activeExpertId !== '' && activeExpert ? (
           <>
             <span className="text-lg">{activeExpert.icon}</span>
             <span className="flex-1 truncate text-sm font-medium">{activeExpert.name}</span>
@@ -64,7 +68,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
       </Button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-64 bg-white/95 backdrop-blur-xl rounded-xl border border-zinc-200/50 shadow-xl shadow-zinc-200/30 z-50 overflow-hidden animate-fade-in-up">
+        <div className={`absolute left-0 w-64 bg-white/95 backdrop-blur-xl rounded-xl border border-zinc-200/50 shadow-xl shadow-zinc-200/30 z-50 overflow-hidden animate-fade-in-down ${getDropdownClasses(dropdownPosition.direction)}`} style={{ maxHeight: dropdownPosition.maxHeight }}>
           {/* Header */}
           <div className="px-4 py-3 border-b border-zinc-100/50 bg-gradient-to-r from-zinc-50/80 via-zinc-50/50 to-zinc-50/80">
             <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
@@ -75,10 +79,10 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
           {/* Default option */}
           <button
             className={`w-full px-4 py-3 text-left hover:bg-zinc-50/80 flex items-center gap-3 transition-colors border-b border-zinc-100/30 ${
-              !activeExpertId ? 'bg-zinc-50/50' : ''
+              activeExpertId === '' ? 'bg-zinc-50/50' : ''
             }`}
             onClick={() => {
-              onSelectExpert(null);
+              onSelectExpert('');
               setIsOpen(false);
             }}
           >
@@ -89,7 +93,7 @@ export function ExpertSelector({ experts, activeExpertId, onSelectExpert }: Expe
               <p className="text-sm font-medium text-zinc-700">{t('experts.defaultAssistant', '通用助手')}</p>
               <p className="text-xs text-zinc-400 truncate">{t('experts.defaultAssistantDesc', '默认AI助手，无特殊角色')}</p>
             </div>
-            {!activeExpertId && (
+            {activeExpertId === '' && (
               <Check className="w-4 h-4 text-primary flex-shrink-0" />
             )}
           </button>

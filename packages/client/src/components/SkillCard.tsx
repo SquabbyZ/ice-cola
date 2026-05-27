@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Download, Settings, MoreVertical, Trash2, Edit2, Upload, Clock, X } from 'lucide-react';
+import { Download, Settings, MoreVertical, Trash2, Edit2, Upload, Clock, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -19,6 +19,7 @@ interface SkillCardProps {
   onRejectTeam?: (id: string) => void;
   onPublishMarketplace?: (id: string) => void;
   onVersionHistory?: (id: string) => void;
+  onUse?: (id: string) => void;
   showActions?: boolean;
 }
 
@@ -35,6 +36,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
   onRejectTeam,
   onPublishMarketplace,
   onVersionHistory,
+  onUse,
   showActions = true,
 }) => {
 const [showMenu, setShowMenu] = useState(false);
@@ -159,7 +161,12 @@ const [showMenu, setShowMenu] = useState(false);
             </Button>
           ) : (
             <>
-              <Button size="sm" variant="outline" className="flex-1 gap-2" onClick={() => setShowConfig(true)}>
+              {onUse && (
+                <Button size="sm" className="flex-1 gap-2 btn-ice" onClick={() => onUse(skill.id)}>
+                  <Zap className="w-4 h-4" /> 使用
+                </Button>
+              )}
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => setShowConfig(true)}>
                 <Settings className="w-4 h-4" /> 配置
               </Button>
               <Button size="sm" variant="ghost" onClick={handleUninstall}>卸载</Button>

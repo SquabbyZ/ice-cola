@@ -261,7 +261,7 @@ const Dashboard: React.FC = () => {
             {isLoading ? (
               <Skeleton className="h-8 w-20 rounded" />
             ) : (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900" onClick={() => navigate('/skills')}>
                 {t('dashboard.allTools')}
                 <ArrowUpRight className="w-4 h-4" />
               </Button>
@@ -327,7 +327,7 @@ const Dashboard: React.FC = () => {
             {isLoading ? (
               <Skeleton className="h-8 w-20 rounded" />
             ) : (
-              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900">
+              <Button variant="ghost" size="sm" className="gap-1.5 text-zinc-500 hover:text-zinc-900" onClick={() => navigate('/chat')}>
                 {t('dashboard.viewAll')}
               </Button>
             )}

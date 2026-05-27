@@ -11,7 +11,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableHeader,
+  TableStickyHeader,
   TableRow,
 } from '../../components/ui/table';
 import {
@@ -129,17 +129,17 @@ export default function Providers() {
         )}
       </div>
 
-      <div className="bg-card rounded-lg shadow border overflow-hidden">
-        <Table>
-          <TableHeader>
+      <div className="bg-card rounded-lg shadow border">
+        <Table wrapperClassName="max-h-[calc(100vh-280px)]">
+          <TableStickyHeader>
             <TableRow>
-              <TableHead>{t('ai.providers.name')}</TableHead>
-              <TableHead>{t('ai.providers.code')}</TableHead>
-              <TableHead>{t('ai.providers.website')}</TableHead>
-              <TableHead>{t('ai.providers.status')}</TableHead>
-              <TableHead className="text-right">{t('ai.providers.actions')}</TableHead>
+              <TableHead className="whitespace-nowrap sticky left-0 bg-card">{t('ai.providers.name')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.providers.code')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.providers.website')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.providers.status')}</TableHead>
+              <TableHead className="text-right whitespace-nowrap sticky right-0 bg-card">{t('ai.providers.actions')}</TableHead>
             </TableRow>
-          </TableHeader>
+          </TableStickyHeader>
           <TableBody>
             {providers?.length === 0 ? (
               <TableRow>
@@ -150,7 +150,7 @@ export default function Providers() {
             ) : (
               providers?.map((provider) => (
                 <TableRow key={provider.id}>
-                  <TableCell>
+                  <TableCell className="sticky left-0 bg-card">
                     <div className="flex items-center gap-3">
                       {provider.logoUrl ? (
                         <img
@@ -198,7 +198,7 @@ export default function Providers() {
                       {provider.status === 'active' ? t('ai.providers.active') : t('ai.providers.inactive')}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right sticky right-0 bg-card">
                     {canEdit && (
                       <div className="flex justify-end gap-2">
                         <Button

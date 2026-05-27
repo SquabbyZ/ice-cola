@@ -12,7 +12,7 @@ import {
   TableBody,
   TableCell,
   TableHead,
-  TableHeader,
+  TableStickyHeader,
   TableRow,
 } from '../../components/ui/table';
 import {
@@ -199,23 +199,23 @@ export default function Models() {
         </Select>
       </div>
 
-      <div className="bg-card rounded-lg shadow border overflow-hidden">
-        <Table>
-          <TableHeader>
+      <div className="bg-card rounded-lg shadow border">
+        <Table wrapperClassName="max-h-[calc(100vh-280px)]">
+          <TableStickyHeader>
             <TableRow>
-              <TableHead className="w-8"></TableHead>
-              <TableHead>{t('ai.models.name')}</TableHead>
-              <TableHead>{t('ai.models.modelId')}</TableHead>
-              <TableHead>{t('ai.models.type')}</TableHead>
-              <TableHead>{t('ai.models.displayName')}</TableHead>
-              <TableHead>{t('ai.models.contextWindow')}</TableHead>
-              <TableHead>{t('ai.models.price')}</TableHead>
-              <TableHead>{t('ai.models.costMultiplier')}</TableHead>
-              <TableHead>{t('ai.models.requiredPlanLevel')}</TableHead>
-              <TableHead>{t('ai.models.isCatalogVisible')}</TableHead>
-              <TableHead className="text-right">{t('ai.models.actions')}</TableHead>
+              <TableHead className="w-8 whitespace-nowrap"></TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.name')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.modelId')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.type')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.displayName')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.contextWindow')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.price')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.costMultiplier')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.requiredPlanLevel')}</TableHead>
+              <TableHead className="whitespace-nowrap">{t('ai.models.isCatalogVisible')}</TableHead>
+              <TableHead className="text-right sticky right-0 bg-card whitespace-nowrap">{t('ai.models.actions')}</TableHead>
             </TableRow>
-          </TableHeader>
+          </TableStickyHeader>
           <TableBody>
             {filteredModels?.length === 0 ? (
               <TableRow>
@@ -242,7 +242,7 @@ export default function Models() {
                         )}
                       </Button>
                     </TableCell>
-                    <TableCell className="font-medium">{model.name}</TableCell>
+                    <TableCell className="font-medium sticky left-0 bg-card">{model.name}</TableCell>
                     <TableCell>
                       <code className="text-sm bg-muted px-2 py-1 rounded">{model.modelId || '-'}</code>
                     </TableCell>
@@ -271,7 +271,7 @@ export default function Models() {
                         {model.isCatalogVisible === false ? t('ai.models.hidden') : t('ai.models.visible')}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-right sticky right-0 bg-card">
                       {canEdit && (
                         <div className="flex justify-end gap-2">
                           <Button

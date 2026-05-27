@@ -8,6 +8,7 @@ import { ClientAuthService } from './client-auth.service';
 import { EmailService } from '../commons/email.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { AdminJwtAuthGuard } from './admin-jwt-auth.guard';
 import { AdminModule } from '../admin-admin/admin.module';
 import { getRequiredJwtSecret } from '../config/security-config';
 
@@ -32,7 +33,8 @@ import { getRequiredJwtSecret } from '../config/security-config';
     EmailService,
     JwtStrategy,
     JwtAuthGuard,
+    AdminJwtAuthGuard,
   ],
-  exports: [AuthService, ClientAuthService, JwtAuthGuard],
+  exports: [AuthService, ClientAuthService, JwtAuthGuard, AdminJwtAuthGuard],
 })
 export class AuthModule {}

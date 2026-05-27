@@ -218,11 +218,23 @@ const Chat: React.FC = () => {
   }, [isCompactLayout]);
 
   useEffect(() => {
-    const presetMessage = (location.state as LocationState | undefined)?.presetMessage;
-    if (!presetMessage) return;
-    setMessage((current) => (current ? current : presetMessage));
-    navigate(location.pathname, { replace: true, state: null });
-  }, [location.pathname, location.state, navigate]);
+    const locationState = location.state as LocationState | undefined;
+    const presetMessage = locationState?.presetMessage;
+    const selectedSkillIds = locationState?.selectedSkillIds;
+
+    if (presetMessage) {
+      setMessage((current) => (current ? current : presetMessage));
+    }
+
+    if (selectedSkillIds && selectedSkillIds.length > 0) {
+      // Set the selected skill IDs when navigating from Skills page
+      setConversationSkills(selectedSkillIds);
+    }
+
+    if (presetMessage || selectedSkillIds) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate, setConversationSkills]);
 
   useEffect(() => {
     // When useHermesChatActions creates a new conversation it sets

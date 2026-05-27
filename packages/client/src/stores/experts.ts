@@ -5,7 +5,6 @@
  */
 
 import { create } from 'zustand';
-import { GatewayRpcService } from '@/services/gateway-rpc';
 import { ExpertService } from '@/services/expert-service';
 
 export interface ExpertPrompt {
@@ -37,11 +36,7 @@ export interface ExpertState {
   reset: () => void;
 }
 
-// 使用共享的 gatewayClient，确保全局只有一个连接实例
-import { gatewayClient } from '@/lib/gateway-client';
-
-const gatewayRpc = new GatewayRpcService(gatewayClient);
-const expertService = new ExpertService(gatewayRpc);
+const expertService = new ExpertService();
 
 export const useExpertStore = create<ExpertState>((set, get) => ({
   prompts: [],

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Activity } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import {
   useApiKeys,
   useProviders,
@@ -303,44 +303,6 @@ export default function ApiKeys() {
             />
           ))}
         </div>
-      )}
-
-      {/* Usage Stats */}
-      {usageStats && (
-        <Card>
-          <CardContent className="p-5">
-            <div className="flex items-center gap-2 mb-3">
-              <Activity className="h-4 w-4 text-muted-foreground" />
-              <h3 className="text-sm font-medium">{t('ai.settings.usageTitle')}</h3>
-            </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-muted/50 rounded-lg px-4 py-3">
-                <div className="text-2xl font-bold">
-                  {usageStats.totalTokens?.toLocaleString() || 0}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {t('ai.settings.tokens')} ({t('ai.settings.thisMonth')})
-                </div>
-              </div>
-              <div className="bg-muted/50 rounded-lg px-4 py-3">
-                <div className="text-2xl font-bold">
-                  {usageStats.totalRequests?.toLocaleString() || 0}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {t('ai.settings.requests')} ({t('ai.settings.thisMonth')})
-                </div>
-              </div>
-              <div className="bg-muted/50 rounded-lg px-4 py-3">
-                <div className="text-2xl font-bold">
-                  ${usageStats.totalCost?.toFixed(4) || '0.0000'}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {t('ai.settings.cost')} ({t('ai.settings.thisMonth')})
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       )}
 
       {/* Add Provider Dialog */}

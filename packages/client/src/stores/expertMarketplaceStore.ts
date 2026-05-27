@@ -5,30 +5,27 @@
  */
 
 import { create } from 'zustand';
-import { gatewayClient } from '@/lib/gateway-client';
-import { GatewayRpcService } from '@/services/gateway-rpc';
 import { ExpertService, type ExpertPrompt as MarketplaceExpertPrompt } from '@/services/expert-service';
 import { useExpertStore } from './experts';
 
-const gatewayRpc = new GatewayRpcService(gatewayClient);
-const expertService = new ExpertService(gatewayRpc);
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem('accessToken');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+const expertService = new ExpertService();
 
 export interface Expert {
   id: string;
   name: string;
   description: string;
   systemPrompt: string;
-  icon: string;
-  color: string;
-  category: string;
-  author: string;
-  rating: number;
-  uses: number;
-  tags: string[];
+  icon?: string;
+  color?: string;
+  category?: string;
   isInstalled: boolean;
-  version: string;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ExpertMarketplaceState {
@@ -62,152 +59,7 @@ export const EXPERT_CATEGORIES = [
   { value: 'education', label: '教育' },
 ];
 
-// Mock marketplace experts data - in production this would come from an API
-const MOCK_MARKETPLACE_EXPERTS: Expert[] = [
-  {
-    id: 'exp_code_reviewer',
-    name: '代码审查专家',
-    description: '专注于代码质量审查、安全漏洞检测和性能优化建议的专业助手。',
-    systemPrompt: '你是一位资深的代码审查专家...',
-    icon: '🔍',
-    color: '#3B82F6',
-    category: 'coding',
-    author: 'Ice Cola Team',
-    rating: 4.8,
-    uses: 12580,
-    tags: ['代码审查', '安全', '性能'],
-    isInstalled: false,
-    version: '1.0.0',
-    createdAt: '2024-01-15T00:00:00Z',
-    updatedAt: '2024-03-01T00:00:00Z',
-  },
-  {
-    id: 'exp_tech_writer',
-    name: '技术写作专家',
-    description: '帮助撰写技术文档、API文档、README和使用指南的专业写作者。',
-    systemPrompt: '你是一位专业的技术文档撰写专家...',
-    icon: '📝',
-    color: '#10B981',
-    category: 'writing',
-    author: 'Ice Cola Team',
-    rating: 4.6,
-    uses: 8920,
-    tags: ['文档', 'API', '技术写作'],
-    isInstalled: false,
-    version: '1.2.0',
-    createdAt: '2024-02-01T00:00:00Z',
-    updatedAt: '2024-03-10T00:00:00Z',
-  },
-  {
-    id: 'exp_data_analyst',
-    name: '数据分析专家',
-    description: '擅长数据清洗、统计分析、趋势预测和数据可视化的AI助手。',
-    systemPrompt: '你是一位专业的数据分析师...',
-    icon: '📊',
-    color: '#8B5CF6',
-    category: 'analysis',
-    author: 'DataMind Lab',
-    rating: 4.9,
-    uses: 15600,
-    tags: ['数据分析', '统计', '可视化'],
-    isInstalled: false,
-    version: '2.1.0',
-    createdAt: '2024-01-20T00:00:00Z',
-    updatedAt: '2024-03-15T00:00:00Z',
-  },
-  {
-    id: 'exp_creative_writer',
-    name: '创意写作专家',
-    description: '擅长小说创作、剧本编写、营销文案和创意内容生成。',
-    systemPrompt: '你是一位充满创意的写作专家...',
-    icon: '✨',
-    color: '#F59E0B',
-    category: 'creative',
-    author: 'Creative Studio',
-    rating: 4.7,
-    uses: 21300,
-    tags: ['创意', '小说', '营销'],
-    isInstalled: false,
-    version: '1.5.0',
-    createdAt: '2024-02-10T00:00:00Z',
-    updatedAt: '2024-03-08T00:00:00Z',
-  },
-  {
-    id: 'exp_product_manager',
-    name: '产品经理专家',
-    description: '协助需求分析、PRD撰写、用户研究和产品策略规划。',
-    systemPrompt: '你是一位经验丰富的产品经理...',
-    icon: '🎯',
-    color: '#EF4444',
-    category: 'business',
-    author: 'ProductLab',
-    rating: 4.5,
-    uses: 6780,
-    tags: ['产品', '需求', '策略'],
-    isInstalled: false,
-    version: '1.0.0',
-    createdAt: '2024-02-15T00:00:00Z',
-    updatedAt: '2024-03-05T00:00:00Z',
-  },
-  {
-    id: 'exp_tutor',
-    name: 'AI 教学专家',
-    description: '个性化的学习辅导专家，支持各学科答疑和知识点讲解。',
-    systemPrompt: '你是一位耐心的学科辅导老师...',
-    icon: '🎓',
-    color: '#06B6D4',
-    category: 'education',
-    author: 'EduTech Corp',
-    rating: 4.8,
-    uses: 32100,
-    tags: ['教育', '辅导', '学习'],
-    isInstalled: false,
-    version: '2.0.0',
-    createdAt: '2024-01-05T00:00:00Z',
-    updatedAt: '2024-03-12T00:00:00Z',
-  },
-  {
-    id: 'exp_devops',
-    name: 'DevOps 工程师',
-    description: '专注 CI/CD 流程、容器化部署、监控告警和自动化运维。',
-    systemPrompt: '你是一位资深的 DevOps 工程师...',
-    icon: '🚀',
-    color: '#6366F1',
-    category: 'coding',
-    author: 'CloudNative Team',
-    rating: 4.6,
-    uses: 9870,
-    tags: ['DevOps', 'CI/CD', 'K8s'],
-    isInstalled: false,
-    version: '1.3.0',
-    createdAt: '2024-02-20T00:00:00Z',
-    updatedAt: '2024-03-18T00:00:00Z',
-  },
-  {
-    id: 'exp_ui_designer',
-    name: 'UI/UX 设计专家',
-    description: '提供界面设计建议、用户体验优化和交互方案的专业指导。',
-    systemPrompt: '你是一位专业的 UI/UX 设计师...',
-    icon: '🎨',
-    color: '#EC4899',
-    category: 'creative',
-    author: 'DesignHub',
-    rating: 4.4,
-    uses: 5430,
-    tags: ['UI', 'UX', '设计'],
-    isInstalled: false,
-    version: '1.1.0',
-    createdAt: '2024-02-25T00:00:00Z',
-    updatedAt: '2024-03-14T00:00:00Z',
-  },
-];
-
 const INSTALLED_EXPERT_IDS_KEY = 'expert-marketplace-installed-expert-ids';
-
-function getAuthHeader(): Record<string, string> {
-  const token = localStorage.getItem('accessToken');
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
 
 function readInstalledExpertIds(): Record<string, string> {
   try {
@@ -256,25 +108,26 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
   loadExperts: async () => {
     set({ isLoading: true, error: null });
     try {
-      // 获取市场专家列表
-      let marketplaceExperts = MOCK_MARKETPLACE_EXPERTS;
-      try {
-        const response = await fetch('/api/experts/marketplace', {
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeader(),
-          },
-        });
-        if (response.ok) {
-          const result = await response.json();
-          marketplaceExperts = result.data || MOCK_MARKETPLACE_EXPERTS;
-        }
-      } catch {
-        // 使用 mock 数据
-      }
+      // 从 REST API 获取专家列表
+      const response = await fetch(`${API_BASE}/experts`, {
+        headers: getAuthHeader(),
+      });
+      const result = await response.json();
+      const rawExperts = result.data || [];
+
+      const marketplaceExperts: Expert[] = rawExperts.map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        description: e.description || '',
+        systemPrompt: e.systemPrompt || '',
+        icon: e.icon,
+        color: e.color,
+        category: e.category,
+        isInstalled: false,
+      }));
 
       // 获取用户已创建的专家（可能从市场克隆）
-      let userExperts: any[] = [];
+      let userExperts: MarketplaceExpertPrompt[] = [];
       try {
         userExperts = await expertService.getAllExperts();
       } catch {
@@ -286,14 +139,13 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
       const installedIds: string[] = [];
 
       marketplaceExperts.forEach((marketplace) => {
-        const matchedId = matchInstalledExpert(marketplace, userExperts as any[], persistedInstalledExpertIds);
+        const matchedId = matchInstalledExpert(marketplace, userExperts, persistedInstalledExpertIds);
         if (matchedId) {
           installedMap[marketplace.id] = matchedId;
           installedIds.push(marketplace.id);
         }
       });
 
-      // 合并 isInstalled 状态
       const expertsWithInstallState = marketplaceExperts.map((exp) => ({
         ...exp,
         isInstalled: installedIds.includes(exp.id),
@@ -306,8 +158,7 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
         isLoading: false,
       });
     } catch (err) {
-      console.log('Using mock expert marketplace data');
-      set({ experts: MOCK_MARKETPLACE_EXPERTS, isLoading: false });
+      set({ experts: [], isLoading: false });
     }
   },
 
@@ -449,19 +300,15 @@ export const useExpertMarketplaceStore = create<ExpertMarketplaceState>((set, ge
     const { experts, searchQuery, selectedCategory } = get();
 
     return experts.filter((expert) => {
-      // Category filter
       if (selectedCategory !== 'all' && expert.category !== selectedCategory) {
         return false;
       }
 
-      // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
         return (
           expert.name.toLowerCase().includes(query) ||
-          expert.description.toLowerCase().includes(query) ||
-          expert.tags.some((tag) => tag.toLowerCase().includes(query)) ||
-          expert.author.toLowerCase().includes(query)
+          (expert.description && expert.description.toLowerCase().includes(query))
         );
       }
 

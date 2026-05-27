@@ -29,8 +29,6 @@ const Extensions: React.FC = () => {
     loadInstalledExtensions,
     installExtension,
     uninstallExtension,
-    enableExtension,
-    disableExtension,
     setSearchQuery,
     setSelectedCategory,
     getFilteredExtensions,
@@ -184,10 +182,9 @@ const Extensions: React.FC = () => {
               >
                 <ExtensionCard
                   extension={extension}
+                  isInstalled={installedExtensions.some(e => e.id === extension.id)}
                   onInstall={installExtension}
                   onUninstall={uninstallExtension}
-                  onEnable={enableExtension}
-                  onDisable={disableExtension}
                 />
               </div>
             ))}

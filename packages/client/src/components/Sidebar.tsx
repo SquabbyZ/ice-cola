@@ -240,7 +240,7 @@ const Sidebar: React.FC = () => {
           )}
         </div>
 
-        <div className="px-2.5 pb-3">
+        <div className="w-full px-2.5 pb-3">
           <LingqiStatusCard
             status={lingqiStatus}
             isCollapsed={isCollapsed}
@@ -254,7 +254,7 @@ const Sidebar: React.FC = () => {
         </nav>
 
         {/* Bottom: User Menu */}
-        <div className={`flex p-2.5 border-t border-zinc-200/60 space-y-1 ${isCollapsed ? 'justify-center' : ''}`}>
+        <div className={`w-full flex p-2.5 border-t border-zinc-200/60 space-y-1 ${isCollapsed ? 'justify-center' : ''}`}>
           {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

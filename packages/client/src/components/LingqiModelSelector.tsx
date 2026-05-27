@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, ChevronDown, Lock, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useDropdownPosition, getDropdownClasses } from '@/hooks/useDropdownPosition';
 import type { LingqiModel } from '@/services/lingqi-service';
 
 interface LingqiModelSelectorProps {
@@ -24,6 +25,7 @@ export function LingqiModelSelector({
   const selectedModel = models.find((model) => model.id === selectedModelId);
   const enabledOptionIndexes = models.flatMap((model, index) => (model.isAvailable ? [index] : []));
   const listboxId = useId();
+  const dropdownPosition = useDropdownPosition(triggerRef, 'up');
 
   const focusOption = (optionIndex: number) => {
     optionRefs.current[optionIndex]?.focus();
@@ -107,7 +109,7 @@ export function LingqiModelSelector({
       </Button>
 
       {isOpen && (
-        <div className="absolute bottom-full left-0 z-50 mb-2 flex max-h-[320px] w-72 flex-col overflow-hidden rounded-xl border border-zinc-200/50 bg-white/95 shadow-xl shadow-zinc-200/30 backdrop-blur-xl animate-fade-in-up">
+        <div className={`absolute left-0 z-50 flex w-72 flex-col overflow-hidden rounded-xl border border-zinc-200/50 bg-white/95 shadow-xl shadow-zinc-200/30 backdrop-blur-xl animate-fade-in-down ${getDropdownClasses(dropdownPosition.direction)}`} style={{ maxHeight: dropdownPosition.maxHeight }}>
           <div className="border-b border-zinc-100/50 bg-gradient-to-r from-amber-50/80 via-zinc-50/50 to-emerald-50/80 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">{t('chat.lingqiModel.title')}</p>
           </div>

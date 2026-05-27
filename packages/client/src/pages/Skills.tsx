@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import type { TeamSkillAccessPolicy } from '@/services/skill-service';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { Search, Package, Plus, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +25,7 @@ const CATEGORIES = [
 
 const Skills: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'marketplace' | 'team' | 'personal'>('marketplace');
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
   const [publishConfirm, setPublishConfirm] = useState<{ open: boolean; skillId: string | null; skillName: string }>({ open: false, skillId: null, skillName: '' });
@@ -233,6 +235,7 @@ const Skills: React.FC = () => {
                     const versions = await getVersions(id);
                     setVersionHistory({ open: true, skillId: id, versions, currentVersion: skill.version });
                   }}
+                  onUse={(id) => navigate('/chat', { state: { selectedSkillIds: [id] } })}
                 />
               ))}
             </div>

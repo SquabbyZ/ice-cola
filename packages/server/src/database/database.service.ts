@@ -1184,7 +1184,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private generateUUID(): string {
+  public generateUUID(): string {
     return randomUUID();
   }
 }
