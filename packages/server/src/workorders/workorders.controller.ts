@@ -7,6 +7,26 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 export class WorkordersController {
   constructor(private readonly workordersService: WorkordersService) {}
 
+  @Post()
+  async create(
+    @Param('teamId') teamId: string,
+    @Request() req: any,
+    @Body() body: { type: string; targetId: string; targetName: string; targetIcon?: string; note?: string; visibilityScope?: any },
+  ) {
+    const result = await this.workordersService.create({
+      type: body.type,
+      targetId: body.targetId,
+      targetName: body.targetName,
+      targetIcon: body.targetIcon,
+      applicantId: req.user.id,
+      applicantName: req.user.name || req.user.email || 'Unknown',
+      teamId,
+      note: body.note,
+      visibilityScope: body.visibilityScope,
+    });
+    return { success: true, data: result };
+  }
+
   @Get()
   async findAll(@Param('teamId') teamId: string) {
     const result = await this.workordersService.findAll(teamId);

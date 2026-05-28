@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { useSkillsStore } from '@/stores/skillsStore';
 import type { SkillVersion } from '@/stores/skillsStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useWorkordersStore } from '@/stores/workordersStore';
 import { SkillCard } from '@/components/SkillCard';
 import { getTeamId } from '@/lib/team';
 import { CreateSkillDialog } from '@/components/CreateSkillDialog';
@@ -36,6 +37,9 @@ const Skills: React.FC = () => {
   const [publishMinimumRole, setPublishMinimumRole] = useState<'MEMBER' | 'ADMIN' | 'OWNER'>('MEMBER');
   const [teamRejectComment, setTeamRejectComment] = useState('');
   const [marketplaceNote, setMarketplaceNote] = useState('');
+  const [marketplaceAccessMode, setMarketplaceAccessMode] = useState<TeamSkillAccessPolicy['mode']>('all');
+  const [marketplaceUserIds, setMarketplaceUserIds] = useState('');
+  const [marketplaceMinimumRole, setMarketplaceMinimumRole] = useState<'MEMBER' | 'ADMIN' | 'OWNER'>('MEMBER');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [versionHistory, setVersionHistory] = useState<{ open: boolean; skillId: string | null; versions: SkillVersion[]; currentVersion: string }>({ open: false, skillId: null, versions: [], currentVersion: '' });
   const [previewVersion, setPreviewVersion] = useState<SkillVersion | null>(null);
@@ -66,6 +70,7 @@ const Skills: React.FC = () => {
 
   const user = useAuthStore(state => state.user);
   const teamId = getTeamId(user);
+  const createWorkorder = useWorkordersStore(state => state.createWorkorder);
   const canReviewTeamSkills = user?.team?.role === 'OWNER' || user?.team?.role === 'ADMIN';
 
   useEffect(() => {
@@ -93,6 +98,18 @@ const Skills: React.FC = () => {
     }
     if (publishAccessMode === 'role') {
       return { mode: 'role', minimumRole: publishMinimumRole };
+    }
+    return { mode: 'all' };
+  };
+
+  const selectedMarketplaceUserIds = marketplaceUserIds.split(',').map(id => id.trim()).filter(Boolean);
+  const isMarketplaceConfirmDisabled = marketplaceAccessMode === 'users' && selectedMarketplaceUserIds.length === 0;
+  const getMarketplaceAccessPolicy = (): TeamSkillAccessPolicy => {
+    if (marketplaceAccessMode === 'users') {
+      return { mode: 'users', userIds: selectedMarketplaceUserIds };
+    }
+    if (marketplaceAccessMode === 'role') {
+      return { mode: 'role', minimumRole: marketplaceMinimumRole };
     }
     return { mode: 'all' };
   };
@@ -209,6 +226,7 @@ const Skills: React.FC = () => {
                   key={skill.id}
                   skill={skill}
                   showActions={activeTab === 'personal' || activeTab === 'team'}
+                  showBadge={activeTab === 'team'}
                   onEdit={(s) => updateSkill(s.id, s)}
                   onDelete={(id) => {
                     setDeleteConfirm({ open: true, skillId: id, skillName: skill.name });
@@ -229,6 +247,9 @@ const Skills: React.FC = () => {
                   } : undefined}
                   onPublishMarketplace={canReviewTeamSkills ? (id) => {
                     setMarketplaceNote('');
+                    setMarketplaceAccessMode('all');
+                    setMarketplaceUserIds('');
+                    setMarketplaceMinimumRole('MEMBER');
                     setMarketplaceConfirm({ open: true, skillId: id, skillName: skill.name });
                   } : undefined}
                   onVersionHistory={async (id) => {
@@ -375,19 +396,91 @@ const Skills: React.FC = () => {
         description={`确认将宗门秘籍 "${marketplaceConfirm.skillName}" 提交到市场审批？`}
         confirmText="提交审批"
         cancelText={t('common.cancel')}
+        confirmDisabled={isMarketplaceConfirmDisabled}
         onConfirm={async () => {
-          if (marketplaceConfirm.skillId) {
-            await requestPublishToMarketplace(marketplaceConfirm.skillId, marketplaceNote.trim() || undefined);
+          if (marketplaceConfirm.skillId && teamId) {
+            await createWorkorder({
+              type: 'skill',
+              targetId: marketplaceConfirm.skillId,
+              targetName: marketplaceConfirm.skillName,
+              teamId,
+              note: marketplaceNote.trim() || undefined,
+              visibilityScope: getMarketplaceAccessPolicy(),
+            });
           }
         }}
       >
-        <textarea
-          value={marketplaceNote}
-          onChange={e => setMarketplaceNote(e.target.value)}
-          rows={3}
-          placeholder="给市场管理员的备注（可选）"
-          className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
-        />
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="marketplaceAccessMode"
+                checked={marketplaceAccessMode === 'all'}
+                onChange={() => setMarketplaceAccessMode('all')}
+                className="mt-1"
+              />
+              <span>
+                <span className="block font-medium text-zinc-900">所有成员可见</span>
+                <span className="text-xs text-zinc-500">审批通过后，所有成员都能在市场看到。</span>
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="marketplaceAccessMode"
+                checked={marketplaceAccessMode === 'users'}
+                onChange={() => setMarketplaceAccessMode('users')}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                <span className="block font-medium text-zinc-900">指定成员可见</span>
+                <span className="text-xs text-zinc-500">输入允许使用的用户 ID，多个 ID 用英文逗号分隔。</span>
+                {marketplaceAccessMode === 'users' && (
+                  <input
+                    type="text"
+                    value={marketplaceUserIds}
+                    onChange={e => setMarketplaceUserIds(e.target.value)}
+                    placeholder="user-id-1, user-id-2"
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+                  />
+                )}
+              </span>
+            </label>
+            <label className="flex items-start gap-3 rounded-xl border border-zinc-200 p-3 text-sm hover:bg-zinc-50">
+              <input
+                type="radio"
+                name="marketplaceAccessMode"
+                checked={marketplaceAccessMode === 'role'}
+                onChange={() => setMarketplaceAccessMode('role')}
+                className="mt-1"
+              />
+              <span className="flex-1">
+                <span className="block font-medium text-zinc-900">按最小角色可见</span>
+                <span className="text-xs text-zinc-500">只有达到所选角色的成员才能看到。</span>
+                {marketplaceAccessMode === 'role' && (
+                  <select
+                    value={marketplaceMinimumRole}
+                    onChange={e => setMarketplaceMinimumRole(e.target.value as 'MEMBER' | 'ADMIN' | 'OWNER')}
+                    className="mt-2 w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+                  >
+                    <option value="MEMBER">MEMBER 及以上</option>
+                    <option value="ADMIN">ADMIN 及以上</option>
+                    <option value="OWNER">OWNER</option>
+                  </select>
+                )}
+              </span>
+            </label>
+          </div>
+          {isMarketplaceConfirmDisabled && <p className="text-xs text-red-500">指定成员可见时至少需要填写一个用户 ID。</p>}
+          <textarea
+            value={marketplaceNote}
+            onChange={e => setMarketplaceNote(e.target.value)}
+            rows={3}
+            placeholder="给市场管理员的备注（可选）"
+            className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-zinc-500/20"
+          />
+        </div>
       </ConfirmDialog>
 
       <CreateSkillDialog

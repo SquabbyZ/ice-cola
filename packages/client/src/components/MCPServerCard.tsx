@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Link2, CheckCircle2, PlugZap, Settings, ExternalLink, X, Unplug } from 'lucide-react';
+import { Link2, CheckCircle2, PlugZap, Settings, ExternalLink, X, Unplug, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -10,12 +10,14 @@ interface MCPServerCardProps {
   server: MCPServer;
   onConnect: (id: string) => void;
   onDisconnect: (id: string) => void;
+  onPublishMarketplace?: (server: MCPServer) => void;
 }
 
 export const MCPServerCard: React.FC<MCPServerCardProps> = ({
   server,
   onConnect,
   onDisconnect,
+  onPublishMarketplace,
 }) => {
   const [showConfig, setShowConfig] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
@@ -202,6 +204,18 @@ export const MCPServerCard: React.FC<MCPServerCardProps> = ({
                 <Unplug className="w-4 h-4" />
                 <span className="font-medium">断开</span>
               </Button>
+
+              {onPublishMarketplace && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                  onClick={() => onPublishMarketplace(server)}
+                  title="发布到市场"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              )}
 
               <Button
                 size="icon"

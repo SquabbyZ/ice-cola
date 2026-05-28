@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
-import { Download, CheckCircle2, Settings, ExternalLink, X } from 'lucide-react';
+import { Download, CheckCircle2, Settings, ExternalLink, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
@@ -11,6 +11,7 @@ interface ExtensionCardProps {
   isInstalled: boolean;
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
+  onPublishMarketplace?: (extension: Extension) => void;
 }
 
 export const ExtensionCard: React.FC<ExtensionCardProps> = ({
@@ -18,6 +19,7 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
   isInstalled,
   onInstall,
   onUninstall,
+  onPublishMarketplace,
 }) => {
   const [showConfig, setShowConfig] = useState(false);
   const [showUninstallConfirm, setShowUninstallConfirm] = useState(false);
@@ -121,6 +123,18 @@ export const ExtensionCard: React.FC<ExtensionCardProps> = ({
                 <CheckCircle2 className="w-4 h-4" />
                 <span className="font-medium">已装配</span>
               </Button>
+
+              {onPublishMarketplace && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-10 w-10 text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                  onClick={() => onPublishMarketplace(extension)}
+                  title="发布到市场"
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              )}
 
               <Button
                 size="icon"

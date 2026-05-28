@@ -363,6 +363,15 @@ export class GatewayGateway implements OnModuleInit {
             });
           }
           break;
+        case 'generate.config':
+          {
+            const clientInfo = this.requireClientContext(ws);
+            result = await this.gatewayService.generateConfig(
+              { ...params, teamId: clientInfo.teamId, userId: clientInfo.userId },
+              ws,
+            );
+          }
+          break;
         default:
           this.logger.warn(`Unknown method: ${method}`);
           this.sendResponse(ws, id, null, {

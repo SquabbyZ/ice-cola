@@ -21,6 +21,7 @@ interface SkillCardProps {
   onVersionHistory?: (id: string) => void;
   onUse?: (id: string) => void;
   showActions?: boolean;
+  showBadge?: boolean;
 }
 
 export const SkillCard: React.FC<SkillCardProps> = ({
@@ -38,6 +39,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
   onVersionHistory,
   onUse,
   showActions = true,
+  showBadge = true,
 }) => {
 const [showMenu, setShowMenu] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -121,7 +123,7 @@ const [showMenu, setShowMenu] = useState(false);
     <div className="group relative bg-white rounded-2xl border border-gray-200/80 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
       <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 opacity-0 group-hover:opacity-100 transition-opacity" />
 
-      {skill.status !== 'personal' && (
+      {showBadge && skill.status !== 'personal' && (
         <div className="absolute top-4 right-4 z-10">
           <span className={`px-3 py-1 text-xs font-semibold rounded-full ${status.color}`}>
             {status.text}

@@ -5,10 +5,23 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MCPServerCard } from '@/components/MCPServerCard';
 import { useMCPStore, CATEGORIES } from '@/stores/mcpStore';
+import { useWorkordersStore } from '@/stores/workordersStore';
+import { useAuthStore } from '@/stores/authStore';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import type { MCPServer } from '@/stores/mcpStore';
 
 const MCP: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'marketplace' | 'connected'>('marketplace');
+  const [publishDialog, setPublishDialog] = useState<{ open: boolean; server: MCPServer | null }>({ open: false, server: null });
+  const [publishNote, setPublishNote] = useState('');
   const {
     servers,
     connectedServers,
@@ -25,6 +38,10 @@ const MCP: React.FC = () => {
     getFilteredServers,
   } = useMCPStore();
 
+  const { createWorkorder } = useWorkordersStore();
+  const { user } = useAuthStore();
+  const teamId = user?.teamId || '';
+
   useEffect(() => {
     loadServers();
     loadConnectedServers();
@@ -32,6 +49,29 @@ const MCP: React.FC = () => {
 
   const filteredServers = getFilteredServers();
   const displayedServers = activeTab === 'marketplace' ? filteredServers : connectedServers;
+
+  const handlePublishMarketplace = (server: MCPServer) => {
+    setPublishDialog({ open: true, server });
+    setPublishNote('');
+  };
+
+  const handlePublishConfirm = async () => {
+    if (!publishDialog.server || !teamId) return;
+    try {
+      await createWorkorder({
+        type: 'mcp',
+        targetId: publishDialog.server.id,
+        targetName: publishDialog.server.name,
+        targetIcon: publishDialog.server.icon,
+        teamId,
+        note: publishNote.trim() || undefined,
+      });
+      setPublishDialog({ open: false, server: null });
+      setPublishNote('');
+    } catch (err) {
+      console.error('Failed to create workorder:', err);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -51,6 +91,7 @@ const MCP: React.FC = () => {
   }
 
   return (
+    <>
     <div className="flex-1 overflow-y-auto bg-zinc-50/50">
       <div className="max-w-[1400px] mx-auto p-6 lg:p-8">
         {/* Header */}
@@ -187,12 +228,45 @@ const MCP: React.FC = () => {
                 server={server}
                 onConnect={connectServer}
                 onDisconnect={disconnectServer}
+                onPublishMarketplace={activeTab === 'connected' ? handlePublishMarketplace : undefined}
               />
             ))}
           </div>
         )}
       </div>
     </div>
+
+    {/* Publish to Marketplace Dialog */}
+    <Dialog open={publishDialog.open} onOpenChange={(open) => setPublishDialog(prev => ({ ...prev, open }))}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>发布到市场</DialogTitle>
+          <DialogDescription>
+            将 "{publishDialog.server?.name}" 提交到市场，需要团队管理员和平台管理员审批。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="text-sm font-medium text-zinc-700 mb-1.5 block">备注（可选）</label>
+            <textarea
+              value={publishNote}
+              onChange={(e) => setPublishNote(e.target.value)}
+              placeholder="添加发布说明..."
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none h-20"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setPublishDialog({ open: false, server: null })}>
+            取消
+          </Button>
+          <Button onClick={handlePublishConfirm} disabled={!teamId}>
+            提交申请
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

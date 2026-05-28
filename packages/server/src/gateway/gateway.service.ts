@@ -186,6 +186,14 @@ interface ConversationPromptMessage {
   content: HermesMessageContent;
 }
 
+interface GenerateConfigParams {
+  type: 'expert' | 'skill';
+  description: string;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  teamId: string;
+  userId: string;
+}
+
 @Injectable()
 export class GatewayService {
   private gatewayInstance: any = null;
@@ -1720,6 +1728,238 @@ export class GatewayService {
     } catch (error: unknown) {
       this.refundedLingqiMessages.delete(charge.billingId);
       this.logger.error('Failed to refund Lingqi after unsuccessful chat execution:', error);
+    }
+  }
+
+  async generateConfig(params: GenerateConfigParams, senderWs: WebSocket): Promise<{ ok: boolean; streamId: string }> {
+    const streamId = this.generateUUID();
+
+    const systemPrompt = params.type === 'expert'
+      ? `你是一个AI助手，帮助用户创建"宗主"（Expert）配置。
+用户会描述他们需要什么样的专家，你需要根据描述生成对应的配置JSON。
+
+输出要求：
+- 返回一个JSON对象，包含以下字段：
+  - name: 专家名称（简短有力，2-6个汉字）
+  - description: 专家描述（一句话说明专长）
+  - systemPrompt: 系统提示词（详细定义专家的行为和能力，至少200字）
+  - icon: emoji图标（从常用emoji中选择最合适的）
+  - color: 主题色（从以下预设中选择最匹配的：#3B82F6, #8B5CF6, #EC4899, #EF4444, #F97316, #EAB308, #22C55E, #14B8A6, #06B6D4, #6366F1, #A855F7, #F43F5E）
+
+请将JSON包裹在 \`\`\`json ... \`\`\` 代码块中。只输出JSON，不要输出其他内容。`
+      : `你是一个AI助手，帮助用户创建"技能"（Skill）配置。
+用户会描述他们需要什么样的技能，你需要根据描述生成对应的配置JSON。
+
+输出要求：
+- 返回一个JSON对象，包含以下字段：
+  - name: 技能名称（简短有力）
+  - description: 技能描述（一句话说明用途）
+  - content: 技能内容/指令（详细的系统提示词，至少200字）
+  - icon: emoji图标
+  - category: 分类（从以下选择：development, productivity, tools, writing, analytics）
+  - tags: 标签数组（2-5个相关标签）
+  - version: 版本号（默认 "1.0.0"）
+
+请将JSON包裹在 \`\`\`json ... \`\`\` 代码块中。只输出JSON，不要输出其他内容。`;
+
+    const messages: HermesChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+    ];
+
+    if (params.conversationHistory && params.conversationHistory.length > 0) {
+      for (const msg of params.conversationHistory) {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+
+    messages.push({ role: 'user', content: params.description });
+
+    this.logger.log(`generateConfig: type=${params.type}, streamId=${streamId}`);
+
+    // Resolve a default provider model (first available) without billing
+    const teamId = params.teamId;
+    const defaultModel = await this.findDefaultGenerateModel(teamId);
+    if (!defaultModel) {
+      this.sendStreamEvent('generate.error', { streamId, error: 'No available AI model configured' }, senderWs);
+      return { ok: false, streamId };
+    }
+
+    const providerId = defaultModel.provider_id;
+    const modelCode = defaultModel.model_id;
+
+    const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerId);
+    if (!apiKeyRecord) {
+      this.sendStreamEvent('generate.error', { streamId, error: 'No active API key for provider' }, senderWs);
+      return { ok: false, streamId };
+    }
+
+    const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
+    if (!decryptedKey) {
+      this.sendStreamEvent('generate.error', { streamId, error: 'Failed to decrypt API key' }, senderWs);
+      return { ok: false, streamId };
+    }
+
+    const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerId);
+    if (!endpoint?.base_url) {
+      this.sendStreamEvent('generate.error', { streamId, error: 'No active endpoint configured' }, senderWs);
+      return { ok: false, streamId };
+    }
+
+    let baseUrl: string;
+    try {
+      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
+    } catch {
+      this.sendStreamEvent('generate.error', { streamId, error: 'Invalid provider endpoint URL' }, senderWs);
+      return { ok: false, streamId };
+    }
+
+    const isMiniMax = this.isMiniMaxAnthropicProvider(defaultModel, baseUrl);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${decryptedKey}`,
+    };
+    if (isMiniMax) {
+      headers['anthropic-version'] = '2023-06-01';
+    }
+    try {
+      if (endpoint?.headers) {
+        const extraHeaders = typeof endpoint.headers === 'string' ? JSON.parse(endpoint.headers) : endpoint.headers;
+        Object.assign(headers, extraHeaders);
+      }
+    } catch {
+      // ignore invalid headers config
+    }
+
+    const systemMessages = messages.filter(m => m.role === 'system');
+    const providerMessages = isMiniMax
+      ? messages.filter(m => m.role !== 'system')
+      : messages;
+
+    const requestBody: HermesChatRequestBody = {
+      model: modelCode,
+      messages: providerMessages,
+      stream: true,
+    };
+    if (isMiniMax && systemMessages.length > 0) {
+      const sysText = systemMessages
+        .map(m => m.content)
+        .filter((c): c is string => typeof c === 'string' && c.trim().length > 0)
+        .join('\n\n');
+      if (sysText) requestBody.system = sysText;
+    }
+    if (defaultModel.temperature !== null && defaultModel.temperature !== undefined) {
+      requestBody.temperature = defaultModel.temperature;
+    }
+    if (defaultModel.max_tokens !== null && defaultModel.max_tokens !== undefined) {
+      requestBody.max_tokens = defaultModel.max_tokens;
+    } else if (isMiniMax) {
+      requestBody.max_tokens = 2048;
+    }
+    if (defaultModel.top_p !== null && defaultModel.top_p !== undefined) {
+      requestBody.top_p = defaultModel.top_p;
+    }
+
+    const timeout = endpoint?.timeout_ms || 60000;
+
+    try {
+      const providerRequestPath = isMiniMax ? '/v1/messages' : '/v1/chat/completions';
+      const response = await firstValueFrom(
+        this.httpService.post(`${baseUrl}${providerRequestPath}`, requestBody, {
+          headers,
+          responseType: 'stream',
+          timeout,
+          maxRedirects: 0,
+        })
+      );
+
+      this.logger.log(`generateConfig: provider connected (${defaultModel.provider_name}/${modelCode})`);
+
+      const stream = response.data;
+      let fullResponse = '';
+      let lineBuffer = '';
+
+      return new Promise((resolve) => {
+        let settled = false;
+        const settle = (result: { ok: boolean; streamId: string }) => {
+          if (!settled) {
+            settled = true;
+            resolve(result);
+          }
+        };
+
+        stream.on('data', (chunk: Buffer) => {
+          if (settled) return;
+
+          lineBuffer += chunk.toString();
+          const lines = lineBuffer.split('\n');
+          lineBuffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (payload === '[DONE]') continue;
+
+            try {
+              const data = JSON.parse(payload);
+              const delta = this.extractProviderTextDelta(data);
+              if (delta) {
+                fullResponse += delta;
+                this.sendStreamEvent('generate.delta', { streamId, delta }, senderWs);
+              }
+            } catch {
+              // skip unparseable SSE lines
+            }
+          }
+        });
+
+        stream.on('end', () => {
+          // process remaining lineBuffer
+          if (lineBuffer.trim()) {
+            const trimmed = lineBuffer.trim();
+            if (trimmed.startsWith('data:')) {
+              const payload = trimmed.slice(5).trim();
+              if (payload !== '[DONE]') {
+                try {
+                  const data = JSON.parse(payload);
+                  const delta = this.extractProviderTextDelta(data);
+                  if (delta) fullResponse += delta;
+                } catch { /* skip */ }
+              }
+            }
+          }
+
+          this.sendStreamEvent('generate.final', { streamId, content: fullResponse }, senderWs);
+          settle({ ok: true, streamId });
+        });
+
+        stream.on('error', (error: Error) => {
+          this.logger.error('generateConfig stream error:', error);
+          this.sendStreamEvent('generate.error', { streamId, error: error.message || 'Stream error' }, senderWs);
+          settle({ ok: false, streamId });
+        });
+      });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Provider request failed';
+      this.logger.error('generateConfig request failed:', error);
+      this.sendStreamEvent('generate.error', { streamId, error: msg }, senderWs);
+      return { ok: false, streamId };
+    }
+  }
+
+  private async findDefaultGenerateModel(teamId: string): Promise<ProviderModelRow | null> {
+    try {
+      const models = await this.aiModelsService.findAllModels();
+      if (!models || models.length === 0) return null;
+      // Find the first model that has an active API key
+      for (const model of models) {
+        const key = await this.aiModelsService.findActiveApiKeyByProvider(model.provider_id);
+        if (key) return model;
+      }
+      return null;
+    } catch (error) {
+      this.logger.error('Failed to find default generate model:', error);
+      return null;
     }
   }
 

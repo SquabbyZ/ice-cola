@@ -28,7 +28,7 @@ export class ExpertService {
   async getAllExperts(teamId?: string): Promise<ExpertPrompt[]> {
     const params = new URLSearchParams();
     if (teamId) params.set('teamId', teamId);
-    const res = await fetch(`${API_BASE}/experts?${params}`, {
+    const res = await fetch(`${API_BASE}/api/experts?${params}`, {
       headers: getAuthHeaders(),
     });
     const json = await res.json();
@@ -36,7 +36,7 @@ export class ExpertService {
   }
 
   async getCategories(): Promise<string[]> {
-    const res = await fetch(`${API_BASE}/experts/categories`, {
+    const res = await fetch(`${API_BASE}/api/experts/categories`, {
       headers: getAuthHeaders(),
     });
     const json = await res.json();
@@ -44,7 +44,7 @@ export class ExpertService {
   }
 
   async createExpert(expert: Omit<ExpertPrompt, 'id' | 'sourceId' | 'marketplaceId'>): Promise<ExpertPrompt> {
-    const res = await fetch(`${API_BASE}/experts`, {
+    const res = await fetch(`${API_BASE}/api/experts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(expert),
@@ -54,7 +54,7 @@ export class ExpertService {
   }
 
   async updateExpert(id: string, updates: Partial<ExpertPrompt>): Promise<void> {
-    await fetch(`${API_BASE}/experts/${id}`, {
+    await fetch(`${API_BASE}/api/experts/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(updates),
@@ -62,7 +62,7 @@ export class ExpertService {
   }
 
   async deleteExpert(id: string): Promise<void> {
-    await fetch(`${API_BASE}/experts/${id}`, {
+    await fetch(`${API_BASE}/api/experts/${id}`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });

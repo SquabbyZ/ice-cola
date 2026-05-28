@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, Download, X } from 'lucide-react';
+import { CheckCircle2, Download, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -17,6 +17,7 @@ interface ExpertMarketplaceCardProps {
   expert: Expert;
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
+  onPublishMarketplace?: (expert: Expert) => void;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -32,6 +33,7 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
   expert,
   onInstall,
   onUninstall,
+  onPublishMarketplace,
 }) => {
   const { t } = useTranslation();
   const [showDetail, setShowDetail] = useState(false);
@@ -110,15 +112,29 @@ export const ExpertMarketplaceCard: React.FC<ExpertMarketplaceCardProps> = ({
                 </span>
               </Button>
             ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 gap-2 h-10 font-medium border-zinc-300 hover:border-red-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200"
-                onClick={() => onUninstall(expert.id)}
-              >
-                <X className="w-4 h-4" />
-                <span className="font-medium">{t('experts.remove', '移除')}</span>
-              </Button>
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-2 h-10 font-medium border-zinc-300 hover:border-red-400 hover:text-red-500 hover:bg-red-50 transition-all duration-200"
+                  onClick={() => onUninstall(expert.id)}
+                >
+                  <X className="w-4 h-4" />
+                  <span className="font-medium">{t('experts.remove', '移除')}</span>
+                </Button>
+
+                {onPublishMarketplace && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-10 w-10 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    onClick={() => onPublishMarketplace(expert)}
+                    title="发布到市场"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                )}
+              </>
             )}
 
             <Button

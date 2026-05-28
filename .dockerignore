@@ -1,0 +1,68 @@
+# Dependencies
+node_modules/
+.pnp
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Testing
+coverage/
+.nyc_output/
+.playwright-mcp/
+reports/
+test-results/
+screenshots/
+
+# Client (Tauri desktop app, not containerized)
+packages/client/
+
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env files (use .env.example as template)
+.env
+.env.local
+.env.*.local
+
+# Docker
+docker-compose.override.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*.py.class
+venv/
+.venv/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Documentation (not needed in build)
+docs/
+*.md
+!README.md
+
+# PM2
+ecosystem.config.cjs

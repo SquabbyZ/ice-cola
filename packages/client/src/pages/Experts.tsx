@@ -28,13 +28,25 @@ import {
   DrawerContent,
 } from '@/components/ui/drawer';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { ExpertMarketplaceCard } from '@/components/ExpertMarketplaceCard';
+import AIGenerationPanel from '@/components/AIGenerationPanel';
 import { useExpertStore, type ExpertPrompt } from '@/stores/experts';
 import {
   useExpertMarketplaceStore,
   EXPERT_CATEGORIES,
 } from '@/stores/expertMarketplaceStore';
 import { useGateway } from '@/hooks/useGateway';
+import { useWorkordersStore } from '@/stores/workordersStore';
+import { useAuthStore } from '@/stores/authStore';
+import type { Expert } from '@/stores/expertMarketplaceStore';
 
 const COLOR_PRESETS = [
   { color: '#3B82F6', label: 'Blue' },
@@ -83,6 +95,9 @@ const Experts: React.FC = () => {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [mySearchQuery, setMySearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'name-asc' | 'name-desc' | 'default-first'>('default-first');
+  const [publishDialog, setPublishDialog] = useState<{ open: boolean; expert: Expert | null }>({ open: false, expert: null });
+  const [publishNote, setPublishNote] = useState('');
+  const [showAIPanel, setShowAIPanel] = useState(false);
 
   useGateway({ autoConnect: true });
 
@@ -111,6 +126,10 @@ const Experts: React.FC = () => {
     setSelectedCategory,
     getFilteredExperts,
   } = useExpertMarketplaceStore();
+
+  const { createWorkorder } = useWorkordersStore();
+  const { user } = useAuthStore();
+  const teamId = user?.teamId || '';
 
   useEffect(() => {
     loadPrompts();
@@ -176,6 +195,18 @@ const Experts: React.FC = () => {
     });
   };
 
+  const handleAIApply = (config: Record<string, unknown>) => {
+    setFormData((prev) => ({
+      ...prev,
+      name: (config.name as string) || prev.name,
+      description: (config.description as string) || prev.description,
+      systemPrompt: (config.systemPrompt as string) || prev.systemPrompt,
+      icon: (config.icon as string) || prev.icon,
+      color: (config.color as string) || prev.color,
+    }));
+    setShowAIPanel(false);
+  };
+
   const [formData, setFormData] = useState({
     name: '',
     description: '',
@@ -185,6 +216,29 @@ const Experts: React.FC = () => {
   });
 
   const filteredMarketplaceExperts = getFilteredExperts();
+
+  const handlePublishMarketplace = (expert: Expert) => {
+    setPublishDialog({ open: true, expert });
+    setPublishNote('');
+  };
+
+  const handlePublishConfirm = async () => {
+    if (!publishDialog.expert || !teamId) return;
+    try {
+      await createWorkorder({
+        type: 'expert',
+        targetId: publishDialog.expert.id,
+        targetName: publishDialog.expert.name,
+        targetIcon: publishDialog.expert.icon,
+        teamId,
+        note: publishNote.trim() || undefined,
+      });
+      setPublishDialog({ open: false, expert: null });
+      setPublishNote('');
+    } catch (err) {
+      console.error('Failed to create workorder:', err);
+    }
+  };
 
   const filteredMyExperts = React.useMemo(
     () => filterAndSortExperts(prompts, mySearchQuery, sortBy),
@@ -603,6 +657,7 @@ const Experts: React.FC = () => {
                       expert={expert}
                       onInstall={installExpert}
                       onUninstall={uninstallExpert}
+                      onPublishMarketplace={activeTab === 'marketplace' ? handlePublishMarketplace : undefined}
                     />
                   ))}
                 </div>
@@ -644,21 +699,44 @@ const Experts: React.FC = () => {
                   </p>
                 </div>
               </div>
-              <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setEditingExpert(null);
-                  resetForm();
-                }}
-                className="w-10 h-10 rounded-xl p-0 flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-all duration-200"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {!editingExpert && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAIPanel(!showAIPanel)}
+                    className="gap-1.5 border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    AI 生成
+                  </Button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setEditingExpert(null);
+                    resetForm();
+                    setShowAIPanel(false);
+                  }}
+                  className="w-10 h-10 rounded-xl p-0 flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-all duration-200"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Scrollable Form Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="flex-1 overflow-y-auto px-6 py-6 relative">
+            {showAIPanel && (
+              <div className="absolute inset-0 z-10 bg-white">
+                <AIGenerationPanel
+                  type="expert"
+                  onApply={handleAIApply}
+                  onClose={() => setShowAIPanel(false)}
+                />
+              </div>
+            )}
             <div className="space-y-6">
               {/* Name Field */}
               <div className="space-y-3">
@@ -859,6 +937,37 @@ const Experts: React.FC = () => {
         onConfirm={confirmDelete}
         variant="destructive"
       />
+
+      {/* Publish to Marketplace Dialog */}
+      <Dialog open={publishDialog.open} onOpenChange={(open) => setPublishDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>发布到市场</DialogTitle>
+            <DialogDescription>
+              将 "{publishDialog.expert?.name}" 提交到市场，需要团队管理员和平台管理员审批。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <label className="text-sm font-medium text-zinc-700 mb-1.5 block">备注（可选）</label>
+              <textarea
+                value={publishNote}
+                onChange={(e) => setPublishNote(e.target.value)}
+                placeholder="添加发布说明..."
+                className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none h-20"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPublishDialog({ open: false, expert: null })}>
+              取消
+            </Button>
+            <Button onClick={handlePublishConfirm} disabled={!teamId}>
+              提交申请
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 };

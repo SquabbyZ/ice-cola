@@ -34,7 +34,7 @@ export class ExtensionService {
     const params = new URLSearchParams();
     if (category && category !== 'all') params.set('category', category);
     if (search) params.set('search', search);
-    const res = await fetch(`${API_BASE}/extensions?${params}`, {
+    const res = await fetch(`${API_BASE}/api/extensions?${params}`, {
       headers: getAuthHeaders(),
     });
     const json = await res.json();
@@ -42,7 +42,7 @@ export class ExtensionService {
   }
 
   async getCategories(): Promise<string[]> {
-    const res = await fetch(`${API_BASE}/extensions/categories`, {
+    const res = await fetch(`${API_BASE}/api/extensions/categories`, {
       headers: getAuthHeaders(),
     });
     const json = await res.json();
@@ -50,7 +50,7 @@ export class ExtensionService {
   }
 
   async getInstalledExtensions(): Promise<Extension[]> {
-    const res = await fetch(`${API_BASE}/extensions/installed`, {
+    const res = await fetch(`${API_BASE}/api/extensions/installed`, {
       headers: getAuthHeaders(),
     });
     const json = await res.json();
@@ -58,14 +58,14 @@ export class ExtensionService {
   }
 
   async installExtension(extensionId: string): Promise<void> {
-    await fetch(`${API_BASE}/extensions/${extensionId}/install`, {
+    await fetch(`${API_BASE}/api/extensions/${extensionId}/install`, {
       method: 'POST',
       headers: getAuthHeaders(),
     });
   }
 
   async uninstallExtension(extensionId: string): Promise<void> {
-    await fetch(`${API_BASE}/extensions/${extensionId}/install`, {
+    await fetch(`${API_BASE}/api/extensions/${extensionId}/install`, {
       method: 'DELETE',
       headers: getAuthHeaders(),
     });

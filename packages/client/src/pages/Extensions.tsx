@@ -5,6 +5,17 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useExtensionStore } from '@/stores/extensions';
 import { ExtensionCard } from '@/components/ExtensionCard';
+import { useWorkordersStore } from '@/stores/workordersStore';
+import { useAuthStore } from '@/stores/authStore';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import type { Extension } from '@/stores/extensions';
 
 const CATEGORIES = [
   { key: 'all', labelKey: 'common.all' },
@@ -18,6 +29,8 @@ const CATEGORIES = [
 const Extensions: React.FC = () => {
   const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<'store' | 'installed'>('store');
+  const [publishDialog, setPublishDialog] = useState<{ open: boolean; extension: Extension | null }>({ open: false, extension: null });
+  const [publishNote, setPublishNote] = useState('');
   const {
     extensions,
     installedExtensions,
@@ -34,6 +47,10 @@ const Extensions: React.FC = () => {
     getFilteredExtensions,
   } = useExtensionStore();
 
+  const { createWorkorder } = useWorkordersStore();
+  const { user } = useAuthStore();
+  const teamId = user?.teamId || '';
+
   useEffect(() => {
     loadExtensions();
     loadInstalledExtensions();
@@ -41,6 +58,29 @@ const Extensions: React.FC = () => {
 
   const filteredExtensions = getFilteredExtensions();
   const displayedExtensions = activeTab === 'store' ? filteredExtensions : installedExtensions;
+
+  const handlePublishMarketplace = (extension: Extension) => {
+    setPublishDialog({ open: true, extension });
+    setPublishNote('');
+  };
+
+  const handlePublishConfirm = async () => {
+    if (!publishDialog.extension || !teamId) return;
+    try {
+      await createWorkorder({
+        type: 'extension',
+        targetId: publishDialog.extension.id,
+        targetName: publishDialog.extension.name,
+        targetIcon: publishDialog.extension.icon,
+        teamId,
+        note: publishNote.trim() || undefined,
+      });
+      setPublishDialog({ open: false, extension: null });
+      setPublishNote('');
+    } catch (err) {
+      console.error('Failed to create workorder:', err);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -60,6 +100,7 @@ const Extensions: React.FC = () => {
   }
 
   return (
+    <>
     <div className="flex-1 overflow-y-auto bg-zinc-50/50">
       <div className="max-w-[1400px] mx-auto p-6 lg:p-8">
         {/* Header */}
@@ -185,6 +226,7 @@ const Extensions: React.FC = () => {
                   isInstalled={installedExtensions.some(e => e.id === extension.id)}
                   onInstall={installExtension}
                   onUninstall={uninstallExtension}
+                  onPublishMarketplace={activeTab === 'installed' ? handlePublishMarketplace : undefined}
                 />
               </div>
             ))}
@@ -192,6 +234,38 @@ const Extensions: React.FC = () => {
         )}
       </div>
     </div>
+
+    {/* Publish to Marketplace Dialog */}
+    <Dialog open={publishDialog.open} onOpenChange={(open) => setPublishDialog(prev => ({ ...prev, open }))}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>发布到市场</DialogTitle>
+          <DialogDescription>
+            将 "{publishDialog.extension?.name}" 提交到市场，需要团队管理员和平台管理员审批。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div>
+            <label className="text-sm font-medium text-zinc-700 mb-1.5 block">备注（可选）</label>
+            <textarea
+              value={publishNote}
+              onChange={(e) => setPublishNote(e.target.value)}
+              placeholder="添加发布说明..."
+              className="w-full px-3 py-2 border border-zinc-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary resize-none h-20"
+            />
+          </div>
+        </div>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setPublishDialog({ open: false, extension: null })}>
+            取消
+          </Button>
+          <Button onClick={handlePublishConfirm} disabled={!teamId}>
+            提交申请
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

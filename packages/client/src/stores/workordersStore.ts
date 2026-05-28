@@ -3,7 +3,7 @@ import { workorderService } from '@/services/workorder-service';
 
 export interface Workorder {
   id: string;
-  type: 'skill' | 'mcp' | 'extension';
+  type: 'skill' | 'mcp' | 'extension' | 'expert';
   targetId: string;
   targetName: string;
   targetIcon: string;
@@ -39,6 +39,15 @@ interface WorkordersState {
 
   loadWorkorders: (teamId?: string) => Promise<void>;
   loadHistory: (teamId?: string) => Promise<void>;
+  createWorkorder: (data: {
+    type: string;
+    targetId: string;
+    targetName: string;
+    targetIcon?: string;
+    teamId: string;
+    note?: string;
+    visibilityScope?: any;
+  }) => Promise<Workorder>;
   approve: (id: string, comment?: string) => Promise<void>;
   reject: (id: string, comment: string) => Promise<void>;
   batchApprove: (ids: string[]) => Promise<void>;
@@ -128,6 +137,14 @@ export const useWorkordersStore = create<WorkordersState>((set, get) => ({
     } catch {
       set({ history: MOCK_HISTORY, isLoading: false });
     }
+  },
+
+  createWorkorder: async (data) => {
+    const workorder = await workorderService.create(data);
+    set(state => ({
+      workorders: [workorder, ...state.workorders],
+    }));
+    return workorder;
   },
 
   approve: async (id, comment) => {

@@ -4,7 +4,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3000';
 
 export interface Workorder {
   id: string;
-  type: 'skill' | 'mcp' | 'extension';
+  type: 'skill' | 'mcp' | 'extension' | 'expert';
   targetId: string;
   targetName: string;
   targetIcon: string;
@@ -33,6 +33,35 @@ class WorkorderService {
   private getAuthHeaders() {
     const token = localStorage.getItem('accessToken');
     return token ? { Authorization: `Bearer ${token}` } : {};
+  }
+
+  /**
+   * 创建工单
+   */
+  async create(data: {
+    type: string;
+    targetId: string;
+    targetName: string;
+    targetIcon?: string;
+    teamId: string;
+    note?: string;
+    visibilityScope?: any;
+  }): Promise<Workorder> {
+    const response = await axios.post(
+      `${API_BASE}/teams/${data.teamId}/workorders`,
+      {
+        type: data.type,
+        targetId: data.targetId,
+        targetName: data.targetName,
+        targetIcon: data.targetIcon,
+        note: data.note,
+        visibilityScope: data.visibilityScope,
+      },
+      {
+        headers: this.getAuthHeaders(),
+      }
+    );
+    return response.data.data;
   }
 
   /**
