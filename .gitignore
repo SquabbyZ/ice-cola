@@ -49,7 +49,7 @@ docker-compose.override.yml
 
 # Prisma
 prisma/migrations/
-
+.playwright-mcp、
 # Python
 __pycache__/
 *.py[cod]

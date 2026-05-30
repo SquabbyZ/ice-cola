@@ -67,11 +67,9 @@
       ]
     },
     "playwright": {
-      "command": "npx",
+      "command": "C:\\Program Files\\nodejs\\node.exe",
       "args": [
-        "-y",
-        "@playwright/mcp",
-        "start"
+        "C:\\Users\\smallMark\\AppData\\Roaming\\npm\\node_modules\\@playwright\\mcp\\cli.js"
       ]
     },
     "docker": {

@@ -1,9 +1,9 @@
 {
   "skill": "peaks-solo",
-  "mode": "full-auto",
-  "gate": "qa-complete",
-  "sessionId": "2026-05-30-session-23ab30",
-  "claudeSessionId": "7f0225a3-8b42-4473-9009-4306c2b66e2a",
-  "setAt": "2026-05-30T09:47:21.229Z",
-  "lastHeartbeat": "2026-05-30T09:47:21.229Z"
+  "mode": "swarm",
+  "gate": "complete",
+  "sessionId": "2026-05-31-session-f39009",
+  "claudeSessionId": "ec8f2e8f-0de5-49ec-a893-4d687befc33a",
+  "setAt": "2026-05-30T17:04:42.532Z",
+  "lastHeartbeat": "2026-05-30T17:04:42.532Z"
 }
