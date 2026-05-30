@@ -129,7 +129,7 @@ const Experts: React.FC = () => {
 
   const { createWorkorder } = useWorkordersStore();
   const { user } = useAuthStore();
-  const teamId = user?.teamId || '';
+  const teamId = user?.team?.id || '';
 
   useEffect(() => {
     loadPrompts();

@@ -132,7 +132,7 @@ export const useSkillsStore = create<SkillState>((set, get) => ({
     set({ isMarketplaceLoading: true });
     try {
       const items = await skillService.getMarketplaceSkillsFromApi();
-      const skills = items.map(transformMarketplaceSkill);
+      const skills = (items as Record<string, unknown>[]).map(transformMarketplaceSkill);
       set({ marketplaceSkills: skills, isMarketplaceLoading: false });
     } catch (error) {
       console.error('[SkillsStore] Failed to load marketplace skills:', error);

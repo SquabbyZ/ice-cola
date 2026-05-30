@@ -19,7 +19,7 @@ export interface Workorder {
 export interface WorkorderHistory {
   id: string;
   workorderId: string;
-  type: 'skill' | 'mcp' | 'extension';
+  type: 'skill' | 'mcp' | 'extension' | 'expert';
   targetName: string;
   approverId: string;
   approverName: string;
@@ -31,7 +31,7 @@ export interface WorkorderHistory {
 interface WorkordersState {
   workorders: Workorder[];
   history: WorkorderHistory[];
-  filterType: 'all' | 'skill' | 'mcp' | 'extension';
+  filterType: 'all' | 'skill' | 'mcp' | 'extension' | 'expert';
   filterStatus: 'pending' | 'approved' | 'rejected' | 'all';
   selectedIds: string[];
   isLoading: boolean;

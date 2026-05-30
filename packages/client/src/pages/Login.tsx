@@ -39,7 +39,7 @@ const Login: React.FC = () => {
             <Activity className="w-8 h-8 text-amber-50" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight pavilion-text-gradient">灵气阁</h1>
+            <h1 className="text-2xl font-bold tracking-tight pavilion-text-gradient">{t('login.appName')}</h1>
             <p className="text-sm text-zinc-500">{t('login.appSubtitle')}</p>
           </div>
         </div>

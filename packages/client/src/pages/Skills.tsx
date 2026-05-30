@@ -62,7 +62,6 @@ const Skills: React.FC = () => {
     requestPublishToTeam,
     approveTeamPublish,
     rejectTeamPublish,
-    requestPublishToMarketplace,
     setSearchQuery,
     setSelectedCategory,
     getFilteredSkills,

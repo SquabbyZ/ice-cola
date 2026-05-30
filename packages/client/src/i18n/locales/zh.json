@@ -44,6 +44,11 @@
     "restartGateway": "需要重启 Gateway",
     "restartGatewayDesc": "API Key 已保存到配置文件，但需要重启 Gateway 才能生效。"
   },
+  "notFound": {
+    "pageNotFound": "页面未找到",
+    "pageNotFoundDesc": "您访问的页面不存在或已被移动。",
+    "backToHome": "返回首页"
+  },
   "nav": {
     "dashboard": "地图",
     "chat": "问道",
@@ -57,6 +62,8 @@
     "profile": "个人中心",
     "newChat": "新开问道",
     "chatDesc": "灵气问答",
+    "lingqi": "灵气阁",
+    "lingqiDesc": "余额与模型",
     "logout": "退出登录"
   },
   "sidebar": {

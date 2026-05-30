@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { ChatComposer } from '@/components/chat/ChatComposer';
 import { ChatEmptyState } from '@/components/chat/ChatEmptyState';
 import { ChatMessages } from '@/components/chat/ChatMessages';
-import { HermesCapabilityBar } from '@/components/chat/HermesCapabilityBar';
 import { ExpertSelector } from '@/components/ExpertSelector';
 import { ExtensionSelector } from '@/components/ExtensionSelector';
 import { MCPSelector } from '@/components/MCPSelector';
@@ -99,10 +98,6 @@ export function ChatWorkspace(props: ChatWorkspaceProps) {
     selectedMCPServerIds,
     selectedSkillIds,
     selectedExtensionIds,
-    selectedModelName,
-    lingqiBalance,
-    lingqiEstimateText,
-    selectedExpertName,
   } = props;
   const sidebarToggleLabel = isSidebarOpen ? t('chat.conversations') : t('chat.showSidebar');
   const hasMessages = messages.length > 0;

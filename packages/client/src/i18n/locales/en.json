@@ -44,6 +44,11 @@
     "restartGateway": "Restart Gateway Required",
     "restartGatewayDesc": "API Key saved to config file, but Gateway restart is required for changes to take effect."
   },
+  "notFound": {
+    "pageNotFound": "Page not found",
+    "pageNotFoundDesc": "The page you are looking for does not exist or has been moved.",
+    "backToHome": "Back to Home"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "chat": "Chat",
@@ -57,6 +62,8 @@
     "profile": "Profile",
     "newChat": "New Chat",
     "chatDesc": "AI Assistant",
+    "lingqi": "Lingqi",
+    "lingqiDesc": "Balance & Models",
     "logout": "Logout"
   },
   "dashboard": {

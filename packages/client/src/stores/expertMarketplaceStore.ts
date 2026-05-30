@@ -74,17 +74,6 @@ interface MarketplaceItem {
 
 function transformExpert(item: MarketplaceItem): Expert {
   const cfg = item.config_schema ?? {};
-  const rawTags = item.tags;
-  let tags: string[] = [];
-  if (Array.isArray(rawTags)) {
-    tags = rawTags;
-  } else if (typeof rawTags === 'string') {
-    try {
-      tags = JSON.parse(rawTags);
-    } catch {
-      tags = [];
-    }
-  }
 
   return {
     id: String(item.id),

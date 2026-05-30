@@ -39,7 +39,7 @@ const menuItems = [
   { path: '/experts', icon: Bot, labelKey: 'nav.experts', descKey: 'nav.experts' },
   { path: '/tasks', icon: Clock, labelKey: 'nav.tasks', descKey: 'nav.tasks' },
   { path: '/skills', icon: Sparkles, labelKey: 'nav.skills', descKey: 'nav.skills' },
-  { path: '/lingqi', icon: Sparkles, label: '灵气阁', desc: '余额与模型' },
+  { path: '/lingqi', icon: Sparkles, labelKey: 'nav.lingqi', descKey: 'nav.lingqiDesc' },
   { path: '/mcp', icon: Cog, labelKey: 'nav.mcp', descKey: 'nav.mcp' },
   { path: '/workorders', icon: Inbox, labelKey: 'nav.workorders', descKey: 'nav.workorders' },
 ];
@@ -94,20 +94,20 @@ const Sidebar: React.FC = () => {
     navigate('/profile');
   };
 
-  const getNavLabel = (item: typeof menuItems[number]) => {
+  const getNavLabel = (item: typeof menuItems[number]): string => {
     if ('label' in item) {
-      return item.label;
+      return item.label as string;
     }
 
-    return t(item.labelKey);
+    return t(item.labelKey) as string;
   };
 
-  const getNavDescription = (item: typeof menuItems[number]) => {
+  const getNavDescription = (item: typeof menuItems[number]): string => {
     if ('desc' in item) {
-      return item.desc;
+      return item.desc as string;
     }
 
-    return t(item.descKey);
+    return t(item.descKey) as string;
   };
 
   const renderNavItem = (item: typeof menuItems[number]) => {

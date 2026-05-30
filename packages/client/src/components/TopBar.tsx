@@ -39,10 +39,10 @@ const TopBar: React.FC = () => {
           </div>
           <div className="hidden sm:block">
             <h1 className="text-sm font-semibold tracking-tight leading-none pavilion-text-gradient">
-              灵气阁
+              {t('login.appName')}
             </h1>
             <p className="text-[10px] text-stone-500 mt-0.5">
-              IceCola 修行中枢
+              {t('login.appSubtitle')}
             </p>
           </div>
         </div>
