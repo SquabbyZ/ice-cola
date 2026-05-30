@@ -49,16 +49,6 @@ const Profile: React.FC = () => {
     confirm: false,
   });
 
-  useEffect(() => {
-    loadTeams();
-  }, []);
-
-  useEffect(() => {
-    if (selectedTeam) {
-      loadMembers(selectedTeam.id);
-    }
-  }, [selectedTeam]);
-
   const loadTeams = async () => {
     try {
       const data = await teamService.getMyTeams();
@@ -82,6 +72,16 @@ const Profile: React.FC = () => {
       toast.error(t('profile.loadMembersFailed'));
     }
   };
+
+  useEffect(() => {
+    loadTeams();
+  }, [loadTeams]);
+
+  useEffect(() => {
+    if (selectedTeam) {
+      loadMembers(selectedTeam.id);
+    }
+  }, [selectedTeam, loadMembers]);
 
   const handleCreateTeam = async () => {
     if (!newTeamName.trim()) {

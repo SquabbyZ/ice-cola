@@ -171,6 +171,7 @@ const Experts: React.FC = () => {
       console.error('Failed to delete expert:', err);
     } finally {
       setPendingDeleteId(null);
+      setDeleteConfirmOpen(false);
     }
   };
 

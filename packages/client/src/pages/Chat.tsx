@@ -36,6 +36,7 @@ const Chat: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastFetchedConversationIdRef = useRef<string | null>(null);
@@ -161,6 +162,15 @@ const Chat: React.FC = () => {
     authKeyword: t('chat.errors.authKeyword'),
     disconnectKeyword: t('chat.errors.disconnectKeyword'),
   });
+
+  // Clean up delete timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (deleteTimeoutRef.current) {
+        clearTimeout(deleteTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     loadPrompts();
@@ -388,9 +398,21 @@ const Chat: React.FC = () => {
 
   const handleDeleteMessage = (id: string) => {
     if (deleteConfirmId !== id) {
+      // Clear any existing timeout before setting a new one
+      if (deleteTimeoutRef.current) {
+        clearTimeout(deleteTimeoutRef.current);
+      }
       setDeleteConfirmId(id);
-      setTimeout(() => setDeleteConfirmId((prev) => (prev === id ? null : prev)), 3000);
+      deleteTimeoutRef.current = setTimeout(() => {
+        setDeleteConfirmId((prev) => (prev === id ? null : prev));
+        deleteTimeoutRef.current = null;
+      }, 3000);
       return;
+    }
+    // Clear timeout when confirming deletion
+    if (deleteTimeoutRef.current) {
+      clearTimeout(deleteTimeoutRef.current);
+      deleteTimeoutRef.current = null;
     }
     deleteMessage(id);
     setDeleteConfirmId(null);

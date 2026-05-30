@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -60,6 +61,9 @@ const Dashboard: React.FC = () => {
         }
 
         await Promise.all(requests);
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err);
+        toast.error(t('dashboard.errors.loadFailed'));
       } finally {
         setIsLoading(false);
       }

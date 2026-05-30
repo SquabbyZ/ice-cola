@@ -54,7 +54,11 @@ const Invitations: React.FC = () => {
       const allInvitations = response.data.data || [];
       setInvitations(allInvitations.filter((inv: Invitation) => inv.status === 'PENDING'));
     } catch (error: any) {
-      setError(error.response?.data?.message || t('invitations.loadFailed'));
+      if (error.response?.status === 403) {
+        setError(t('invitations.loadFailed'));
+      } else {
+        setError(error.response?.data?.message || t('invitations.loadFailed'));
+      }
     } finally {
       setIsLoading(false);
     }
@@ -124,7 +128,7 @@ const Invitations: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('invitations.pending')}
+                {t('invitations.statusPending')}
               </p>
               <p className="text-2xl font-bold tracking-tight text-foreground mt-1">
                 {pendingCount}
@@ -146,7 +150,7 @@ const Invitations: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('invitations.accepted')}
+                {t('invitations.statusAccepted')}
               </p>
               <p className="text-2xl font-bold tracking-tight text-foreground mt-1">
                 0
@@ -168,7 +172,7 @@ const Invitations: React.FC = () => {
             </div>
             <div>
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                {t('invitations.expired')}
+                {t('invitations.statusExpired')}
               </p>
               <p className="text-2xl font-bold tracking-tight text-foreground mt-1">
                 {expiredCount}

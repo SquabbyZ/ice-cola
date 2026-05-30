@@ -152,6 +152,7 @@
     "actions": "操作",
     "loading": "加载用户中...",
     "noUsers": "没有找到用户。",
+    "noUsersDesc": "尝试调整搜索或筛选条件。",
     "inviteTitle": "邀请新用户",
     "inviteDesc": "向新管理员用户发送邀请。",
     "emailLabel": "邮箱",

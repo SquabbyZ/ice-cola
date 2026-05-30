@@ -89,13 +89,13 @@ const ForgotPassword: React.FC = () => {
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError('');
+    setLocalError(null);
     await handleOpenCaptchaModal();
   };
 
   const handleOtpComplete = async (code: string) => {
     setIsLoading(true);
-    setLocalError('');
+    setLocalError(null);
     try {
       const success = await authService.verifyCode({ email, code, type: 'reset_password' });
       if (success) {
@@ -123,7 +123,7 @@ const ForgotPassword: React.FC = () => {
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocalError('');
+    setLocalError(null);
 
     if (newPassword.length < 8 || !/[A-Z]/.test(newPassword) || !/[a-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
       setLocalError('密码不符合要求');

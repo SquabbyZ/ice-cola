@@ -154,6 +154,7 @@
     "actions": "Actions",
     "loading": "Loading users...",
     "noUsers": "No users found.",
+    "noUsersDesc": "Try adjusting your search or filter criteria.",
     "inviteTitle": "Invite New User",
     "inviteDesc": "Send an invitation to a new admin user.",
     "emailLabel": "Email",

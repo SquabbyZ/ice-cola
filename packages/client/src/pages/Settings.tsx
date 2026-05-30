@@ -70,7 +70,7 @@ const Settings: React.FC = () => {
   useEffect(() => {
     loadConfig();
     refreshStatus();
-  }, []);
+  }, [loadConfig, refreshStatus]);
 
   const handleSaveApiKey = async (provider: string, value: string) => {
     if (!value.trim()) return;

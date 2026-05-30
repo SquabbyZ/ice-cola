@@ -38,13 +38,15 @@ const Register: React.FC = () => {
     return emailRegex.test(email);
   };
 
-  const loadCaptcha = async () => {
+  const loadCaptcha = async (): Promise<boolean> => {
     try {
       const { token, imageUrl } = await authService.getCaptcha();
       setCaptchaToken(token);
       setCaptchaImageUrl(imageUrl);
+      return true;
     } catch (err: any) {
       setLocalError(err.response?.data?.message || '获取验证码失败');
+      return false;
     }
   };
 
@@ -59,11 +61,9 @@ const Register: React.FC = () => {
       return;
     }
 
-    try {
-      await loadCaptcha();
+    const loaded = await loadCaptcha();
+    if (loaded) {
       setCaptchaModalOpen(true);
-    } catch (err: any) {
-      setLocalError(err.response?.data?.message || '获取验证码失败');
     }
   };
 
@@ -181,7 +181,7 @@ const Register: React.FC = () => {
               <CaptchaVerify
                 imageUrl={captchaImageUrl}
                 onVerify={handleCaptchaVerify}
-                onRefresh={loadCaptcha}
+                onRefresh={async () => { await loadCaptcha(); }}
                 onError={(message) => {
                   setCaptchaModalOpen(false);
                   setLocalError(message);
