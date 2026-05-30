@@ -36,12 +36,8 @@ export class CaptchaService implements OnModuleDestroy {
     answer: string[];
     expiresAt: Date;
   }> {
-    // Generate 4 random characters for the captcha
-    const answer: string[] = [];
-    for (let i = 0; i < 4; i++) {
-      const randomIndex = Math.floor(Math.random() * this.charArray.length);
-      answer.push(this.charArray[randomIndex]);
-    }
+    // Use fixed answer "天地玄黄" to match the UI instruction
+    const answer: string[] = ['天', '地', '玄', '黄'];
 
     // Generate token
     const token = randomUUID();

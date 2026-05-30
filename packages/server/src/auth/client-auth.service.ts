@@ -59,7 +59,7 @@ export class ClientAuthService {
     clientIp = 'unknown',
   ): Promise<void> {
     // Check rate limit first
-    this.checkRateLimit(clientIp);
+    this.checkRateLimit(clientIp, 'send-code');
 
     // Verify captcha
     const isCaptchaValid = await this.captchaService.verifyCaptcha(captchaToken, captchaAnswer);
@@ -98,7 +98,7 @@ export class ClientAuthService {
    * Verify email code
    */
   async verifyCode(email: string, code: string, clientIp = 'unknown', type = 'register'): Promise<boolean> {
-    this.checkRateLimit(clientIp);
+    this.checkRateLimit(clientIp, 'verify-code');
 
     // Find valid code in database
     const record = await this.db.findValidVerificationCode(email, code, type);
@@ -144,7 +144,7 @@ export class ClientAuthService {
     expiresIn: number;
   }> {
     // Check rate limit
-    this.checkRateLimit(clientIp);
+    this.checkRateLimit(clientIp, 'register');
 
     const existing = await this.db.findUserByEmail(dto.email);
     if (existing) {
@@ -191,15 +191,16 @@ export class ClientAuthService {
   }
 
   /**
-   * Check rate limit for IP
+   * Check rate limit for IP with operation-specific key
    */
-  private checkRateLimit(ip: string): void {
+  private checkRateLimit(ip: string, operation: string = 'default'): void {
+    const key = `${ip}:${operation}`;
     const now = new Date();
-    const entry = this.rateLimitStore.get(ip);
+    const entry = this.rateLimitStore.get(key);
 
     if (!entry || now > entry.resetAt) {
       // Create new entry
-      this.rateLimitStore.set(ip, {
+      this.rateLimitStore.set(key, {
         count: 1,
         resetAt: new Date(now.getTime() + this.RATE_LIMIT_WINDOW_MS),
       });
@@ -209,7 +210,7 @@ export class ClientAuthService {
     if (entry.count >= this.RATE_LIMIT_MAX) {
       throw new AppError(
         'RATE_LIMIT_EXCEEDED',
-        `注册过于频繁，请 ${Math.ceil((entry.resetAt.getTime() - now.getTime()) / 1000)} 秒后重试`,
+        `操作过于频繁，请 ${Math.ceil((entry.resetAt.getTime() - now.getTime()) / 1000)} 秒后重试`,
         429,
       );
     }
@@ -229,7 +230,7 @@ export class ClientAuthService {
     captchaAnswer: string[],
     clientIp = 'unknown',
   ): Promise<void> {
-    this.checkRateLimit(clientIp);
+    this.checkRateLimit(clientIp, 'reset-send');
 
     const isCaptchaValid = await this.captchaService.verifyCaptcha(captchaToken, captchaAnswer);
     if (!isCaptchaValid) {
@@ -268,7 +269,7 @@ export class ClientAuthService {
     newPassword: string,
     clientIp = 'unknown',
   ): Promise<void> {
-    this.checkRateLimit(clientIp);
+    this.checkRateLimit(clientIp, 'reset-verify');
 
     const user = await this.db.findUserByEmail(email);
     if (!user) {
