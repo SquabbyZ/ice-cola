@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, LogOut, User, ChevronDown, Cpu, LayoutDashboard, Users as UsersIcon, Mail, Settings, ShoppingBag, ShieldCheck, Ticket, ScrollText } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
@@ -23,6 +23,7 @@ interface NavItem {
 
 const Layout: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [aiMenuOpen, setAiMenuOpen] = useState(false);
   const { user, logout } = useAuthStore();
@@ -55,7 +56,7 @@ const Layout: React.FC = () => {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    navigate('/login');
   };
 
   const sidebarVariants = {
@@ -417,7 +418,7 @@ const Layout: React.FC = () => {
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {/* Page Content */}
-          <main className="flex-1 overflow-hidden p-6 bg-background">
+          <main className="flex-1 overflow-y-auto p-6 bg-background">
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}

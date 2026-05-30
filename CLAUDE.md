@@ -30,22 +30,70 @@ Ice Cola 是一个管理平台 monorepo：
 
 ## 常用命令
 
+### 本地开发
+
 ```bash
+# 启动所有开发服务（跨平台，推荐）
+node dev.mjs
+# 或
 pnpm dev
-pnpm build
-pnpm test
+
+# 停止开发服务
+node dev.mjs stop
+
+# 查看服务状态
+node dev.mjs status
+
+# PM2 管理（需要 ecosystem.config.cjs）
 pm2 start ecosystem.config.cjs --update-env
+```
+
+### Docker 后端部署
+
+```bash
+# 首次部署: 复制配置文件并填入实际值
+cp .env.deploy.example .env.deploy
+# 编辑 .env.deploy (必填: POSTGRES_PASSWORD, JWT_SECRET, AI_ENCRYPTION_KEY)
+
+# 启动后端服务 (Server + PostgreSQL + Hermes)
+./deploy-backend.sh
+# 或
+pnpm deploy
+
+# 查看日志
+./deploy-backend.sh logs
+
+# 停止服务
+./deploy-backend.sh down
+
+# 重启服务
+./deploy-backend.sh restart
+```
+
+### Docker 全量部署 (含 Admin 前端)
+
+```bash
+# 复制配置
+cp .env.example .env
+# 编辑 .env
+
+# 启动所有服务
 docker compose up -d
 ```
 
 ## 开发服务端口
 
-- Admin 前端：http://localhost:1992
-- Client 前端：http://localhost:1420
-- Server 后端：http://localhost:3000
-- WebSocket Gateway：3001
-- PostgreSQL：5433
-- Hermes Dashboard：9119
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| Admin 前端 | http://localhost:1992 | React + Vite |
+| Client 前端 | http://localhost:1420 | Tauri + React |
+| Server 后端 | http://localhost:3000 | NestJS API |
+| WebSocket | 3001 | Gateway |
+| PostgreSQL (本地) | 5432 | 原生安装 (D:\pg18\bin) |
+| PostgreSQL (Docker) | 5433 | docker-compose 映射 |
+| Hermes Dashboard | 9119 | Hermes Web UI |
+
+> **注意**：本地开发连接端口 5432，Docker 部署使用 5433。server `.env` 中的 `DATABASE_URL` 需匹配实际环境。
 
 ## 目录结构
 

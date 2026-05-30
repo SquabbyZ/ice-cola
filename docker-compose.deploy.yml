@@ -1,0 +1,126 @@
+# ============================================================
+# Ice Cola Backend Deployment
+# ============================================================
+# 仅包含后端核心服务: Server + PostgreSQL + Hermes Agent
+#
+# 部署:  cp .env.deploy.example .env.deploy && docker compose -f docker-compose.deploy.yml --env-file .env.deploy up -d
+# 状态:  docker compose -f docker-compose.deploy.yml ps
+# 日志:  docker compose -f docker-compose.deploy.yml logs -f
+# 停止:  docker compose -f docker-compose.deploy.yml down
+# ============================================================
+
+services:
+  # ==========================================
+  # PostgreSQL Database
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: icecola-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-icecola}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    restart: unless-stopped
+    networks:
+      - icecola-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-icecola}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # Hermes Agent — AI Gateway
+  # ==========================================
+  hermes-gateway:
+    build:
+      context: ./packages/hermes-agent
+      dockerfile: Dockerfile
+    container_name: icecola-hermes-gateway
+    command: ["gateway", "run"]
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_WEB_DIST: /opt/hermes/hermes_cli/web_dist
+      HERMES_DASHBOARD_TUI: "0"
+    volumes:
+      - hermes-data:/opt/data
+    env_file:
+      - ./packages/hermes-agent/.env
+    restart: unless-stopped
+    networks:
+      - icecola-net
+
+  # ==========================================
+  # Hermes Dashboard — Web UI
+  # ==========================================
+  hermes-dashboard:
+    build:
+      context: ./packages/hermes-agent
+      dockerfile: Dockerfile
+    container_name: icecola-hermes-dashboard
+    command: ["dashboard", "--host", "0.0.0.0", "--insecure", "--no-open"]
+    ports:
+      - "${HERMES_DASHBOARD_PORT:-9119}:9119"
+    environment:
+      HERMES_HOME: /opt/data
+      HERMES_WEB_DIST: /opt/hermes/hermes_cli/web_dist
+    volumes:
+      - hermes-data:/opt/data
+    env_file:
+      - ./packages/hermes-agent/.env
+    depends_on:
+      - hermes-gateway
+    restart: unless-stopped
+    networks:
+      - icecola-net
+
+  # ==========================================
+  # NestJS API Server
+  # ==========================================
+  server:
+    build:
+      context: .
+      dockerfile: packages/server/Dockerfile
+    container_name: icecola-server
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-icecola}?schema=public
+      HERMES_ENDPOINT: http://hermes-dashboard:9119
+      HERMES_AGENT_URL: http://hermes-gateway:8642
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      AI_ENCRYPTION_KEY: ${AI_ENCRYPTION_KEY:?AI_ENCRYPTION_KEY is required}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM_EMAIL: ${RESEND_FROM_EMAIL:-onboarding@resend.dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      hermes-dashboard:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - icecola-net
+
+# ============================================================
+# Persistent volumes
+# ============================================================
+volumes:
+  hermes-data:
+  postgres-data:
+
+# ============================================================
+# Networks
+# ============================================================
+networks:
+  icecola-net:
+    driver: bridge

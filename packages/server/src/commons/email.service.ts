@@ -9,18 +9,12 @@ const TEAM_NAME = '加冰可乐团队';
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private resend: Resend | null = null;
 
   constructor(
     private configService: ConfigService,
     private emailTemplateService: EmailTemplateService,
     private moduleRef: ModuleRef,
-  ) {
-    const resendApiKey = this.configService.get<string>('RESEND_API_KEY');
-    if (resendApiKey) {
-      this.resend = new Resend(resendApiKey);
-    }
-  }
+  ) {}
 
   /**
    * Lazily resolve raw config from admin DB, bypassing value masking.
@@ -79,16 +73,18 @@ export class EmailService {
   }
 
   private async sendFallbackEmail(email: string, code: string): Promise<void> {
-    const text = `
-您好，
-
-您的注册验证码是：${code}
-有效期 5 分钟，请勿泄露。
-
-— ${TEAM_NAME}
+    const html = `
+<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2>验证码</h2>
+  <p>您的注册验证码是：</p>
+  <div style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #3b82f6; margin: 24px 0; text-align: center;">${code}</div>
+  <p style="color: #666;">有效期 5 分钟，请勿泄露。</p>
+  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+  <p style="color: #999; font-size: 12px;">— ${TEAM_NAME}</p>
+</div>
 `.trim();
 
-    this.logger.log(`[DEV] Verification code email to ${email}:\n${text}`);
+    await this.sendEmail(email, '您的注册验证码', html);
   }
 
   private async sendEmail(to: string, subject: string, html: string): Promise<void> {
@@ -130,19 +126,29 @@ export class EmailService {
     teamName: string,
     inviteLink: string,
   ): Promise<void> {
-    const text = `
-您好，
+    const rendered = await this.emailTemplateService.renderByKey('team_invite', {
+      inviterName,
+      teamName,
+      inviteLink,
+    });
 
-${inviterName} 邀请您加入团队 "${teamName}"。
+    if (rendered) {
+      await this.sendEmail(email, rendered.subject, rendered.body);
+      return;
+    }
 
-点击以下链接接受邀请：
-${inviteLink}
-
-链接 7 天内有效。
-
-— ${TEAM_NAME}
+    const html = `
+<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+  <h2>团队邀请</h2>
+  <p>${inviterName} 邀请您加入团队 "${teamName}"。</p>
+  <p>点击以下链接接受邀请：</p>
+  <p><a href="${inviteLink}" style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px;">接受邀请</a></p>
+  <p style="color: #666; font-size: 14px;">链接 7 天内有效。</p>
+  <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;">
+  <p style="color: #999; font-size: 12px;">— ${TEAM_NAME}</p>
+</div>
 `.trim();
 
-    this.logger.log(`[DEV] Team invite email to ${email}:\n${text}`);
+    await this.sendEmail(email, `您收到来自 ${teamName} 的团队邀请`, html);
   }
 }

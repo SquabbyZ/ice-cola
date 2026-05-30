@@ -6,10 +6,16 @@ Scope: local development services, commands, and ports for Ice Cola.
 ## Common Commands
 
 ```bash
-# Ensure the Docker database is running
-docker ps | grep postgres
+# Start all dev servers (cross-platform, recommended)
+node dev.mjs
 
-# Start all dev servers
+# Stop dev servers
+node dev.mjs stop
+
+# Check service status
+node dev.mjs status
+
+# Alternative: pnpm recursive (also works)
 pnpm dev
 
 # Build all packages
@@ -24,14 +30,17 @@ pnpm playwright test
 
 ## Development Ports
 
-| Service | URL / Port |
-|---|---|
-| Admin frontend | http://localhost:1992 |
-| Client frontend | http://localhost:1420 |
-| Server HTTP API | http://localhost:3000 |
-| WebSocket Gateway | 3001 |
-| PostgreSQL host port | 5433 |
-| Hermes Dashboard | 9119 |
+| Service | URL / Port | Notes |
+|---|---|---|
+| Admin frontend | http://localhost:1992 | React + Vite |
+| Client frontend | http://localhost:1420 | Tauri + React |
+| Server HTTP API | http://localhost:3000 | NestJS |
+| WebSocket Gateway | 3001 | Socket.IO |
+| PostgreSQL (本地) | 5432 | 原生安装 (D:\pg18\bin) |
+| PostgreSQL (Docker) | 5433 | docker-compose 映射 |
+| Hermes Dashboard | 9119 | Hermes Web UI |
+
+> **端口说明**：本地开发用 5432，Docker 部署用 5433。确保 server `.env` 的 `DATABASE_URL` 匹配。
 
 ## PM2 Services
 

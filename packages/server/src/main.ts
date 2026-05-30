@@ -50,7 +50,7 @@ async function bootstrap() {
     });
   });
   
-  console.log(`OpenClaw Server running on 0.0.0.0:${port}`);
+  console.log(`Ice Cola Server running on 0.0.0.0:${port}`);
 
   keepAlive = setInterval(() => {
     console.log(`Server heartbeat - listening on ${port}`);

@@ -6,9 +6,21 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "node dev.mjs",
+    "dev:stop": "node dev.mjs stop",
+    "dev:status": "node dev.mjs status",
     "build": "pnpm -r build",
-    "dev": "pnpm -r dev",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "db:reset": "echo 'Drop and recreate database, then run init.sql' && echo 'Usage: psql -U postgres -d icecola -f init.sql'",
+    "db:seed:models": "psql -U postgres -d icecola -f models.sql",
+    "db:seed:providers": "psql -U postgres -d icecola -f providers.sql",
+    "typecheck": "pnpm -r --filter @ice-cola/server exec -- nest build --dry-run 2>&1 | head -20 || true",
+    "deploy": "./deploy-backend.sh",
+    "deploy:down": "./deploy-backend.sh down",
+    "deploy:ps": "./deploy-backend.sh ps",
+    "deploy:logs": "./deploy-backend.sh logs",
+    "deploy:restart": "./deploy-backend.sh restart"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1"

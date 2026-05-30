@@ -10,6 +10,7 @@ import { Input } from '../components/ui/input';
 import { PasswordInput } from '../components/ui/password-input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
+import { useToast } from '../components/ui/toast';
 import api from '../services/api';
 
 const registerSchema = z.object({
@@ -30,6 +31,7 @@ interface InvitationInfo {
 
 const AcceptInvite: React.FC = () => {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
   const [isValidToken, setIsValidToken] = useState<boolean | null>(null);
@@ -71,7 +73,7 @@ const AcceptInvite: React.FC = () => {
           setIsValidToken(false);
         }
       } catch (error) {
-        setIsValidToken(true);
+        setIsValidToken(false);
       } finally {
         setIsLoading(false);
       }
@@ -92,7 +94,7 @@ const AcceptInvite: React.FC = () => {
       });
       setRegisterSuccess(true);
     } catch (error: any) {
-      alert(error.response?.data?.message || t('acceptInvite.acceptFailed'));
+      toast(error.response?.data?.message || t('acceptInvite.acceptFailed'), 'error');
     } finally {
       setIsRegistering(false);
     }

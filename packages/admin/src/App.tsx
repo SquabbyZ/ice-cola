@@ -9,6 +9,7 @@ import Settings from './pages/Settings';
 import Profile from './pages/Profile';
 import AcceptInvite from './pages/AcceptInvite';
 import ForgotPassword from './pages/ForgotPassword';
+import NotFound from './pages/NotFound';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import AiSettings from './pages/ai/AISettings';
@@ -114,6 +115,7 @@ const App: React.FC = () => {
               </ProtectedRoute>
             }
           />
+          <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
     </ErrorBoundary>
