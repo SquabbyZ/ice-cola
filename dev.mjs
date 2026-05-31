@@ -38,12 +38,19 @@ const SERVERS = {
     args: ['--filter', 'openclaw-desktop', 'dev'],
     cwd: ROOT,
   },
+  hermes: {
+    name: 'Hermes Dashboard',
+    port: 9119,
+    cmd: 'python',
+    args: ['-m', 'hermes_cli.main', 'dashboard', '--port', '9119'],
+    cwd: resolve(ROOT, 'packages/hermes-agent'),
+  },
 };
 
 const processes = {};
 
 function log(tag, msg) {
-  const prefix = { server: '\x1b[33m[srv]\x1b[0m', admin: '\x1b[32m[adm]\x1b[0m', client: '\x1b[36m[cli]\x1b[0m' }[tag] || `[${tag}]`;
+  const prefix = { server: '\x1b[33m[srv]\x1b[0m', admin: '\x1b[32m[adm]\x1b[0m', client: '\x1b[36m[cli]\x1b[0m', hermes: '\x1b[35m[hrm]\x1b[0m' }[tag] || `[${tag}]`;
   console.log(`${prefix} ${msg}`);
 }
 
@@ -128,6 +135,7 @@ function printBanner() {
   Admin:   http://localhost:1992
   Client:  http://localhost:1420
   Server:  http://localhost:3000
+  Hermes:  http://localhost:9119
 
   Press Ctrl+C to stop all servers
 `);
@@ -169,3 +177,4 @@ process.on('SIGTERM', shutdown);
 startServer('server');
 startServer('admin');
 startServer('client');
+startServer('hermes');

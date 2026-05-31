@@ -18,5 +18,14 @@ module.exports = {
         NODE_ENV: 'development',
       },
     },
+    {
+      name: 'ice-cola-hermes-9119',
+      cwd: './packages/hermes-agent',
+      script: 'python',
+      args: '-m hermes_cli.main web --port 9119',
+      env: {
+        NODE_ENV: 'development',
+      },
+    },
   ],
 };

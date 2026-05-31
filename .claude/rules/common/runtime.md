@@ -48,6 +48,7 @@ pnpm playwright test
 |---|---|---|
 | 1992 | ice-cola-admin-1992 | Vite Admin |
 | 1420 | ice-cola-client-1420 | Vite Client |
+| 9119 | ice-cola-hermes-9119 | Hermes Dashboard |
 
 ## PM2 Commands
 
@@ -60,6 +61,8 @@ cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ice-cola-admin-1
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop ice-cola-admin-1992
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ice-cola-client-1420
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop ice-cola-client-1420
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 start ice-cola-hermes-9119
+cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 stop ice-cola-hermes-9119
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 logs
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 status
 cd "c:/Users/smallMark/Desktop/peaksclaw/ice-cola" && pm2 monit

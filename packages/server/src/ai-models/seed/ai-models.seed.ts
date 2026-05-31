@@ -237,14 +237,28 @@ export async function seedAiModels(
   const providerIds: Record<string, string> = {};
   for (const provider of PROVIDERS_SEED) {
     const id = generateUUID();
-    providerIds[provider.code] = id;
 
     await db.query(
       `INSERT INTO ai_providers (id, name, code, logo_url, website_url, description, sort_order, status, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW(), NOW())
-       ON CONFLICT (code) DO NOTHING`,
+       ON CONFLICT (code) DO UPDATE SET
+         name = EXCLUDED.name,
+         logo_url = EXCLUDED.logo_url,
+         website_url = EXCLUDED.website_url,
+         description = EXCLUDED.description,
+         sort_order = EXCLUDED.sort_order,
+         updated_at = NOW()`,
       [id, provider.name, provider.code, provider.logoUrl || null, provider.websiteUrl || null, provider.description, provider.sortOrder],
     );
+
+    // Fetch the actual provider ID (either newly inserted or existing)
+    const result = await db.query<{ id: string }>(
+      `SELECT id FROM ai_providers WHERE code = $1`,
+      [provider.code],
+    );
+    if (result.length > 0) {
+      providerIds[provider.code] = result[0].id;
+    }
   }
 
   console.log('Seeding AI models...');
@@ -257,7 +271,16 @@ export async function seedAiModels(
     await db.query(
       `INSERT INTO ai_models (id, provider_id, name, model_id, model_type, description, context_window, input_price_per_1m, output_price_per_1m, sort_order, status, capabilities, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'active', $11, NOW(), NOW())
-       ON CONFLICT (provider_id, model_id) DO NOTHING`,
+       ON CONFLICT (provider_id, model_id) DO UPDATE SET
+         name = EXCLUDED.name,
+         model_type = EXCLUDED.model_type,
+         description = EXCLUDED.description,
+         context_window = EXCLUDED.context_window,
+         input_price_per_1m = EXCLUDED.input_price_per_1m,
+         output_price_per_1m = EXCLUDED.output_price_per_1m,
+         sort_order = EXCLUDED.sort_order,
+         capabilities = EXCLUDED.capabilities,
+         updated_at = NOW()`,
       [id, providerId, model.name, model.modelId, model.modelType, model.description || null, model.contextWindow || null, model.inputPricePer1m || null, model.outputPricePer1m || null, model.sortOrder, model.capabilities ? JSON.stringify(model.capabilities) : null],
     );
   }
