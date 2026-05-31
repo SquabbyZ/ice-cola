@@ -51,8 +51,9 @@ const Layout: React.FC = () => {
     : navItems.filter((item) => !adminOnlyPaths.includes(item.path));
 
   const aiNavItems = [
-    { path: '/ai/settings', label: t('ai.nav.settings') },
+    { path: '/ai/settings', label: t('ai.nav.settings'), adminOnly: true },
   ];
+  const filteredAiNavItems = isAdmin ? aiNavItems : aiNavItems.filter(item => !item.adminOnly);
 
   const handleLogout = () => {
     logout();
@@ -247,7 +248,7 @@ const Layout: React.FC = () => {
                     <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
                       {t('ai.nav.title')}
                     </div>
-                    {aiNavItems.map((item) => {
+                    {filteredAiNavItems.map((item) => {
                       const isActive = location.pathname === item.path;
                       return (
                         <DropdownMenuItem key={item.path} asChild>
@@ -314,7 +315,7 @@ const Layout: React.FC = () => {
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                         className="ml-3 mt-2 space-y-1 overflow-hidden"
                       >
-                        {aiNavItems.map((item) => {
+                        {filteredAiNavItems.map((item) => {
                           const isActive = location.pathname === item.path;
                           return (
                             <Link

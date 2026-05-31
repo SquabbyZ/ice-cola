@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -18,6 +18,7 @@ import {
   DropdownMenuItem,
 } from '../components/ui/dropdown-menu';
 import { useAuthStore } from '../stores/authStore';
+import { useToast } from '../components/ui/toast';
 import api from '../services/api';
 import FloatingLines from '../components/FloatingLines';
 
@@ -37,6 +38,13 @@ const Login: React.FC = () => {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
+  const { toast } = useToast();
+  const [checkingOwner, setCheckingOwner] = useState(true);
+
+  // Check if already logged in
+  const storedToken = localStorage.getItem('adminToken');
+  const storedUser = localStorage.getItem('adminUser');
+  const parsedUser = storedUser ? JSON.parse(storedUser) : null;
   const {
     register,
     handleSubmit,
@@ -48,6 +56,30 @@ const Login: React.FC = () => {
 
   const currentLang = languages.find((l) => l.code === i18n.language) || languages[0];
 
+  useEffect(() => {
+    // Redirect to dashboard if already logged in
+    if (storedToken && parsedUser) {
+      navigate('/', { replace: true });
+      return;
+    }
+
+    const checkOwner = async () => {
+      try {
+        const response = await api.get('/admin/auth/has-owner');
+        if (!response.data.data.hasOwner) {
+          navigate('/register-owner', { replace: true });
+          return;
+        }
+      } catch (error) {
+        // If API fails, continue with login form
+        console.error('Failed to check owner:', error);
+      } finally {
+        setCheckingOwner(false);
+      }
+    };
+    checkOwner();
+  }, [navigate]);
+
   const onSubmit = async (data: LoginForm) => {
     try {
       const response = await api.post('/admin/auth/login', data);
@@ -56,10 +88,17 @@ const Login: React.FC = () => {
       navigate('/');
     } catch (error: any) {
       const message = error.response?.data?.message || t('login.loginFailed');
-      setError('email', { message });
-      setError('password', { message });
+      toast(message, 'error');
     }
   };
+
+  if (checkingOwner) {
+    return (
+      <div className="min-h-[100dvh] flex items-center justify-center bg-gray-900">
+        <Spinner className="h-8 w-8 text-white" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] relative">

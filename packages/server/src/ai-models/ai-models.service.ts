@@ -1123,9 +1123,16 @@ export class AiModelsService implements OnModuleInit {
 
   async onModuleInit() {
     try {
+      console.log('[AiModelsService] Starting AI models seed...');
       await seedAiModels(this.db, this.encryption);
+      console.log('[AiModelsService] AI models seed completed successfully');
     } catch (error) {
-      console.error('Failed to seed AI models:', error);
+      console.error('[AiModelsService] CRITICAL: Failed to seed AI models:', error);
+      console.error('[AiModelsService] This may cause LINGQI_MODEL_UNAVAILABLE errors when users try to send messages');
+      console.error('[AiModelsService] Please check database connection and migrations');
+      // Re-throw to make the failure visible in application logs
+      // Note: NestJS will continue startup even if onModuleInit fails
+      throw error;
     }
   }
 

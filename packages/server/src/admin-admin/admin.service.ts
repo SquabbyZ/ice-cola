@@ -62,6 +62,14 @@ export class AdminService {
     );
   }
 
+  async hasOwner(): Promise<boolean> {
+    const owner = await this.db.queryOne<AdminUser>(
+      'SELECT id FROM admin_users WHERE role = $1 LIMIT 1',
+      [AdminRole.OWNER]
+    );
+    return owner !== null;
+  }
+
   // ========== Create User ==========
 
   async createAdmin(data: {

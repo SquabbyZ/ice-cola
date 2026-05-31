@@ -1221,7 +1221,7 @@ describe('GatewayService extensions', () => {
       messageId: 'message-1',
     });
 
-    expect(result).toEqual({ ok: false, messageId: 'message-1', error: 'LINGQI_MODEL_UNAVAILABLE' });
+    expect(result).toEqual({ ok: false, messageId: 'message-1', error: '模型 demo-catalog-model 配置缺失或未激活，请联系管理员' });
     expect(post).not.toHaveBeenCalled();
     expect(quotaService.refundLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
       amount: 10,
@@ -1252,7 +1252,7 @@ describe('GatewayService extensions', () => {
       messageId: 'message-1',
     });
 
-    expect(result).toEqual({ ok: false, messageId: 'message-1', error: 'LINGQI_MODEL_UNAVAILABLE' });
+    expect(result).toEqual({ ok: false, messageId: 'message-1', error: '模型 provider-model 的 API 密钥未配置，请联系管理员' });
     expect(post).not.toHaveBeenCalled();
     expect(sendLegacyHermesMessage).not.toHaveBeenCalled();
     expect(quotaService.refundLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
@@ -1284,7 +1284,7 @@ describe('GatewayService extensions', () => {
       messageId: 'message-1',
     });
 
-    expect(result).toEqual({ ok: false, messageId: 'message-1', error: 'LINGQI_MODEL_UNAVAILABLE' });
+    expect(result).toEqual({ ok: false, messageId: 'message-1', error: '模型 provider-model 的 API 密钥解密失败，请联系管理员' });
     expect(post).not.toHaveBeenCalled();
     expect(sendLegacyHermesMessage).not.toHaveBeenCalled();
     expect(quotaService.refundLingqi).toHaveBeenCalledWith('team-1', 'user-1', expect.objectContaining({
@@ -1807,7 +1807,7 @@ describe('GatewayService extensions', () => {
       expect(options.headers['anthropic-version']).toBe('2023-06-01');
     });
 
-    it('returns LINGQI_MODEL_UNAVAILABLE when no admin endpoint configured and Hermes Agent is unhealthy (G3 fix)', async () => {
+    it('returns specific error message when no admin endpoint configured and Hermes Agent is unhealthy (G3 fix)', async () => {
       preparedHealthyLingqi();
       jest.spyOn(service as any, 'checkHermesAgentHealth').mockResolvedValue(false);
       aiModelsService.findExecutableModelByModelId.mockResolvedValue(providerModelFixture({
@@ -1831,7 +1831,7 @@ describe('GatewayService extensions', () => {
       expect(result).toEqual(expect.objectContaining({
         ok: false,
         messageId: 'msg-mm-2',
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: '模型 MiniMax-M2.7 的 API 端点未配置，请联系管理员',
       }));
       // Critical: must NOT fall back to HERMES_ENDPOINT (G3 regression guard).
       expect(quotaService.refundLingqi).toHaveBeenCalled();

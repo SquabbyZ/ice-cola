@@ -110,3 +110,17 @@ ice-cola/
 ├── CONFIG.md
 └── CLAUDE.md
 ```
+
+
+<!-- peaks-standards:index:start -->
+## Peaks Standards Index
+- Constitution: `CLAUDE.md` is the repository-wide constitution.
+- Local laws: `.claude/rules/**` are project-local laws and are created only when missing.
+- Managed by: `peaks standards update`.
+- Managed files:
+  - `.claude/rules/common/code-review.md`
+  - `.claude/rules/common/coding-style.md`
+  - `.claude/rules/common/security.md`
+  - .claude/rules/javascript/coding-style.md
+- Conflict note: keep the existing body unchanged and resolve any disagreement manually before the next standards update.
+<!-- peaks-standards:index:end -->

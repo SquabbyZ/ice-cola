@@ -65,14 +65,18 @@ export class AdminLingqiController {
   @Get('ledger')
   @AdminRoles(AdminRole.OWNER)
   async listLedger(@Query() query: AdminLingqiLedgerQuery) {
-    if (!query.teamId) {
-      throw new ForbiddenException('Team selection required');
+    if (query.teamId) {
+      const { teamId, ...scopedQuery } = query;
+      return {
+        success: true,
+        data: await this.quotaService.listAdminLingqiLedgerEntries(teamId, scopedQuery),
+      };
     }
 
-    const { teamId, ...scopedQuery } = query;
+    // If no teamId, return empty result
     return {
       success: true,
-      data: await this.quotaService.listAdminLingqiLedgerEntries(teamId, scopedQuery),
+      data: { items: [], total: 0, limit: query.limit || 10, offset: query.offset || 0 },
     };
   }
 }

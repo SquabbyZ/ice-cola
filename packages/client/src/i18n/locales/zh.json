@@ -143,6 +143,8 @@
     "timeoutRetry": "（响应超时，请重试；请刷新灵气余额确认扣费状态）",
     "errors": {
       "teamRequired": "请先加入或创建团队后再开始聊天",
+      "teamIdMissing": "账户配置异常",
+      "teamIdMissingDescription": "您的账户缺少团队信息，请重新登录。如果问题持续，请联系管理员。",
       "modelTeamRequired": "请先加入或创建宗门后再选择灵气模型。",
       "newConversationTeamRequired": "请先加入或创建宗门后再开启新的灵气对话。",
       "modelSwitchFailed": "灵气模型切换失败，请稍后重试。",

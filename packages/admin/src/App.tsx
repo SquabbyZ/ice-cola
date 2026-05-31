@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Login from './pages/Login';
+import OwnerRegistration from './pages/OwnerRegistration';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
@@ -24,6 +25,7 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register-owner" element={<OwnerRegistration />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/accept-invite" element={<AcceptInvite />} />
         <Route path="/" element={<Layout />}>

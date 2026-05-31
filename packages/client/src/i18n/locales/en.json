@@ -140,6 +140,8 @@
     "timeoutRetry": "(Response timeout, please retry; refresh Lingqi balance to confirm charge status)",
     "errors": {
       "teamRequired": "Join or create a team before chatting",
+      "teamIdMissing": "Account Configuration Error",
+      "teamIdMissingDescription": "Your account is missing team information. Please log in again. If the problem persists, contact the administrator.",
       "modelTeamRequired": "Join or create a sect before selecting a Lingqi model.",
       "newConversationTeamRequired": "Join or create a sect before starting a new Lingqi conversation.",
       "modelSwitchFailed": "Failed to switch Lingqi model. Please try again later.",

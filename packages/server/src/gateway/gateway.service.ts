@@ -1116,10 +1116,20 @@ export class GatewayService {
     const providerModel = await this.resolveProviderModelForLingqiCharge(lingqiCharge);
 
     if (!providerModel) {
+      const errorMessage = lingqiCharge.executionModelName
+        ? `模型 ${lingqiCharge.executionModelName} 配置缺失或未激活，请联系管理员`
+        : '请选择 AI 模型';
+
+      this.logger.warn(`[sendHermesMessage] Provider model resolution failed: ${errorMessage}`);
+      this.sendStreamEvent('hermes.error', {
+        messageId,
+        error: errorMessage,
+      }, senderWs);
+
       const result = await this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
         ok: false,
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       });
       return result;
     }
@@ -1130,43 +1140,46 @@ export class GatewayService {
 
     const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerId);
     if (!apiKeyRecord) {
-      this.logger.warn(`No active API key for provider ${providerModel.provider_name}`);
+      const errorMessage = `模型 ${providerModel.model_id} 的 API 密钥未配置，请联系管理员`;
+      this.logger.warn(`[sendHermesMessage] No active API key for provider ${providerModel.provider_name}`);
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       }, senderWs);
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
         ok: false,
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       });
     }
 
     const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
     if (!decryptedKey) {
-      this.logger.warn(`Failed to decrypt API key for provider ${providerModel.provider_name}`);
+      const errorMessage = `模型 ${providerModel.model_id} 的 API 密钥解密失败，请联系管理员`;
+      this.logger.warn(`[sendHermesMessage] Failed to decrypt API key for provider ${providerModel.provider_name}`);
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       }, senderWs);
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
         ok: false,
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       });
     }
 
     const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerId);
     if (!endpoint?.base_url) {
-      this.logger.warn(`No active endpoint configured for provider ${providerModel.provider_name}`);
+      const errorMessage = `模型 ${providerModel.model_id} 的 API 端点未配置，请联系管理员`;
+      this.logger.warn(`[sendHermesMessage] No active endpoint configured for provider ${providerModel.provider_name}`);
       this.sendStreamEvent('hermes.error', {
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       }, senderWs);
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
         ok: false,
         messageId,
-        error: 'LINGQI_MODEL_UNAVAILABLE',
+        error: errorMessage,
       });
     }
 
@@ -1611,10 +1624,18 @@ export class GatewayService {
 
   private async resolveProviderModelForLingqiCharge(lingqiCharge: LingqiChargeDecision): Promise<ProviderModelRow | null> {
     if (!lingqiCharge.executionModelName) {
+      this.logger.warn('[resolveProviderModelForLingqiCharge] executionModelName is empty or undefined');
       return null;
     }
 
-    return this.aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
+    this.logger.log(`[resolveProviderModelForLingqiCharge] Resolving provider model for: ${lingqiCharge.executionModelName}`);
+    const result = await this.aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
+
+    if (!result) {
+      this.logger.warn(`[resolveProviderModelForLingqiCharge] No active model found for model_id: ${lingqiCharge.executionModelName}`);
+    }
+
+    return result;
   }
 
   private async tryBuildHermesProviderOverride(

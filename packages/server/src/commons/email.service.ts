@@ -92,7 +92,7 @@ export class EmailService {
     if (!apiKey) {
       this.logger.warn('Resend API key not configured (env or admin), logging email instead');
       this.logger.log(`[DEV] Email to ${to}:\nSubject: ${subject}\n${html}`);
-      return;
+      throw new Error('EMAIL_NOT_CONFIGURED: Email service is not configured. Please contact administrator.');
     }
 
     const fromEmail = await this.getResendFromEmail();

@@ -22,6 +22,15 @@ import { TeamRole } from '../quota/quota.service';
 export class AdminController {
   constructor(private readonly adminService: AdminService) {}
 
+  @Get('has-owner')
+  async hasOwner() {
+    const exists = await this.adminService.hasOwner();
+    return {
+      success: true,
+      data: { hasOwner: exists },
+    };
+  }
+
   @Post('login')
   async login(@Body() dto: LoginDto) {
     const result = await this.adminService.login(dto);
@@ -71,14 +80,13 @@ export class AdminController {
   }
 
   @Post('invitations')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
-  async createInvitation(@Body() dto: CreateInvitationDto) {
-    // Note: In a real app, you'd get the current user from JWT
+  async createInvitation(@Body() dto: CreateInvitationDto, @Request() req: any) {
     const result = await this.adminService.createInvitation(
       dto.email,
       dto.role,
-      'system' // TODO: Get from JWT
+      req.user.sub
     );
     return {
       success: true,
@@ -87,7 +95,7 @@ export class AdminController {
   }
 
   @Get('invitations')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async getInvitations() {
     const result = await this.adminService.getInvitations();
@@ -120,7 +128,7 @@ export class AdminController {
   }
 
   @Get('invitations/:token')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async getInvitationByToken(@Param('token') token: string) {
     const result = await this.adminService.getInvitationByToken(token);
@@ -131,7 +139,7 @@ export class AdminController {
   }
 
   @Delete('invitations/:id')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async revokeInvitation(@Param('id') id: string) {
     await this.adminService.revokeInvitation(id);
@@ -172,7 +180,7 @@ export class AdminController {
   }
 
   @Delete('users/:id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(AdminJwtAuthGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async removeUser(@Param('id') id: string) {
     await this.adminService.removeUser(id);
@@ -198,7 +206,7 @@ export class AdminController {
   // ========== Update User Role ==========
 
   @Put('users/:id/role')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async updateUserRole(@Param('id') id: string, @Body() body: { role: string }) {
     const result = await this.adminService.updateUserRole(id, body.role);
@@ -212,7 +220,7 @@ export class AdminController {
   // ========== Transfer Ownership ==========
 
   @Put('users/:id/transfer-owner')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER)
   async transferOwner(@Param('id') id: string) {
     const result = await this.adminService.transferOwner(id);

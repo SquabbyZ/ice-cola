@@ -99,6 +99,16 @@ const Chat: React.FC = () => {
     clearSelectedModel,
   } = useLingqiStore();
 
+  // Detect missing teamId and show error message
+  useEffect(() => {
+    if (user && !teamId) {
+      toast.error(t('chat.errors.teamIdMissing'), {
+        description: t('chat.errors.teamIdMissingDescription'),
+        duration: 10000,
+      });
+    }
+  }, [user, teamId, t]);
+
   const streamRefs = useHermesStreamEvents({
     messages,
     on,
