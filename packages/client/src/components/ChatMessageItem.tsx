@@ -81,7 +81,7 @@ function ChatMessageItem({ message, onEdit, onDelete, onRegenerate }: ChatMessag
                   ))}
                 </div>
               )}
-              <MarkdownContent content={message.content} />
+              <MarkdownContent content={message.content} displayLength={message.displayLength} />
               {isStreaming && (
                 <span className="inline-block ml-1 w-2 h-4 bg-primary/40 animate-pulse rounded-full" />
               )}

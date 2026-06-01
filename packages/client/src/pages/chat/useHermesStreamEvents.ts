@@ -44,6 +44,9 @@ export function useHermesStreamEvents({
   const timedOutStreamIdsRef = useRef<Set<string>>(new Set());
   const pendingFlushRef = useRef<Set<string>>(new Set());
   const rafIdRef = useRef<number>(0);
+  const displayedLengthRef = useRef<Record<string, number>>({});
+  const animatingRef = useRef<boolean>(false);
+  const CHARS_PER_FRAME = 3;
 
   messagesRef.current = messages;
 
@@ -57,36 +60,55 @@ export function useHermesStreamEvents({
   useEffect(() => {
     if (chatListenerRegisteredRef.current) return;
 
-    const flushPendingDeltas = (): void => {
+    const animateTypewriter = (): void => {
       rafIdRef.current = 0;
       const store = useChatStore.getState();
+      let hasMore = false;
+
       for (const msgId of pendingFlushRef.current) {
-        const accumulated = deltaAccumulatorRef.current[msgId];
-        if (!accumulated) continue;
+        const full = deltaAccumulatorRef.current[msgId];
+        if (!full) continue;
+        const current = displayedLengthRef.current[msgId] || 0;
+        if (current < full.length) {
+          const next = Math.min(current + CHARS_PER_FRAME, full.length);
+          displayedLengthRef.current[msgId] = next;
+          hasMore = true;
+        }
+
+        const displayText = full.slice(0, displayedLengthRef.current[msgId]);
         const currentMessages = messagesRef.current;
         const messageIndex = currentMessages.findIndex((msg) => msg.runId === msgId);
         if (messageIndex >= 0) {
           store.updateMessage(currentMessages[messageIndex].id, {
-            content: accumulated,
+            content: displayText,
             status: 'streaming',
+            displayLength: displayedLengthRef.current[msgId],
           });
         } else {
           store.addMessage({
             id: msgId,
             role: 'assistant',
-            content: accumulated,
+            content: displayText,
             timestamp: Date.now(),
             status: 'streaming',
             runId: msgId,
+            displayLength: displayedLengthRef.current[msgId],
           });
         }
       }
-      pendingFlushRef.current.clear();
+
+      if (hasMore) {
+        rafIdRef.current = requestAnimationFrame(animateTypewriter);
+      } else {
+        animatingRef.current = false;
+        pendingFlushRef.current.clear();
+      }
     };
 
     const scheduleFlush = (): void => {
-      if (rafIdRef.current === 0) {
-        rafIdRef.current = requestAnimationFrame(flushPendingDeltas);
+      if (!animatingRef.current) {
+        animatingRef.current = true;
+        rafIdRef.current = requestAnimationFrame(animateTypewriter);
       }
     };
 
@@ -110,10 +132,18 @@ export function useHermesStreamEvents({
       const currentMessages = messagesRef.current;
       const messageIndex = currentMessages.findIndex((msg) => msg.runId === msgId);
 
+      // Set accumulator and displayLength to final values but DO NOT remove from pendingFlushRef.
+      // This lets the rAF animation finish naturally and display the complete content.
+      deltaAccumulatorRef.current[msgId] = finalContent;
+      displayedLengthRef.current[msgId] = finalContent.length;
+      // pendingFlushRef.current.delete(msgId) is intentionally omitted — the animation frame
+      // that follows will detect hasMore=false and clean up itself.
+
       if (messageIndex >= 0) {
         useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
           content: finalContent,
           status: 'complete',
+          displayLength: finalContent.length,
         });
       } else if (finalContent && !currentMessages.find((msg) => msg.id === msgId)) {
         useChatStore.getState().addMessage({
@@ -123,6 +153,7 @@ export function useHermesStreamEvents({
           timestamp: Date.now(),
           status: 'complete',
           runId: msgId,
+          displayLength: finalContent.length,
         });
       }
 
@@ -139,8 +170,14 @@ export function useHermesStreamEvents({
         });
       }
 
-      delete deltaAccumulatorRef.current[msgId];
-      delete streamContextsRef.current[msgId];
+      // Clean up only after animation has had a chance to run
+      setTimeout(() => {
+        delete deltaAccumulatorRef.current[msgId];
+        delete displayedLengthRef.current[msgId];
+        pendingFlushRef.current.delete(msgId);
+        delete streamContextsRef.current[msgId];
+      }, 500);
+
       useChatStore.getState().setSending(false);
       useChatStore.getState().setActiveStreamId(null);
     };
@@ -150,6 +187,8 @@ export function useHermesStreamEvents({
       if (!msgId) return;
 
       timeoutManager.current.clear(msgId);
+      delete displayedLengthRef.current[msgId];
+      pendingFlushRef.current.delete(msgId);
       delete streamContextsRef.current[msgId];
       const currentMessages = messagesRef.current;
       const messageIndex = currentMessages.findIndex((msg) => msg.runId === msgId);
@@ -173,6 +212,7 @@ export function useHermesStreamEvents({
       }
 
       delete deltaAccumulatorRef.current[msgId];
+      delete displayedLengthRef.current[msgId];
       useChatStore.getState().setSending(false);
       useChatStore.getState().setActiveStreamId(null);
     };
@@ -213,7 +253,9 @@ export function useHermesStreamEvents({
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = 0;
+      animatingRef.current = false;
       pendingFlushRef.current.clear();
+      displayedLengthRef.current = {};
       unsubscribeHermesDelta();
       unsubscribeHermesFinal();
       unsubscribeHermesError();

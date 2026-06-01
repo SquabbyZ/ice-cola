@@ -28,6 +28,8 @@ export interface ChatMessage {
   status?: 'sending' | 'streaming' | 'complete' | 'error' | 'pending';
   toolCalls?: ToolCallResult[];
   attachments?: Attachment[];
+  /** 流式打字机阶段渲染到第几个字符；undefined 时渲染完整 content */
+  displayLength?: number;
 }
 
 export interface PendingMessage {

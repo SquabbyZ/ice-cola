@@ -7,6 +7,8 @@ import 'highlight.js/styles/github.css';
 
 interface MarkdownContentProps {
   content: string;
+  /** 当提供时，仅渲染前 displayLength 个纯文本字符（用于流式打字机效果） */
+  displayLength?: number;
 }
 
 function parseThinkingContent(content: string): { thinking: string | null; main: string } {
@@ -47,9 +49,22 @@ const ThinkingBlock: React.FC<{ thinking: string }> = ({ thinking }) => {
   );
 };
 
-const MarkdownContent: React.FC<MarkdownContentProps> = ({ content }) => {
+const MarkdownContent: React.FC<MarkdownContentProps> = ({ content, displayLength }) => {
   const [copiedCodeBlock, setCopiedCodeBlock] = React.useState<string | null>(null);
   const { thinking, main } = parseThinkingContent(content);
+
+  // Streaming typewriter phase: render raw text prefix directly to avoid expensive markdown parsing.
+  // Full markdown rendering kicks in once streaming ends (displayLength becomes undefined).
+  const isStreaming = displayLength !== undefined && displayLength < content.length;
+  if (isStreaming) {
+    const rawText = main.slice(0, displayLength);
+    return (
+      <div className="markdown-content prose prose-sm max-w-none">
+        {thinking && <ThinkingBlock thinking={thinking} />}
+        <p className="my-2 text-sm leading-relaxed whitespace-pre-wrap break-words">{rawText}</p>
+      </div>
+    );
+  }
 
   const handleCopyCode = async (code: string, blockId: string) => {
     try {
