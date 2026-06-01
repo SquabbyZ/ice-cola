@@ -42,6 +42,8 @@ export function useHermesStreamEvents({
   const deltaAccumulatorRef = useRef<Record<string, string>>({});
   const streamContextsRef = useRef<Record<string, StreamContext>>({});
   const timedOutStreamIdsRef = useRef<Set<string>>(new Set());
+  const pendingFlushRef = useRef<Set<string>>(new Set());
+  const rafIdRef = useRef<number>(0);
 
   messagesRef.current = messages;
 
@@ -55,31 +57,46 @@ export function useHermesStreamEvents({
   useEffect(() => {
     if (chatListenerRegisteredRef.current) return;
 
+    const flushPendingDeltas = (): void => {
+      rafIdRef.current = 0;
+      const store = useChatStore.getState();
+      for (const msgId of pendingFlushRef.current) {
+        const accumulated = deltaAccumulatorRef.current[msgId];
+        if (!accumulated) continue;
+        const currentMessages = messagesRef.current;
+        const messageIndex = currentMessages.findIndex((msg) => msg.runId === msgId);
+        if (messageIndex >= 0) {
+          store.updateMessage(currentMessages[messageIndex].id, {
+            content: accumulated,
+            status: 'streaming',
+          });
+        } else {
+          store.addMessage({
+            id: msgId,
+            role: 'assistant',
+            content: accumulated,
+            timestamp: Date.now(),
+            status: 'streaming',
+            runId: msgId,
+          });
+        }
+      }
+      pendingFlushRef.current.clear();
+    };
+
+    const scheduleFlush = (): void => {
+      if (rafIdRef.current === 0) {
+        rafIdRef.current = requestAnimationFrame(flushPendingDeltas);
+      }
+    };
+
     const handleHermesDelta = (data: HermesDeltaEvent): void => {
       const msgId = data.messageId || data.runId;
       if (!msgId || timedOutStreamIdsRef.current.has(msgId)) return;
 
       deltaAccumulatorRef.current[msgId] = (deltaAccumulatorRef.current[msgId] || '') + (data.delta || '');
-      const accumulated = deltaAccumulatorRef.current[msgId];
-      const currentMessages = messagesRef.current;
-      const messageIndex = currentMessages.findIndex((msg) => msg.runId === msgId);
-
-      if (messageIndex >= 0) {
-        useChatStore.getState().updateMessage(currentMessages[messageIndex].id, {
-          content: accumulated,
-          status: 'streaming',
-        });
-      } else if (accumulated) {
-        useChatStore.getState().addMessage({
-          id: msgId,
-          role: 'assistant',
-          content: accumulated,
-          timestamp: Date.now(),
-          status: 'streaming',
-          runId: msgId,
-        });
-      }
-
+      pendingFlushRef.current.add(msgId);
+      scheduleFlush();
       timeoutManager.current.clear(msgId);
     };
 
@@ -194,6 +211,9 @@ export function useHermesStreamEvents({
     const unsubscribeHermesTool = on('hermes.tool', (data) => handleHermesTool(data as HermesToolEvent));
 
     return () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = 0;
+      pendingFlushRef.current.clear();
       unsubscribeHermesDelta();
       unsubscribeHermesFinal();
       unsubscribeHermesError();

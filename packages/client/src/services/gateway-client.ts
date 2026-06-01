@@ -406,7 +406,7 @@ export class GatewayClient {
 
   /**
    * 触发事件
-   * 
+   *
    * @param frame 事件帧
    */
   private emitEvent(frame: GatewayMessage): void {
@@ -415,18 +415,13 @@ export class GatewayClient {
       return;
     }
 
-    console.log('🔔 [GatewayClient] Emitting event:', frame.event, 'with payload:', JSON.stringify(frame.payload || frame.data, null, 2));
-    
     const handlers = this.eventHandlers.get(frame.event);
     if (!handlers || handlers.size === 0) {
-      console.log('📨 No handlers for event:', frame.event);
       return;
     }
 
-    console.log(`✅ Found ${handlers.size} handler(s) for event: ${frame.event}`);
-    
-    // 调用所有处理器 - Gateway 使用 payload 而不是 data
-    const eventData = frame.payload || frame.data;
+    // 调用所有处理器 - Gateway 使用 data 而不是 payload
+    const eventData = frame.data || frame.payload;
     handlers.forEach(handler => {
       try {
         handler(eventData);
