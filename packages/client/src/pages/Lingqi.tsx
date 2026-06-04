@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { AlertCircle, Crown, Gem, History, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
@@ -96,12 +96,9 @@ export default function Lingqi() {
     void loadLingqi(teamId);
   }, [loadLingqi, teamId]);
 
-  const availableModels = useMemo(
-    () => models.filter((model) => model.isAvailable),
-    [models],
-  );
-
-  const selectedModelId = selectedModel?.id ?? availableModels[0]?.id;
+  // selectedModel from store is set by prior user selection; fall back to the first of ALL returned
+  // models (not filtered by isAvailable) so higher-rank models are reachable in the selector
+  const selectedModelId = selectedModel?.id ?? models[0]?.id;
 
   useEffect(() => {
     if (!teamId || !selectedModelId) {
