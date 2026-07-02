@@ -1075,3 +1075,20 @@ COMMENT ON TABLE ai_model_configs IS 'Model parameters and configurations';
 COMMENT ON TABLE ai_default_models IS 'System default model selections';
 COMMENT ON TABLE ai_team_quotas IS 'Team-based quota management for AI usage';
 COMMENT ON TABLE ai_usage_logs IS 'Usage tracking for AI models';
+
+-- ============================================
+-- 2026-07-02 admin audit log
+-- ============================================
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  "adminId" UUID,
+  action VARCHAR(64) NOT NULL,
+  "targetId" UUID,
+  "targetEmail" VARCHAR(255),
+  metadata JSONB,
+  ip VARCHAR(45),
+  "userAgent" VARCHAR(512),
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_adminId ON admin_audit_logs ("adminId");
+CREATE INDEX IF NOT EXISTS idx_admin_audit_logs_createdAt ON admin_audit_logs ("createdAt" DESC);

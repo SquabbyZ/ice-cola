@@ -3,6 +3,8 @@ import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService as NestConfigService } from '@nestjs/config';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { AdminAuditService } from './admin-audit.service';
+import { AdminAuditController } from './admin-audit.controller';
 import { ConfigController } from './config.controller';
 import { ConfigService } from './config.service';
 import { EmailTemplateController } from './email-template.controller';
@@ -25,8 +27,8 @@ import { AuthModule } from '../auth/auth.module';
     }),
     forwardRef(() => AuthModule),
   ],
-  controllers: [AdminController, ConfigController, EmailTemplateController],
-  providers: [AdminService, ConfigService, EmailTemplateService],
-  exports: [AdminService, ConfigService, EmailTemplateService],
+  controllers: [AdminController, AdminAuditController, ConfigController, EmailTemplateController],
+  providers: [AdminService, AdminAuditService, ConfigService, EmailTemplateService],
+  exports: [AdminService, AdminAuditService, ConfigService, EmailTemplateService],
 })
 export class AdminModule {}

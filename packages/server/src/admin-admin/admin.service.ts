@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
@@ -13,6 +13,7 @@ import {
   CreateInvitationDto,
   AcceptInvitationDto,
 } from './dto/invite.dto';
+import { AdminAuditService } from './admin-audit.service';
 
 export interface AdminUser {
   id: string;
@@ -44,7 +45,13 @@ export class AdminService {
     private configService: ConfigService,
     private captchaService: CaptchaService,
     private emailService: EmailService,
+    @Optional() private audit: AdminAuditService,
   ) {}
+
+  private async safeAudit(entry: Parameters<AdminAuditService['log']>[0]): Promise<void> {
+    if (!this.audit) return;
+    try { await this.audit.log(entry); } catch (e) { console.warn('[admin-audit] failed:', (e as Error).message ?? e); }
+  }
 
   // ========== User Find Methods ==========
 
@@ -264,7 +271,11 @@ export class AdminService {
     );
   }
 
-  async removeUser(id: string): Promise<void> {
+  async removeUser(
+    id: string,
+    ip: string | null = null,
+    userAgent: string | null = null,
+  ): Promise<void> {
     // Prevent removing OWNER
     const admin = await this.findAdminById(id);
     if (!admin) {
@@ -275,9 +286,17 @@ export class AdminService {
     }
 
     await this.db.query('DELETE FROM admin_users WHERE id = $1', [id]);
+
+    // TODO(S-9): pass actor id from controller — see PRD follow-up
+    await this.safeAudit({ adminId: null, action: 'admin.user.remove', targetId: id, targetEmail: admin.email, ip, userAgent });
   }
 
-  async updateUserRole(id: string, role: string): Promise<AdminUser> {
+  async updateUserRole(
+    id: string,
+    role: string,
+    ip: string | null = null,
+    userAgent: string | null = null,
+  ): Promise<AdminUser> {
     if (role !== AdminRole.ADMIN && role !== AdminRole.MEMBER) {
       throw new AppError('INVALID_ROLE', '无效的角色', 400);
     }
@@ -296,10 +315,17 @@ export class AdminService {
       [role, id]
     );
 
+    // TODO(S-9): pass actor id from controller — see PRD follow-up
+    await this.safeAudit({ adminId: null, action: 'admin.user.update_role', targetId: id, targetEmail: admin.email, metadata: { oldRole: admin.role, newRole: role }, ip, userAgent });
+
     return result;
   }
 
-  async transferOwner(newOwnerId: string): Promise<{ newOwner: AdminUser; oldOwner: AdminUser }> {
+  async transferOwner(
+    newOwnerId: string,
+    ip: string | null = null,
+    userAgent: string | null = null,
+  ): Promise<{ newOwner: AdminUser; oldOwner: AdminUser }> {
     const newOwner = await this.findAdminById(newOwnerId);
     if (!newOwner) {
       throw new AppError('USER_NOT_FOUND', '用户不存在', 404);
@@ -330,6 +356,8 @@ export class AdminService {
        RETURNING id, email, name, role, verified, "createdAt", "updatedAt"`,
       [AdminRole.ADMIN, currentOwner.id]
     );
+
+    await this.safeAudit({ adminId: currentOwner.id, action: 'admin.user.transfer_owner', targetId: newOwnerId, targetEmail: newOwner.email, metadata: { oldOwnerId: currentOwner.id, newOwnerId }, ip, userAgent });
 
     return { newOwner: updatedNewOwner, oldOwner: updatedOldOwner };
   }
@@ -374,7 +402,9 @@ export class AdminService {
   async changePassword(
     id: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
+    ip: string | null = null,
+    userAgent: string | null = null,
   ): Promise<void> {
     const admin = await this.findAdminById(id);
     if (!admin) {
@@ -391,6 +421,9 @@ export class AdminService {
       `UPDATE admin_users SET password = $1, "updatedAt" = NOW() WHERE id = $2`,
       [password, id]
     );
+
+    // TODO(S-9): pass actor id from controller — see PRD follow-up
+    await this.safeAudit({ adminId: null, action: 'admin.user.change_password', targetId: id, targetEmail: admin.email, ip, userAgent });
   }
 
   // ========== Verification Code Methods ==========
@@ -496,6 +529,13 @@ export class AdminService {
       `DELETE FROM client_verification_codes WHERE email = $1 AND type = 'reset_password'`,
       [email]
     );
+
+    await this.safeAudit({
+      adminId: null,
+      action: 'admin.user.reset_password',
+      targetId: null,
+      targetEmail: email,
+    });
   }
 
   // ========== Helpers ==========

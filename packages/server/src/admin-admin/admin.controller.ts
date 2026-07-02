@@ -1,4 +1,5 @@
-import { Controller, Post, Body, UseGuards, Get, Delete, Param, Query, Put, Request } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Delete, Param, Put, Request } from '@nestjs/common';
+import type { Request as ExpressRequest } from 'express';
 import { AdminService } from './admin.service';
 import {
   LoginDto,
@@ -12,15 +13,28 @@ import {
   AcceptInvitationDto,
   RevokeInvitationDto,
 } from './dto/invite.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminJwtAuthGuard } from '../auth/admin-jwt-auth.guard';
 import { RolesGuard } from '../common/guards/roles.guard';
 import { Roles } from '../common/decorators/roles.decorator';
 import { TeamRole } from '../quota/quota.service';
 
+const ACTOR_IP_MAX = 45;
+const ACTOR_UA_MAX = 512;
+
+function extractActor(req: ExpressRequest): { ip: string | null; userAgent: string | null } {
+  const rawIp = (req.ip ?? (req.socket as { remoteAddress?: string } | undefined)?.remoteAddress ?? 'unknown').toString();
+  const rawUa = (req.get('user-agent') ?? '').toString();
+  return {
+    ip: rawIp.slice(0, ACTOR_IP_MAX) || null,
+    userAgent: rawUa.slice(0, ACTOR_UA_MAX) || null,
+  };
+}
+
 @Controller('admin/auth')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+  ) {}
 
   @Get('has-owner')
   async hasOwner() {
@@ -182,8 +196,9 @@ export class AdminController {
   @Delete('users/:id')
   @UseGuards(AdminJwtAuthGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
-  async removeUser(@Param('id') id: string) {
-    await this.adminService.removeUser(id);
+  async removeUser(@Param('id') id: string, @Request() req: any) {
+    const actor = extractActor(req as ExpressRequest);
+    await this.adminService.removeUser(id, actor.ip, actor.userAgent);
     return {
       success: true,
       data: null,
@@ -208,8 +223,9 @@ export class AdminController {
   @Put('users/:id/role')
   @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
-  async updateUserRole(@Param('id') id: string, @Body() body: { role: string }) {
-    const result = await this.adminService.updateUserRole(id, body.role);
+  async updateUserRole(@Param('id') id: string, @Body() body: { role: string }, @Request() req: any) {
+    const actor = extractActor(req as ExpressRequest);
+    const result = await this.adminService.updateUserRole(id, body.role, actor.ip, actor.userAgent);
     return {
       success: true,
       data: result,
@@ -222,8 +238,9 @@ export class AdminController {
   @Put('users/:id/transfer-owner')
   @UseGuards(AdminJwtAuthGuard, RolesGuard)
   @Roles(TeamRole.OWNER)
-  async transferOwner(@Param('id') id: string) {
-    const result = await this.adminService.transferOwner(id);
+  async transferOwner(@Param('id') id: string, @Request() req: any) {
+    const actor = extractActor(req as ExpressRequest);
+    const result = await this.adminService.transferOwner(id, actor.ip, actor.userAgent);
     return {
       success: true,
       data: result,
@@ -249,7 +266,8 @@ export class AdminController {
   @UseGuards(AdminJwtAuthGuard)
   async changePassword(@Body() body: { currentPassword: string; newPassword: string }, @Request() req: any) {
     const userId = req.user.sub;
-    await this.adminService.changePassword(userId, body.currentPassword, body.newPassword);
+    const actor = extractActor(req as ExpressRequest);
+    await this.adminService.changePassword(userId, body.currentPassword, body.newPassword, actor.ip, actor.userAgent);
     return {
       success: true,
       data: null,
