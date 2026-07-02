@@ -44,6 +44,7 @@ import {
 } from './gateway.helpers';
 import { GatewayConnectionService } from './gateway-connection.service';
 import { GatewayUsageService } from './gateway-usage.service';
+import { GatewayProviderResolutionService } from './gateway-provider-resolution.service';
 
 @Injectable()
 export class GatewayService {
@@ -51,9 +52,12 @@ export class GatewayService {
   private readonly logger = new Logger(GatewayService.name);
   private activeStreams = new Map<string, ActiveStreamEntry>();
   private readonly refundedLingqiMessages = new Set<string>();
-  private hermesAgentStatus: { healthy: boolean; lastChecked: number } = { healthy: false, lastChecked: 0 };
-  private readonly hermesAgentUrl: string;
-  private readonly HERMES_HEALTH_TTL_MS = 30000;
+  // Slice 2026-07-02-gateway-split-provider-resolution: hermes-agent health
+  // status cache and endpoint URL moved verbatim into
+  // GatewayProviderResolutionService. The facade keeps thin accessors
+  // (`providerResolutionService.getHermesAgentUrl()` /
+  // `getLastHermesChecked()`) so internal callsites (`sendHermesAgentMessage`,
+  // `getHermesAgentStatus`) read identical values without further edits.
   // GatewayConnectionService is normally injected via the constructor
   // (8-arg form, used in production via GatewayModule). For spec/test
   // usage that constructs GatewayService with the original 7-arg form
@@ -77,6 +81,7 @@ export class GatewayService {
   // RD recommendation was option (c): leave facade-state methods on the
   // facade until slice 6 (trio) migrates them properly.
   private readonly usageService: GatewayUsageService;
+  private readonly providerResolutionService: GatewayProviderResolutionService;
 
   constructor(
     private db: DatabaseService,
@@ -88,13 +93,11 @@ export class GatewayService {
     private skillsService: SkillsService,
     connectionService?: GatewayConnectionService,
     usageService?: GatewayUsageService,
+    providerResolutionService?: GatewayProviderResolutionService,
   ) {
-    this.hermesAgentUrl = normalizeInternalServiceUrl(
-      this.configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
-      'HERMES_AGENT_URL',
-    );
     this.connectionService = connectionService ?? this.buildDefaultConnectionService();
     this.usageService = usageService ?? this.buildDefaultUsageService();
+    this.providerResolutionService = providerResolutionService ?? this.buildDefaultProviderResolutionService();
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
@@ -274,6 +277,119 @@ export class GatewayService {
     (defaultSvc as any).getTokenExpiresAt = (payload: GatewayJwtPayload) => getTokenExpiresAt(payload);
     (defaultSvc as any).generateUUID = () => generateUUID();
     (defaultSvc as any).getJwtSecret = () => getJwtSecret(configService);
+
+    return defaultSvc;
+  }
+
+  // Slice 2026-07-02-gateway-split-provider-resolution: build a thin
+  // GatewayProviderResolutionService bound to the existing
+  // aiModelsService / httpService / configService fields. Used only when
+  // the 7-arg spec constructor form is invoked (no DI for the
+  // provider-resolution cluster). Object.create on the prototype to
+  // satisfy the 5 method references the facade's pass-throughs will
+  // dispatch to. The hermes agent health state (`hermesAgentStatus`)
+  // lives on the constructed object via a closure-captured mutable so
+  // `checkHermesAgentHealth` writes and `getHermesAgentStatus` /
+  // `getLastHermesChecked` reads from the same in-memory record (same
+  // TTL semantics as the verbatim extraction).
+  private buildDefaultProviderResolutionService(): GatewayProviderResolutionService {
+    const defaultSvc = Object.create(GatewayProviderResolutionService.prototype) as GatewayProviderResolutionService;
+    const aiModelsService = this.aiModelsService;
+    const httpService = this.httpService;
+    const configService = this.configService;
+    const hermesAgentStatus: { healthy: boolean; lastChecked: number } = { healthy: false, lastChecked: 0 };
+    const hermesAgentUrl = normalizeInternalServiceUrl(
+      configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
+      'HERMES_AGENT_URL',
+    );
+    const HERMES_HEALTH_TTL_MS = 30000;
+    const logger = {
+      log: (..._args: unknown[]) => undefined,
+      warn: (..._args: unknown[]) => undefined,
+      error: (..._args: unknown[]) => undefined,
+      debug: (..._args: unknown[]) => undefined,
+      verbose: (..._args: unknown[]) => undefined,
+    };
+
+    (defaultSvc as any).aiModelsService = aiModelsService;
+    (defaultSvc as any).httpService = httpService;
+    (defaultSvc as any).configService = configService;
+    (defaultSvc as any).logger = logger;
+
+    (defaultSvc as any).getHermesAgentUrl = () => hermesAgentUrl;
+    (defaultSvc as any).getLastHermesChecked = () => hermesAgentStatus.lastChecked;
+
+    (defaultSvc as any).findDefaultGenerateModel = async (_teamId: string): Promise<ProviderModelRow | null> => {
+      try {
+        const models = await aiModelsService.findAllModels();
+        if (!models || models.length === 0) return null;
+        for (const model of models) {
+          const key = await aiModelsService.findActiveApiKeyByProvider(model.provider_id);
+          if (key) return model;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    (defaultSvc as any).resolveProviderModelForLingqiCharge = async (lingqiCharge: LingqiChargeDecision): Promise<ProviderModelRow | null> => {
+      if (!lingqiCharge.executionModelName) return null;
+      return aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
+    };
+
+    (defaultSvc as any).tryBuildHermesProviderOverride = async (
+      lingqiCharge: LingqiChargeDecision,
+    ): Promise<HermesAgentProviderOverride | undefined> => {
+      const providerModel = await (defaultSvc as any).resolveProviderModelForLingqiCharge(lingqiCharge);
+      if (!providerModel) return undefined;
+      const apiKeyRecord = await aiModelsService.findActiveApiKeyByProvider(providerModel.provider_id);
+      if (!apiKeyRecord) return undefined;
+      const decryptedKey = await aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
+      if (!decryptedKey) return undefined;
+      const endpoint = await aiModelsService.findDefaultEndpointByProvider(providerModel.provider_id);
+      if (!endpoint?.base_url) return undefined;
+      let baseUrl: string;
+      try {
+        baseUrl = normalizeProviderBaseUrl(endpoint.base_url);
+      } catch {
+        return undefined;
+      }
+      const providerCode = (providerModel.provider_code || providerModel.provider_name || '').toLowerCase();
+      return { baseUrl, apiKey: decryptedKey, authStyle: 'bearer', modelId: providerModel.model_id, providerCode };
+    };
+
+    (defaultSvc as any).checkHermesAgentHealth = async (): Promise<boolean> => {
+      const now = Date.now();
+      if (now - hermesAgentStatus.lastChecked < HERMES_HEALTH_TTL_MS) {
+        return hermesAgentStatus.healthy;
+      }
+      try {
+        const { firstValueFrom: fv } = await import('rxjs');
+        await fv(
+          httpService.get(`${hermesAgentUrl}/health`, { timeout: 2000, maxRedirects: 0 }),
+        );
+        hermesAgentStatus.healthy = true;
+        hermesAgentStatus.lastChecked = now;
+        return true;
+      } catch {
+        hermesAgentStatus.healthy = false;
+        hermesAgentStatus.lastChecked = now;
+        return false;
+      }
+    };
+
+    (defaultSvc as any).getHermesAgentStatus = async () => {
+      const healthy = await (defaultSvc as any).checkHermesAgentHealth();
+      return {
+        ok: true,
+        hermesAgent: {
+          available: healthy,
+          endpoint: hermesAgentUrl,
+          lastChecked: hermesAgentStatus.lastChecked,
+        },
+      };
+    };
 
     return defaultSvc;
   }
@@ -743,21 +859,11 @@ export class GatewayService {
     };
   }
 
+  // Slice 2026-07-02-gateway-split-provider-resolution: 1-line pass-through
+  // to `this.providerResolutionService.checkHermesAgentHealth()`. The
+  // verbatim body lives in `GatewayProviderResolutionService.checkHermesAgentHealth`.
   private async checkHermesAgentHealth(): Promise<boolean> {
-    const now = Date.now();
-    if (now - this.hermesAgentStatus.lastChecked < this.HERMES_HEALTH_TTL_MS) {
-      return this.hermesAgentStatus.healthy;
-    }
-    try {
-      await firstValueFrom(
-        this.httpService.get(`${this.hermesAgentUrl}/health`, { timeout: 2000, maxRedirects: 0 }),
-      );
-      this.hermesAgentStatus = { healthy: true, lastChecked: now };
-      return true;
-    } catch {
-      this.hermesAgentStatus = { healthy: false, lastChecked: now };
-      return false;
-    }
+    return this.providerResolutionService.checkHermesAgentHealth();
   }
 
   private async sendHermesAgentMessage(
@@ -768,7 +874,8 @@ export class GatewayService {
     providerOverride?: HermesAgentProviderOverride,
   ) {
     const messageId = params.messageId || this.generateUUID();
-    this.logger.log(`Routing to hermes-agent at ${this.hermesAgentUrl}`);
+    const hermesAgentUrl = this.providerResolutionService.getHermesAgentUrl();
+    this.logger.log(`Routing to hermes-agent at ${hermesAgentUrl}`);
 
     const { messages: conversationMessages, mcpServers: conversationMcpServers } =
       await this.resolveConversationPromptContext({
@@ -836,7 +943,7 @@ export class GatewayService {
         headers['X-Hermes-Provider-Code'] = providerOverride.providerCode;
       }
       const response = await firstValueFrom(
-        this.httpService.post(`${this.hermesAgentUrl}/v1/chat/completions`, requestBody, {
+        this.httpService.post(`${hermesAgentUrl}/v1/chat/completions`, requestBody, {
           headers,
           responseType: 'stream',
           timeout: 300000,
@@ -995,16 +1102,11 @@ export class GatewayService {
     }
   }
 
+  // Slice 2026-07-02-gateway-split-provider-resolution: 1-line pass-through
+  // to `this.providerResolutionService.getHermesAgentStatus()`. The verbatim
+  // body lives in `GatewayProviderResolutionService.getHermesAgentStatus`.
   async getHermesAgentStatus() {
-    const healthy = await this.checkHermesAgentHealth();
-    return {
-      ok: true,
-      hermesAgent: {
-        available: healthy,
-        endpoint: this.hermesAgentUrl,
-        lastChecked: this.hermesAgentStatus.lastChecked,
-      },
-    };
+    return this.providerResolutionService.getHermesAgentStatus();
   }
 
   async sendHermesMessage(params: HermesMessageParams, senderWs?: WebSocket): Promise<HermesSendResult> {
@@ -1549,61 +1651,20 @@ export class GatewayService {
     };
   }
 
+  // Slice 2026-07-02-gateway-split-provider-resolution: 1-line pass-through
+  // to `this.providerResolutionService.resolveProviderModelForLingqiCharge()`.
+  // The verbatim body lives in `GatewayProviderResolutionService.resolveProviderModelForLingqiCharge`.
   private async resolveProviderModelForLingqiCharge(lingqiCharge: LingqiChargeDecision): Promise<ProviderModelRow | null> {
-    if (!lingqiCharge.executionModelName) {
-      this.logger.warn('[resolveProviderModelForLingqiCharge] executionModelName is empty or undefined');
-      return null;
-    }
-
-    this.logger.log(`[resolveProviderModelForLingqiCharge] Resolving provider model for: ${lingqiCharge.executionModelName}`);
-    const result = await this.aiModelsService.findExecutableModelByModelId(lingqiCharge.executionModelName);
-
-    if (!result) {
-      this.logger.warn(`[resolveProviderModelForLingqiCharge] No active model found for model_id: ${lingqiCharge.executionModelName}`);
-    }
-
-    return result;
+    return this.providerResolutionService.resolveProviderModelForLingqiCharge(lingqiCharge);
   }
 
+  // Slice 2026-07-02-gateway-split-provider-resolution: 1-line pass-through
+  // to `this.providerResolutionService.tryBuildHermesProviderOverride()`.
+  // The verbatim body lives in `GatewayProviderResolutionService.tryBuildHermesProviderOverride`.
   private async tryBuildHermesProviderOverride(
     lingqiCharge: LingqiChargeDecision,
   ): Promise<HermesAgentProviderOverride | undefined> {
-    const providerModel = await this.resolveProviderModelForLingqiCharge(lingqiCharge);
-    if (!providerModel) {
-      return undefined;
-    }
-
-    const apiKeyRecord = await this.aiModelsService.findActiveApiKeyByProvider(providerModel.provider_id);
-    if (!apiKeyRecord) {
-      return undefined;
-    }
-
-    const decryptedKey = await this.aiModelsService.getDecryptedApiKey(apiKeyRecord.id);
-    if (!decryptedKey) {
-      return undefined;
-    }
-
-    const endpoint = await this.aiModelsService.findDefaultEndpointByProvider(providerModel.provider_id);
-    if (!endpoint?.base_url) {
-      return undefined;
-    }
-
-    let baseUrl: string;
-    try {
-      baseUrl = normalizeProviderBaseUrl(endpoint.base_url);
-    } catch {
-      return undefined;
-    }
-
-    const providerCode = (providerModel.provider_code || providerModel.provider_name || '').toLowerCase();
-
-    return {
-      baseUrl,
-      apiKey: decryptedKey,
-      authStyle: 'bearer',
-      modelId: providerModel.model_id,
-      providerCode,
-    };
+    return this.providerResolutionService.tryBuildHermesProviderOverride(lingqiCharge);
   }
 
   private async prepayLingqiCharge(
@@ -1895,20 +1956,11 @@ export class GatewayService {
     }
   }
 
+  // Slice 2026-07-02-gateway-split-provider-resolution: 1-line pass-through
+  // to `this.providerResolutionService.findDefaultGenerateModel()`. The
+  // verbatim body lives in `GatewayProviderResolutionService.findDefaultGenerateModel`.
   private async findDefaultGenerateModel(teamId: string): Promise<ProviderModelRow | null> {
-    try {
-      const models = await this.aiModelsService.findAllModels();
-      if (!models || models.length === 0) return null;
-      // Find the first model that has an active API key
-      for (const model of models) {
-        const key = await this.aiModelsService.findActiveApiKeyByProvider(model.provider_id);
-        if (key) return model;
-      }
-      return null;
-    } catch (error) {
-      this.logger.error('Failed to find default generate model:', error);
-      return null;
-    }
+    return this.providerResolutionService.findDefaultGenerateModel(teamId);
   }
 
   async abortStreamsForSocket(ws: WebSocket): Promise<void> {
