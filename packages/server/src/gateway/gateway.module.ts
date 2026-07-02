@@ -8,6 +8,9 @@ import { GatewayConnectionService } from './gateway-connection.service';
 import { GatewayUsageService } from './gateway-usage.service';
 import { GatewayProviderResolutionService } from './gateway-provider-resolution.service';
 import { GatewayExtensionsService } from './gateway-extensions.service';
+import { GatewayPromptContextService } from './gateway-prompt-context.service';
+import { GatewayLingqiService } from './gateway-lingqi.service';
+import { GatewayHermesService } from './gateway-hermes.service';
 import { DatabaseModule } from '../database/database.module';
 import { AiModelsModule } from '../ai-models/ai-models.module';
 import { getRequiredJwtSecret } from '../config/security-config';
@@ -34,8 +37,8 @@ import { SkillsModule } from '../skills/skills.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [GatewayService, GatewayConnectionService, GatewayUsageService, GatewayProviderResolutionService, GatewayExtensionsService, GatewayGateway],
-  exports: [GatewayGateway, GatewayService, GatewayConnectionService, GatewayUsageService, GatewayProviderResolutionService, GatewayExtensionsService],
+  providers: [GatewayService, GatewayConnectionService, GatewayUsageService, GatewayProviderResolutionService, GatewayExtensionsService, GatewayPromptContextService, GatewayLingqiService, GatewayHermesService, GatewayGateway],
+  exports: [GatewayGateway, GatewayService, GatewayConnectionService, GatewayUsageService, GatewayProviderResolutionService, GatewayExtensionsService, GatewayPromptContextService, GatewayLingqiService, GatewayHermesService],
 })
 export class GatewayModule implements OnModuleInit {
   constructor(
