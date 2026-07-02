@@ -50,7 +50,8 @@
     "pendingApprovals": "Pending Approvals",
     "awaitingReview": "awaiting review",
     "responseTime": "Response Time",
-    "avgResolution": "avg. resolution time"
+    "avgResolution": "avg. resolution time",
+    "dogfoodTestBanner": "Dogfood: 1.4.0 banner active. All clear."
   },
   "login": {
     "title": "Admin Login",

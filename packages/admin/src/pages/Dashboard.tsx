@@ -121,6 +121,13 @@ const Dashboard: React.FC = () => {
           <p className="text-muted-foreground mt-2 max-w-[500px]">
             {t('dashboard.subtitle')}
           </p>
+          {/* DOGFOOD-R002: synthetic missing-key banner for 1.4.0 dogfood validation */}
+          <p
+            className="text-sm text-amber-600 dark:text-amber-400 mt-1"
+            data-testid="dogfood-missing-key"
+          >
+            {t('dashboard.dogfoodTestBanner')}
+          </p>
         </div>
 
         {/* Quick action button */}

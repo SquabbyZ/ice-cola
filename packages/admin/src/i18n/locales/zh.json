@@ -49,7 +49,8 @@
     "pendingApprovals": "待审批",
     "awaitingReview": "待审核",
     "responseTime": "响应时间",
-    "avgResolution": "平均解决时间"
+    "avgResolution": "平均解决时间",
+    "dogfoodTestBanner": "Dogfood：1.4.0 测试横幅已激活。一切正常。"
   },
   "login": {
     "title": "管理员登录",
