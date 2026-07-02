@@ -16,6 +16,15 @@ async function bootstrap() {
     transform: true,
   }));
 
+  // Trust X-Forwarded-For from loopback proxies (nginx/Caddy on same host, cloud LBs).
+  // Without this, req.ip returns the LB's IP instead of the real client IP, breaking
+  // admin audit log forensics. 'loopback' is the most conservative setting — only
+  // trust headers when the immediate connection is 127.0.0.1 or ::1. Ops can tighten
+  // to a specific LB subnet if ice-cola is deployed behind a separate proxy.
+  // INestApplication does not expose `.set()` in its public type, so we route through
+  // the http adapter to call the underlying Express app's `trust proxy` setting.
+  app.getHttpAdapter().getInstance().set('trust proxy', 'loopback');
+
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT', 3000);
   console.log(`Configured port: ${port}`);
