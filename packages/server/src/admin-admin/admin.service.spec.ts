@@ -431,7 +431,7 @@ describe('AdminService', () => {
       db.queryOne.mockResolvedValue(nonOwner);
       db.query.mockResolvedValue([]);
 
-      await service.removeUser('admin-2');
+      await service.removeUser('admin-2', 'admin-1');
 
       expect(db.query).toHaveBeenCalledWith(
         'DELETE FROM admin_users WHERE id = $1',
@@ -442,13 +442,13 @@ describe('AdminService', () => {
     it('throws error when trying to remove owner', async () => {
       db.queryOne.mockResolvedValue(mockAdminUser);
 
-      await expect(service.removeUser('admin-1')).rejects.toThrow('无法删除所有者');
+      await expect(service.removeUser('admin-1', 'admin-1')).rejects.toThrow('无法删除所有者');
     });
 
     it('throws error when user not found', async () => {
       db.queryOne.mockResolvedValue(null);
 
-      await expect(service.removeUser('nonexistent')).rejects.toThrow('用户不存在');
+      await expect(service.removeUser('nonexistent', 'admin-1')).rejects.toThrow('用户不存在');
     });
   });
 
@@ -461,14 +461,14 @@ describe('AdminService', () => {
         role: AdminRole.ADMIN,
       }); // UPDATE RETURNING
 
-      const result = await service.updateUserRole('admin-2', AdminRole.ADMIN);
+      const result = await service.updateUserRole('admin-2', AdminRole.ADMIN, 'admin-1');
 
       expect(result.role).toBe(AdminRole.ADMIN);
     });
 
     it('throws error for invalid role', async () => {
       await expect(
-        service.updateUserRole('admin-2', 'INVALID_ROLE' as any)
+        service.updateUserRole('admin-2', 'INVALID_ROLE' as any, 'admin-1')
       ).rejects.toThrow('无效的角色');
     });
 
@@ -476,7 +476,7 @@ describe('AdminService', () => {
       db.queryOne.mockResolvedValue(mockAdminUser);
 
       await expect(
-        service.updateUserRole('admin-1', AdminRole.ADMIN)
+        service.updateUserRole('admin-1', AdminRole.ADMIN, 'admin-1')
       ).rejects.toThrow('无法修改所有者角色');
     });
   });
@@ -556,7 +556,7 @@ describe('AdminService', () => {
       db.queryOne.mockResolvedValue({ ...mockAdminUser, password: hash });
       db.query.mockResolvedValue([]);
 
-      await service.changePassword('admin-1', 'CurrentPassword', 'NewPassword123');
+      await service.changePassword('admin-1', 'CurrentPassword', 'NewPassword123', 'admin-1');
 
       expect(db.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE admin_users SET password'),
@@ -568,7 +568,7 @@ describe('AdminService', () => {
       db.queryOne.mockResolvedValue(null);
 
       await expect(
-        service.changePassword('nonexistent', 'CurrentPassword', 'NewPassword123')
+        service.changePassword('nonexistent', 'CurrentPassword', 'NewPassword123', 'admin-1')
       ).rejects.toThrow('用户不存在');
     });
 
@@ -577,7 +577,7 @@ describe('AdminService', () => {
       db.queryOne.mockResolvedValue({ ...mockAdminUser, password: hash });
 
       await expect(
-        service.changePassword('admin-1', 'WrongPassword', 'NewPassword123')
+        service.changePassword('admin-1', 'WrongPassword', 'NewPassword123', 'admin-1')
       ).rejects.toThrow('当前密码错误');
     });
   });

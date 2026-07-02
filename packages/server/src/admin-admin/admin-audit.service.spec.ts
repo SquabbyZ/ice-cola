@@ -254,4 +254,25 @@ describe('AdminAuditService', () => {
       expect(params[6]).toBeNull();
     });
   });
+
+  describe('log() with real actor id from controller (S-9 propagation)', () => {
+    it('writes the real actor id as $1 when adminId is a non-null string (remove path)', async () => {
+      db.query.mockResolvedValueOnce([]);
+
+      await service.log({
+        adminId: 'admin-actor-1',
+        action: 'admin.user.remove',
+        targetId: 'target-1',
+        targetEmail: 'target@example.com',
+      });
+
+      expect(db.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = (db.query as jest.Mock).mock.calls[0];
+      expect(sql).toMatch(/INSERT INTO admin_audit_logs/i);
+      expect(params[0]).toBe('admin-actor-1');
+      expect(params[1]).toBe('admin.user.remove');
+      expect(params[2]).toBe('target-1');
+      expect(params[3]).toBe('target@example.com');
+    });
+  });
 });

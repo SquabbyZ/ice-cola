@@ -273,6 +273,7 @@ export class AdminService {
 
   async removeUser(
     id: string,
+    actorId: string,
     ip: string | null = null,
     userAgent: string | null = null,
   ): Promise<void> {
@@ -287,13 +288,13 @@ export class AdminService {
 
     await this.db.query('DELETE FROM admin_users WHERE id = $1', [id]);
 
-    // TODO(S-9): pass actor id from controller — see PRD follow-up
-    await this.safeAudit({ adminId: null, action: 'admin.user.remove', targetId: id, targetEmail: admin.email, ip, userAgent });
+    await this.safeAudit({ adminId: actorId, action: 'admin.user.remove', targetId: id, targetEmail: admin.email, ip, userAgent });
   }
 
   async updateUserRole(
     id: string,
     role: string,
+    actorId: string,
     ip: string | null = null,
     userAgent: string | null = null,
   ): Promise<AdminUser> {
@@ -315,8 +316,7 @@ export class AdminService {
       [role, id]
     );
 
-    // TODO(S-9): pass actor id from controller — see PRD follow-up
-    await this.safeAudit({ adminId: null, action: 'admin.user.update_role', targetId: id, targetEmail: admin.email, metadata: { oldRole: admin.role, newRole: role }, ip, userAgent });
+    await this.safeAudit({ adminId: actorId, action: 'admin.user.update_role', targetId: id, targetEmail: admin.email, metadata: { oldRole: admin.role, newRole: role }, ip, userAgent });
 
     return result;
   }
@@ -403,6 +403,7 @@ export class AdminService {
     id: string,
     currentPassword: string,
     newPassword: string,
+    actorId: string,
     ip: string | null = null,
     userAgent: string | null = null,
   ): Promise<void> {
@@ -422,8 +423,7 @@ export class AdminService {
       [password, id]
     );
 
-    // TODO(S-9): pass actor id from controller — see PRD follow-up
-    await this.safeAudit({ adminId: null, action: 'admin.user.change_password', targetId: id, targetEmail: admin.email, ip, userAgent });
+    await this.safeAudit({ adminId: actorId, action: 'admin.user.change_password', targetId: id, targetEmail: admin.email, ip, userAgent });
   }
 
   // ========== Verification Code Methods ==========

@@ -21,10 +21,12 @@ import { TeamRole } from '../quota/quota.service';
 const ACTOR_IP_MAX = 45;
 const ACTOR_UA_MAX = 512;
 
-function extractActor(req: ExpressRequest): { ip: string | null; userAgent: string | null } {
+function extractActor(req: ExpressRequest): { id: string; ip: string | null; userAgent: string | null } {
+  const userId = (req as { user?: { id?: string } }).user?.id ?? '';
   const rawIp = (req.ip ?? (req.socket as { remoteAddress?: string } | undefined)?.remoteAddress ?? 'unknown').toString();
   const rawUa = (req.get('user-agent') ?? '').toString();
   return {
+    id: userId,
     ip: rawIp.slice(0, ACTOR_IP_MAX) || null,
     userAgent: rawUa.slice(0, ACTOR_UA_MAX) || null,
   };
@@ -198,7 +200,7 @@ export class AdminController {
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async removeUser(@Param('id') id: string, @Request() req: any) {
     const actor = extractActor(req as ExpressRequest);
-    await this.adminService.removeUser(id, actor.ip, actor.userAgent);
+    await this.adminService.removeUser(id, actor.id, actor.ip, actor.userAgent);
     return {
       success: true,
       data: null,
@@ -225,7 +227,7 @@ export class AdminController {
   @Roles(TeamRole.OWNER, TeamRole.ADMIN)
   async updateUserRole(@Param('id') id: string, @Body() body: { role: string }, @Request() req: any) {
     const actor = extractActor(req as ExpressRequest);
-    const result = await this.adminService.updateUserRole(id, body.role, actor.ip, actor.userAgent);
+    const result = await this.adminService.updateUserRole(id, body.role, actor.id, actor.ip, actor.userAgent);
     return {
       success: true,
       data: result,
@@ -267,7 +269,7 @@ export class AdminController {
   async changePassword(@Body() body: { currentPassword: string; newPassword: string }, @Request() req: any) {
     const userId = req.user.sub;
     const actor = extractActor(req as ExpressRequest);
-    await this.adminService.changePassword(userId, body.currentPassword, body.newPassword, actor.ip, actor.userAgent);
+    await this.adminService.changePassword(userId, body.currentPassword, body.newPassword, actor.id, actor.ip, actor.userAgent);
     return {
       success: true,
       data: null,
