@@ -5,6 +5,7 @@ import { HttpModule } from '@nestjs/axios';
 import { GatewayGateway } from './gateway.gateway';
 import { GatewayService } from './gateway.service';
 import { GatewayConnectionService } from './gateway-connection.service';
+import { GatewayUsageService } from './gateway-usage.service';
 import { DatabaseModule } from '../database/database.module';
 import { AiModelsModule } from '../ai-models/ai-models.module';
 import { getRequiredJwtSecret } from '../config/security-config';
@@ -31,8 +32,8 @@ import { SkillsModule } from '../skills/skills.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [GatewayService, GatewayConnectionService, GatewayGateway],
-  exports: [GatewayGateway, GatewayService, GatewayConnectionService],
+  providers: [GatewayService, GatewayConnectionService, GatewayUsageService, GatewayGateway],
+  exports: [GatewayGateway, GatewayService, GatewayConnectionService, GatewayUsageService],
 })
 export class GatewayModule implements OnModuleInit {
   constructor(

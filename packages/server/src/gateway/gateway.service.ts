@@ -43,6 +43,7 @@ import {
   normalizeProviderBaseUrl,
 } from './gateway.helpers';
 import { GatewayConnectionService } from './gateway-connection.service';
+import { GatewayUsageService } from './gateway-usage.service';
 
 @Injectable()
 export class GatewayService {
@@ -65,6 +66,18 @@ export class GatewayService {
   // db/jwtService/configService instances.
   private readonly connectionService: GatewayConnectionService;
 
+  // Slice 2026-07-02-gateway-split-usage: optional 9th constructor param
+  // `usageService`. When the 8-arg DI form is used (production via
+  // GatewayModule), the real `GatewayUsageService` is injected. When the
+  // spec's 7-arg form is used (frozen per slice-2 AC), we lazily build a
+  // default usage service bound to the existing `aiModelsService` field.
+  // This preserves the spec's 7-arg construction form (zero spec changes).
+  // Only `recordProviderUsage` is extracted; `sendStreamEvent` stays on the
+  // facade because it reads `this.gatewayInstance` (facade state) and the
+  // RD recommendation was option (c): leave facade-state methods on the
+  // facade until slice 6 (trio) migrates them properly.
+  private readonly usageService: GatewayUsageService;
+
   constructor(
     private db: DatabaseService,
     private jwtService: JwtService,
@@ -74,12 +87,14 @@ export class GatewayService {
     private quotaService: QuotaService,
     private skillsService: SkillsService,
     connectionService?: GatewayConnectionService,
+    usageService?: GatewayUsageService,
   ) {
     this.hermesAgentUrl = normalizeInternalServiceUrl(
       this.configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
       'HERMES_AGENT_URL',
     );
     this.connectionService = connectionService ?? this.buildDefaultConnectionService();
+    this.usageService = usageService ?? this.buildDefaultUsageService();
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
@@ -87,6 +102,55 @@ export class GatewayService {
     this.logger.log(`HttpService available: ${!!this.httpService}`);
     this.logger.log(`AiModelsService available: ${!!this.aiModelsService}`);
     this.logger.log(`QuotaService available: ${!!this.quotaService}`);
+  }
+
+  // Build a thin GatewayUsageService bound to the existing
+  // `aiModelsService` field. Used only when the 7-arg spec constructor
+  // form is invoked (no DI for the usage cluster). Mirrors the
+  // buildDefaultConnectionService pattern from slice 2: Object.create on
+  // the prototype, then closure-capture the aiModelsService and a no-op
+  // logger shim so the spec path stays quiet. The single real method
+  // (`recordProviderUsage`) is replicated as a 1-line forwarder to the
+  // module-scope body that matches the verbatim copy in
+  // GatewayUsageService.recordProviderUsage.
+  private buildDefaultUsageService(): GatewayUsageService {
+    const defaultSvc = Object.create(GatewayUsageService.prototype) as GatewayUsageService;
+    const aiModelsService = this.aiModelsService;
+    const logger = {
+      log: (..._args: unknown[]) => undefined,
+      warn: (..._args: unknown[]) => undefined,
+      error: (..._args: unknown[]) => undefined,
+      debug: (..._args: unknown[]) => undefined,
+      verbose: (..._args: unknown[]) => undefined,
+    };
+
+    (defaultSvc as any).aiModelsService = aiModelsService;
+    (defaultSvc as any).logger = logger;
+
+    (defaultSvc as any).recordProviderUsage = async (
+      apiKeyId: string,
+      providerId: string,
+      modelId: string,
+      totalTokens: number,
+      latencyMs: number,
+      teamId?: string,
+    ) => {
+      await aiModelsService.updateApiKeyLastUsed(apiKeyId);
+      if (!teamId) return;
+      await aiModelsService.createUsageLog({
+        teamId,
+        modelId,
+        providerId,
+        totalTokens,
+        latencyMs,
+        status: 'success',
+      });
+      await aiModelsService.incrementTeamQuotaUsage(teamId, totalTokens, true).catch((err: unknown) => {
+        logger.warn('Failed to increment quota usage:', err);
+      });
+    };
+
+    return defaultSvc;
   }
 
   // Build a thin GatewayConnectionService bound to the existing
@@ -2073,6 +2137,12 @@ export class GatewayService {
     }
   }
 
+  // Slice 2026-07-02-gateway-split-usage: 1-line pass-through to
+  // `this.usageService.recordProviderUsage(...)`. The verbatim body now
+  // lives in `GatewayUsageService.recordProviderUsage`. Kept as a private
+  // method on the facade so the 2 internal callsites (lines ~1242 and
+  // ~1343) continue to bind to the same `this` — no callsite changes
+  // required, preserving zero-spec-change.
   private async recordProviderUsage(
     apiKeyId: string,
     providerId: string,
@@ -2081,25 +2151,7 @@ export class GatewayService {
     latencyMs: number,
     teamId?: string,
   ) {
-    // Update API key last used timestamp
-    await this.aiModelsService.updateApiKeyLastUsed(apiKeyId);
-
-    if (!teamId) return;
-
-    // Log usage
-    await this.aiModelsService.createUsageLog({
-      teamId,
-      modelId,
-      providerId,
-      totalTokens,
-      latencyMs,
-      status: 'success',
-    });
-
-    // Increment quota counters
-    await this.aiModelsService.incrementTeamQuotaUsage(teamId, totalTokens, true).catch(err => {
-      this.logger.warn('Failed to increment quota usage:', err);
-    });
+    return this.usageService.recordProviderUsage(apiKeyId, providerId, modelId, totalTokens, latencyMs, teamId);
   }
 
   private sendStreamEvent(eventType: string, data: any, targetWs?: WebSocket): void {
