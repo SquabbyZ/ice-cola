@@ -1,6 +1,9 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Logger, OnModuleInit } from '@nestjs/common';
 import { GatewayService } from './gateway.service';
+import { GatewayValidators } from './gateway.validators';
+import { GatewayErrorMapper } from './gateway.error-mapper';
+import type { GatewayMessage, HermesSendParams } from './gateway.types';
 
 interface GatewayClientContext {
   userId?: string;
@@ -9,49 +12,14 @@ interface GatewayClientContext {
   expiresAt?: number;
 }
 
-interface HermesAttachmentParams {
-  type: string;
-  name: string;
-  mimeType: string;
-  data?: string;
-}
-
-interface HermesSendParams {
-  sessionId: string;
-  message: string;
-  conversationId?: string;
-  expertId?: string;
-  model?: string;
-  messageId?: string;
-  skillIds?: string[];
-  mcpServerIds?: string[];
-  extensionIds?: string[];
-  attachments?: HermesAttachmentParams[];
-}
-
-interface GatewayMessage {
-  type: 'req' | 'resp' | 'res' | 'evt' | 'event';
-  id?: string;
-  method?: string;
-  params?: any;
-  result?: any;
-  payload?: any;
-  error?: {
-    code: number;
-    message: string;
-    data?: any;
-  };
-  event?: string;
-  data?: any;
-  ok?: boolean;
-}
-
 export class GatewayGateway implements OnModuleInit {
   private readonly logger = new Logger(GatewayGateway.name);
   private readonly MAX_RAW_MESSAGE_BYTES = 15 * 1024 * 1024;
   private wss: WebSocketServer | null = null;
   private clients: Map<WebSocket, GatewayClientContext> = new Map();
   private gatewayService: GatewayService | null = null;
+  private validators: GatewayValidators = new GatewayValidators();
+  private errorMapper: GatewayErrorMapper = new GatewayErrorMapper();
 
   constructor() {}
 
@@ -214,7 +182,7 @@ export class GatewayGateway implements OnModuleInit {
         case 'hermes.send':
           {
             const clientInfo = this.requireClientContext(ws);
-            const hermesParams = this.validateHermesSendParams(params);
+            const hermesParams = this.validators.validateHermesSendParams(params);
             result = await this.gatewayService.sendHermesMessage(
               { ...hermesParams, teamId: clientInfo.teamId, userId: clientInfo.userId, role: clientInfo.role },
               ws,
@@ -386,40 +354,9 @@ export class GatewayGateway implements OnModuleInit {
       this.logger.error(`Error handling ${method}:`, error);
       this.sendResponse(ws, id, null, {
         code: -32603,
-        message: this.getPublicErrorMessage(error),
+        message: this.errorMapper.getPublicErrorMessage(error),
       });
     }
-  }
-
-  private getPublicErrorMessage(error: unknown): string {
-    if (!(error instanceof Error)) {
-      return 'Internal error';
-    }
-
-    const publicMessages = new Set([
-      'Authentication required',
-      'Admin privileges required',
-      'teamId is required',
-      'No active stream',
-      'Unauthorized',
-      'Invalid hermes send params',
-      'Invalid hermes send message',
-      'Invalid hermes send sessionId',
-      'Invalid hermes send conversationId',
-      'Invalid hermes send expertId',
-      'Invalid hermes send model',
-      'Invalid hermes send messageId',
-      'Invalid hermes send attachments',
-      'Invalid hermes send attachment',
-      'Invalid hermes send attachment type',
-      'Invalid hermes send attachment MIME type',
-      'Invalid hermes send attachment data',
-      'Invalid hermes send skillIds',
-      'Invalid hermes send mcpServerIds',
-      'Invalid hermes send extensionIds',
-    ]);
-
-    return publicMessages.has(error.message) ? error.message : 'Internal error';
   }
 
   private storeClientContext(ws: WebSocket, result: { expiresAt?: number; user?: { id: string; team?: { id: string; role: string } | null } }): void {
@@ -475,100 +412,6 @@ export class GatewayGateway implements OnModuleInit {
       role: clientInfo.role,
       expiresAt: clientInfo.expiresAt,
     };
-  }
-
-  private validateHermesSendParams(params: unknown): HermesSendParams {
-    if (!this.isRecord(params)) {
-      throw new Error('Invalid hermes send params');
-    }
-
-    const message = this.requireBoundedString(params.message, 'message', 1, 20000);
-    const result: HermesSendParams = {
-      sessionId: this.optionalBoundedString(params.sessionId, 'sessionId', 1, 256) ?? 'default',
-      message,
-    };
-
-    for (const key of ['conversationId', 'expertId', 'model', 'messageId'] as const) {
-      const value = params[key];
-      if (value !== undefined) {
-        result[key] = this.requireBoundedString(value, key, 1, 256);
-      }
-    }
-
-    if (params.attachments !== undefined) {
-      if (!Array.isArray(params.attachments) || params.attachments.length > 5) {
-        throw new Error('Invalid hermes send attachments');
-      }
-      result.attachments = params.attachments.map((attachment) => this.validateHermesAttachment(attachment));
-    }
-
-    if (params.skillIds !== undefined) {
-      if (!Array.isArray(params.skillIds) || params.skillIds.length > 20) {
-        throw new Error('Invalid hermes send skillIds');
-      }
-      result.skillIds = params.skillIds.map((id) => this.requireBoundedString(id, 'skillId', 1, 64));
-    }
-
-    if (params.mcpServerIds !== undefined) {
-      if (!Array.isArray(params.mcpServerIds) || params.mcpServerIds.length > 20) {
-        throw new Error('Invalid hermes send mcpServerIds');
-      }
-      result.mcpServerIds = params.mcpServerIds.map((id) => this.requireBoundedString(id, 'mcpServerId', 1, 64));
-    }
-
-    if (params.extensionIds !== undefined) {
-      if (!Array.isArray(params.extensionIds) || params.extensionIds.length > 20) {
-        throw new Error('Invalid hermes send extensionIds');
-      }
-      result.extensionIds = params.extensionIds.map((id) => this.requireBoundedString(id, 'extensionId', 1, 64));
-    }
-
-    return result;
-  }
-
-  private validateHermesAttachment(attachment: unknown): HermesAttachmentParams {
-    if (!this.isRecord(attachment)) {
-      throw new Error('Invalid hermes send attachment');
-    }
-
-    const type = this.requireBoundedString(attachment.type, 'attachment.type', 1, 32);
-    const name = this.requireBoundedString(attachment.name, 'attachment.name', 1, 255);
-    const mimeType = this.requireBoundedString(attachment.mimeType, 'attachment.mimeType', 1, 128);
-    if (type !== 'image' && type !== 'file') {
-      throw new Error('Invalid hermes send attachment type');
-    }
-    if (!/^[\w.+-]+\/[\w.+-]+$/.test(mimeType)) {
-      throw new Error('Invalid hermes send attachment MIME type');
-    }
-
-    const data = attachment.data;
-    if (data !== undefined) {
-      const validatedData = this.requireBoundedString(data, 'attachment.data', 1, 14 * 1024 * 1024);
-      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(validatedData)) {
-        throw new Error('Invalid hermes send attachment data');
-      }
-      return { type, name, mimeType, data: validatedData };
-    }
-
-    return { type, name, mimeType };
-  }
-
-  private requireBoundedString(value: unknown, field: string, minLength: number, maxLength: number): string {
-    if (typeof value !== 'string' || value.length < minLength || value.length > maxLength) {
-      throw new Error(`Invalid hermes send ${field}`);
-    }
-    return value;
-  }
-
-  private optionalBoundedString(value: unknown, field: string, minLength: number, maxLength: number): string | undefined {
-    if (value === undefined) {
-      return undefined;
-    }
-    return this.requireBoundedString(value, field, minLength, maxLength);
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private sendResponse(ws: WebSocket, id: string | undefined, payload: any, error?: { code: number; message: string }) {

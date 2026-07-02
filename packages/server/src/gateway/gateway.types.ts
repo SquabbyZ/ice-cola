@@ -1,5 +1,44 @@
 // Slice 2026-07-02-gateway-split-foundation: shared types for the gateway service and its cluster services.
+// Slice 2026-07-02-gateway-gateway-split-foundation: gateway-side message + hermes param interfaces
+// (moved from gateway.gateway.ts to centralize inbound payload shapes).
 import { WebSocket } from 'ws';
+
+export interface HermesAttachmentParams {
+  type: string;
+  name: string;
+  mimeType: string;
+  data?: string;
+}
+
+export interface HermesSendParams {
+  sessionId: string;
+  message: string;
+  conversationId?: string;
+  expertId?: string;
+  model?: string;
+  messageId?: string;
+  skillIds?: string[];
+  mcpServerIds?: string[];
+  extensionIds?: string[];
+  attachments?: HermesAttachmentParams[];
+}
+
+export interface GatewayMessage {
+  type: 'req' | 'resp' | 'res' | 'evt' | 'event';
+  id?: string;
+  method?: string;
+  params?: any;
+  result?: any;
+  payload?: any;
+  error?: {
+    code: number;
+    message: string;
+    data?: any;
+  };
+  event?: string;
+  data?: any;
+  ok?: boolean;
+}
 
 export interface ConnectParams {
   minProtocol?: number;
