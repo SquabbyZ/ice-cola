@@ -45,6 +45,7 @@ import {
 import { GatewayConnectionService } from './gateway-connection.service';
 import { GatewayUsageService } from './gateway-usage.service';
 import { GatewayProviderResolutionService } from './gateway-provider-resolution.service';
+import { GatewayExtensionsService } from './gateway-extensions.service';
 
 @Injectable()
 export class GatewayService {
@@ -83,6 +84,14 @@ export class GatewayService {
   private readonly usageService: GatewayUsageService;
   private readonly providerResolutionService: GatewayProviderResolutionService;
 
+  // Slice 2026-07-02-gateway-split-extensions: optional 11th constructor
+  // param `extensionsService`. When the 10-arg DI form is used (production
+  // via GatewayModule), the real `GatewayExtensionsService` is injected.
+  // When the spec's 7-arg form is used (frozen per slice-2 AC), we lazily
+  // build a default extensions service bound to the existing `db` field.
+  // This preserves the spec's 7-arg construction form (zero spec changes).
+  private readonly extensionsService: GatewayExtensionsService;
+
   constructor(
     private db: DatabaseService,
     private jwtService: JwtService,
@@ -94,10 +103,12 @@ export class GatewayService {
     connectionService?: GatewayConnectionService,
     usageService?: GatewayUsageService,
     providerResolutionService?: GatewayProviderResolutionService,
+    extensionsService?: GatewayExtensionsService,
   ) {
     this.connectionService = connectionService ?? this.buildDefaultConnectionService();
     this.usageService = usageService ?? this.buildDefaultUsageService();
     this.providerResolutionService = providerResolutionService ?? this.buildDefaultProviderResolutionService();
+    this.extensionsService = extensionsService ?? this.buildDefaultExtensionsService();
     this.logger.log('GatewayService constructed');
     this.logger.log(`DatabaseService available: ${!!this.db}`);
     this.logger.log(`JwtService available: ${!!this.jwtService}`);
@@ -389,6 +400,249 @@ export class GatewayService {
           lastChecked: hermesAgentStatus.lastChecked,
         },
       };
+    };
+
+    return defaultSvc;
+  }
+
+  // Slice 2026-07-02-gateway-split-extensions: build a thin
+  // GatewayExtensionsService bound to the existing `db` field. Used only
+  // when the 7-arg spec constructor form is invoked (no DI for the
+  // extensions cluster). Object.create on the prototype to satisfy the
+  // 28 method references the facade's pass-throughs will dispatch to.
+  // `toGatewayExpert` is kept as a closure-captured helper shared by the
+  // extensions service and this default shim (same field normalization
+  // logic as the verbatim extraction).
+  private buildDefaultExtensionsService(): GatewayExtensionsService {
+    const defaultSvc = Object.create(GatewayExtensionsService.prototype) as GatewayExtensionsService;
+    const db = this.db;
+
+    (defaultSvc as any).db = db;
+
+    const toGatewayExpert = (expert: any) => ({
+      id: expert.id,
+      name: expert.name,
+      description: expert.description || '',
+      systemPrompt: expert.systemPrompt ?? expert.systemprompt ?? '',
+      icon: expert.icon || '🤖',
+      color: expert.color || '#3B82F6',
+      category: expert.category || null,
+      sourceId: expert.source_id || null,
+      marketplaceId: expert.marketplace_id || null,
+      isDefault: expert.is_default || false,
+      enabled: expert.enabled ?? true,
+      callCount: expert.call_count || 0,
+      rating: expert.rating || 0,
+      teamId: expert.teamId ?? expert.teamid ?? null,
+      createdAt: expert.createdAt ?? expert.createdat,
+      updatedAt: expert.updatedAt ?? expert.updatedat,
+    });
+
+    // Extensions cluster
+    (defaultSvc as any).getAllExtensions = () => db.findAllExtensions();
+    (defaultSvc as any).getInstalledExtensions = (params: { userId: string }) => db.findUserInstalledExtensions(params.userId);
+    (defaultSvc as any).installExtension = (params: { extensionId: string; userId: string; config?: Record<string, unknown> }) =>
+      db.installExtension(params.userId, params.extensionId, params.config);
+    (defaultSvc as any).uninstallExtension = (params: { extensionId: string; userId: string }) =>
+      db.uninstallExtension(params.userId, params.extensionId);
+    (defaultSvc as any).enableExtension = (params: { extensionId: string; userId: string }) =>
+      db.enableUserExtension(params.userId, params.extensionId);
+    (defaultSvc as any).disableExtension = (params: { extensionId: string; userId: string }) =>
+      db.disableUserExtension(params.userId, params.extensionId);
+    (defaultSvc as any).updateExtensionConfig = (params: { extensionId: string; userId: string; config: Record<string, unknown> }) =>
+      db.updateUserExtensionConfig(params.userId, params.extensionId, params.config);
+
+    // Skills cluster
+    (defaultSvc as any).listSkills = async (params: { teamId: string; userId: string; role?: string; status?: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.findAll(params.teamId, params.status, params.userId, params.role);
+    };
+    (defaultSvc as any).getSkill = async (params: { id: string; teamId: string; userId: string; role?: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.findOne(params.id, params.teamId, params.userId, params.role);
+    };
+    (defaultSvc as any).createSkill = async (params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const { CreateSkillDto } = await import('../skills/dto/create-skill.dto');
+      const service = new SkillsService(db);
+      const dto = new CreateSkillDto();
+      dto.name = params.name;
+      dto.description = params.description;
+      dto.content = params.content;
+      dto.icon = params.icon;
+      dto.category = params.category;
+      dto.tags = params.tags;
+      dto.config = params.config;
+      dto.configSchema = params.configSchema;
+      return service.create(params.teamId, params.authorId, dto);
+    };
+    (defaultSvc as any).updateSkill = async (params: { id: string; teamId: string; userId: string; role?: string; name?: string; description?: string; version?: string; content?: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const { UpdateSkillDto } = await import('../skills/dto/update-skill.dto');
+      const service = new SkillsService(db);
+      const dto = new UpdateSkillDto();
+      dto.name = params.name;
+      dto.description = params.description;
+      dto.version = params.version;
+      dto.content = params.content;
+      dto.icon = params.icon;
+      dto.category = params.category;
+      dto.tags = params.tags;
+      dto.config = params.config;
+      dto.configSchema = params.configSchema;
+      return service.update(params.id, params.teamId, dto, {
+        userId: params.userId,
+        teamId: params.teamId,
+        role: params.role,
+      });
+    };
+    (defaultSvc as any).requestPublishSkillToTeam = async (params: { id: string; accessPolicy?: { mode: 'all' | 'users' | 'role'; userIds?: string[]; minimumRole?: 'MEMBER' | 'ADMIN' | 'OWNER' } }, actor: { userId: string; teamId: string; role: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.requestPublishToTeam(params.id, actor, params.accessPolicy);
+    };
+    (defaultSvc as any).approveTeamSkillPublish = async (params: { id: string }, actor: { userId: string; teamId: string; role: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.approveTeamPublish(params.id, actor.userId, actor);
+    };
+    (defaultSvc as any).rejectTeamSkillPublish = async (params: { id: string; comment?: string }, actor: { userId: string; teamId: string; role: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.rejectTeamPublish(params.id, actor.userId, params.comment || '', actor);
+    };
+    (defaultSvc as any).requestPublishSkillToMarketplace = async (params: { id: string; note?: string }, actor: { userId: string; teamId: string; role: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.requestPublishToMarketplace(params.id, actor.userId, params.note, actor);
+    };
+    (defaultSvc as any).deleteSkill = async (params: { id: string; teamId: string; userId: string; role?: string }) => {
+      const { SkillsService } = await import('../skills/skills.service');
+      const service = new SkillsService(db);
+      return service.delete(params.id, params.teamId, {
+        userId: params.userId,
+        teamId: params.teamId,
+        role: params.role,
+      });
+    };
+
+    // Marketplace cluster
+    (defaultSvc as any).listMarketplaceSkills = async (_params: { teamId: string }) =>
+      db.query(
+        `SELECT mi.*, mc.name as category_name, mc.slug as category_slug
+         FROM marketplace_items mi
+         LEFT JOIN marketplace_categories mc ON mi.category_id = mc.id
+         WHERE mi.type = 'skill' AND mi.status = 'approved'
+         ORDER BY mi.install_count DESC, mi.rating DESC
+         LIMIT 100`
+      );
+
+    // Experts cluster
+    (defaultSvc as any).listExperts = async (params: { teamId?: string; skip?: number; take?: number; category?: string } = {}) => {
+      const skip = params.skip || 0;
+      const take = params.take || 50;
+      const experts = await db.listExperts(params.teamId, skip, take, params.category);
+      const total = await db.countExperts(params.teamId, params.category);
+      return { ok: true, experts: experts.map((e: any) => toGatewayExpert(e)), total };
+    };
+    (defaultSvc as any).getExpert = async (params: { id: string; teamId?: string }) => {
+      const expert = await db.findExpertByIdForTeam(params.id, params.teamId);
+      if (!expert) throw new Error('Expert not found');
+      return { ok: true, expert: toGatewayExpert(expert) };
+    };
+    (defaultSvc as any).createExpert = async (params: { name: string; description?: string; systemPrompt?: string; icon?: string; color?: string; category?: string; teamId?: string; isDefault?: boolean }) => {
+      if (!params.name) throw new Error('Expert name is required');
+      const expert = await db.createExpert({
+        teamId: params.teamId,
+        name: params.name,
+        description: params.description,
+        systemPrompt: params.systemPrompt,
+        icon: params.icon || '🤖',
+        color: params.color || '#3B82F6',
+        category: params.category,
+        isDefault: params.isDefault,
+      });
+      return { ok: true, expert: toGatewayExpert(expert) };
+    };
+    (defaultSvc as any).updateExpert = async (params: { id: string; teamId?: string; name?: string; description?: string; systemPrompt?: string; icon?: string; color?: string; category?: string; enabled?: boolean; isDefault?: boolean; callCount?: number; rating?: number }) => {
+      if (!params.teamId) throw new Error('Authentication required');
+      const existing = await db.findTeamExpertById(params.id, params.teamId);
+      if (!existing) throw new Error('Expert not found');
+      const updates: any = {};
+      if (params.name !== undefined) updates.name = params.name;
+      if (params.description !== undefined) updates.description = params.description;
+      if (params.systemPrompt !== undefined) updates.systemPrompt = params.systemPrompt;
+      if (params.icon !== undefined) updates.icon = params.icon;
+      if (params.color !== undefined) updates.color = params.color;
+      if (params.category !== undefined) updates.category = params.category;
+      const updated = await db.updateExpert(params.id, updates);
+      return { ok: true, expert: toGatewayExpert(updated) };
+    };
+    (defaultSvc as any).deleteExpert = async (params: { id: string; teamId?: string }) => {
+      if (!params.teamId) throw new Error('Authentication required');
+      const existing = await db.findTeamExpertById(params.id, params.teamId);
+      if (!existing) throw new Error('Expert not found');
+      await db.deleteExpert(params.id);
+      return { ok: true, message: 'Expert deleted successfully' };
+    };
+    (defaultSvc as any).setActiveExpert = async (params: { id: string; teamId?: string; userId?: string }) => {
+      const expert = await db.findExpertByIdForTeam(params.id, params.teamId);
+      if (!expert) throw new Error('Expert not found');
+      return {
+        ok: true,
+        activeExpert: {
+          id: expert.id,
+          name: expert.name,
+          systemPrompt: expert.systemPrompt ?? expert.systemprompt,
+        },
+      };
+    };
+    (defaultSvc as any).recordExpertUsage = async (params: { expertId: string; userId: string; teamId?: string; tokens?: number; duration?: number }) => {
+      const expert = await db.findExpertByIdForTeam(params.expertId, params.teamId);
+      if (!expert) throw new Error('Expert not found');
+      await db.createExpertUsage({
+        expertId: params.expertId,
+        userId: params.userId,
+        teamId: params.teamId,
+        tokens: params.tokens,
+        duration: params.duration,
+      });
+      await db.incrementExpertCallCount(params.expertId);
+      return { ok: true };
+    };
+    (defaultSvc as any).getExpertStats = async (params: { id: string; teamId?: string }) => {
+      const expert = await db.findExpertByIdForTeam(params.id, params.teamId);
+      if (!expert) throw new Error('Expert not found');
+      const stats = await db.getExpertStats(params.id);
+      const [dailyStats, weeklyStats, monthlyStats] = await Promise.all([
+        db.getExpertUsageStats(params.id, 'day'),
+        db.getExpertUsageStats(params.id, 'week'),
+        db.getExpertUsageStats(params.id, 'month'),
+      ]);
+      return { ok: true, stats: { ...stats, daily: dailyStats, weekly: weeklyStats, monthly: monthlyStats } };
+    };
+    (defaultSvc as any).getExpertCategories = async (params: { teamId?: string }) => {
+      let query = 'SELECT DISTINCT category FROM experts WHERE category IS NOT NULL';
+      const paramsArray: any[] = [];
+      if (params.teamId) {
+        query += ' AND ("teamId" = $1 OR "teamId" IS NULL)';
+        paramsArray.push(params.teamId);
+      } else {
+        query += ' AND "teamId" IS NULL';
+      }
+      query += ' ORDER BY category';
+      const results = await db.query(query, paramsArray);
+      return { ok: true, categories: results.map((r: any) => r.category) };
+    };
+    (defaultSvc as any).rateExpert = async (params: { id: string; rating: number; teamId?: string }) => {
+      if (params.rating < 1 || params.rating > 5) throw new Error('Rating must be between 1 and 5');
+      if (!params.teamId) throw new Error('Authentication required');
+      const existing = await db.findTeamExpertById(params.id, params.teamId);
+      if (!existing) throw new Error('Expert not found');
+      const expert = await db.updateExpertRating(params.id, params.rating);
+      return { ok: true, expert: { id: expert.id, rating: expert.rating } };
     };
 
     return defaultSvc;
@@ -2291,29 +2545,11 @@ export class GatewayService {
   }
 
   async listExperts(params: { teamId?: string; skip?: number; take?: number; category?: string } = {}) {
-    const skip = params.skip || 0;
-    const take = params.take || 50;
-
-    const experts = await this.db.listExperts(params.teamId, skip, take, params.category);
-    const total = await this.db.countExperts(params.teamId, params.category);
-
-    return {
-      ok: true,
-      experts: experts.map(e => this.toGatewayExpert(e)),
-      total,
-    };
+    return this.extensionsService.listExperts(params);
   }
 
   async getExpert(params: { id: string; teamId?: string }) {
-    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
-    if (!expert) {
-      throw new Error('Expert not found');
-    }
-
-    return {
-      ok: true,
-      expert: this.toGatewayExpert(expert),
-    };
+    return this.extensionsService.getExpert(params);
   }
 
   async createExpert(params: {
@@ -2326,25 +2562,7 @@ export class GatewayService {
     teamId?: string;
     isDefault?: boolean;
   }) {
-    if (!params.name) {
-      throw new Error('Expert name is required');
-    }
-
-    const expert = await this.db.createExpert({
-      teamId: params.teamId,
-      name: params.name,
-      description: params.description,
-      systemPrompt: params.systemPrompt,
-      icon: params.icon || '🤖',
-      color: params.color || '#3B82F6',
-      category: params.category,
-      isDefault: params.isDefault,
-    });
-
-    return {
-      ok: true,
-      expert: this.toGatewayExpert(expert),
-    };
+    return this.extensionsService.createExpert(params);
   }
 
   async updateExpert(params: {
@@ -2361,66 +2579,15 @@ export class GatewayService {
     callCount?: number;
     rating?: number;
   }) {
-    if (!params.teamId) {
-      throw new Error('Authentication required');
-    }
-
-    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
-    if (!existing) {
-      throw new Error('Expert not found');
-    }
-
-    // Build updates object with only provided fields
-    const updates: any = {};
-    if (params.name !== undefined) updates.name = params.name;
-    if (params.description !== undefined) updates.description = params.description;
-    if (params.systemPrompt !== undefined) updates.systemPrompt = params.systemPrompt;
-    if (params.icon !== undefined) updates.icon = params.icon;
-    if (params.color !== undefined) updates.color = params.color;
-    if (params.category !== undefined) updates.category = params.category;
-
-    const updated = await this.db.updateExpert(params.id, updates);
-
-    return {
-      ok: true,
-      expert: this.toGatewayExpert(updated),
-    };
+    return this.extensionsService.updateExpert(params);
   }
 
   async deleteExpert(params: { id: string; teamId?: string }) {
-    if (!params.teamId) {
-      throw new Error('Authentication required');
-    }
-
-    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
-    if (!existing) {
-      throw new Error('Expert not found');
-    }
-
-    await this.db.deleteExpert(params.id);
-
-    return {
-      ok: true,
-      message: 'Expert deleted successfully',
-    };
+    return this.extensionsService.deleteExpert(params);
   }
 
   async setActiveExpert(params: { id: string; teamId?: string; userId?: string }) {
-    // This would typically update a user preference or session state
-    // For now, we just return success
-    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
-    if (!expert) {
-      throw new Error('Expert not found');
-    }
-
-    return {
-      ok: true,
-      activeExpert: {
-        id: expert.id,
-        name: expert.name,
-        systemPrompt: expert.systemPrompt ?? expert.systemprompt,
-      },
-    };
+    return this.extensionsService.setActiveExpert(params);
   }
 
   async recordExpertUsage(params: {
@@ -2430,118 +2597,19 @@ export class GatewayService {
     tokens?: number;
     duration?: number;
   }) {
-    const expert = await this.db.findExpertByIdForTeam(params.expertId, params.teamId);
-    if (!expert) {
-      throw new Error('Expert not found');
-    }
-
-    // Record the usage
-    await this.db.createExpertUsage({
-      expertId: params.expertId,
-      userId: params.userId,
-      teamId: params.teamId,
-      tokens: params.tokens,
-      duration: params.duration,
-    });
-
-    // Increment call count
-    await this.db.incrementExpertCallCount(params.expertId);
-
-    return {
-      ok: true,
-    };
+    return this.extensionsService.recordExpertUsage(params);
   }
 
   async getExpertStats(params: { id: string; teamId?: string }) {
-    const expert = await this.db.findExpertByIdForTeam(params.id, params.teamId);
-    if (!expert) {
-      throw new Error('Expert not found');
-    }
-
-    const stats = await this.db.getExpertStats(params.id);
-
-    const [dailyStats, weeklyStats, monthlyStats] = await Promise.all([
-      this.db.getExpertUsageStats(params.id, 'day'),
-      this.db.getExpertUsageStats(params.id, 'week'),
-      this.db.getExpertUsageStats(params.id, 'month'),
-    ]);
-
-    return {
-      ok: true,
-      stats: {
-        ...stats,
-        daily: dailyStats,
-        weekly: weeklyStats,
-        monthly: monthlyStats,
-      },
-    };
+    return this.extensionsService.getExpertStats(params);
   }
 
   async getExpertCategories(params: { teamId?: string }) {
-    // Get distinct categories from experts
-    let query = 'SELECT DISTINCT category FROM experts WHERE category IS NOT NULL';
-    const paramsArray: any[] = [];
-
-    if (params.teamId) {
-      query += ' AND ("teamId" = $1 OR "teamId" IS NULL)';
-      paramsArray.push(params.teamId);
-    } else {
-      query += ' AND "teamId" IS NULL';
-    }
-
-    query += ' ORDER BY category';
-
-    const results = await this.db.query(query, paramsArray);
-
-    return {
-      ok: true,
-      categories: results.map(r => r.category),
-    };
+    return this.extensionsService.getExpertCategories(params);
   }
 
   async rateExpert(params: { id: string; rating: number; teamId?: string }) {
-    if (params.rating < 1 || params.rating > 5) {
-      throw new Error('Rating must be between 1 and 5');
-    }
-    if (!params.teamId) {
-      throw new Error('Authentication required');
-    }
-
-    const existing = await this.db.findTeamExpertById(params.id, params.teamId);
-    if (!existing) {
-      throw new Error('Expert not found');
-    }
-
-    const expert = await this.db.updateExpertRating(params.id, params.rating);
-
-    return {
-      ok: true,
-      expert: {
-        id: expert.id,
-        rating: expert.rating,
-      },
-    };
-  }
-
-  private toGatewayExpert(expert: any) {
-    return {
-      id: expert.id,
-      name: expert.name,
-      description: expert.description || '',
-      systemPrompt: expert.systemPrompt ?? expert.systemprompt ?? '',
-      icon: expert.icon || '🤖',
-      color: expert.color || '#3B82F6',
-      category: expert.category || null,
-      sourceId: expert.source_id || null,
-      marketplaceId: expert.marketplace_id || null,
-      isDefault: expert.is_default || false,
-      enabled: expert.enabled ?? true,
-      callCount: expert.call_count || 0,
-      rating: expert.rating || 0,
-      teamId: expert.teamId ?? expert.teamid ?? null,
-      createdAt: expert.createdAt ?? expert.createdat,
-      updatedAt: expert.updatedAt ?? expert.updatedat,
-    };
+    return this.extensionsService.rateExpert(params);
   }
 
   // Slice 2026-07-02-gateway-split-connection: boundary facade methods.
@@ -2574,130 +2642,79 @@ export class GatewayService {
 
   // ===== Additional methods for compatibility =====
 
+  // Slice 2026-07-02-gateway-split-extensions: 1-line pass-throughs to
+  // `this.extensionsService.*`. The verbatim bodies now live in
+  // `GatewayExtensionsService`.
+
   async getAllExtensions(): Promise<unknown[]> {
-    return this.db.findAllExtensions();
+    return this.extensionsService.getAllExtensions();
   }
 
   async getInstalledExtensions(params: { userId: string }): Promise<unknown[]> {
-    return this.db.findUserInstalledExtensions(params.userId);
+    return this.extensionsService.getInstalledExtensions(params);
   }
 
   async installExtension(params: { extensionId: string; userId: string; config?: Record<string, unknown> }): Promise<unknown> {
-    return this.db.installExtension(params.userId, params.extensionId, params.config);
+    return this.extensionsService.installExtension(params);
   }
 
   async uninstallExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
-    return this.db.uninstallExtension(params.userId, params.extensionId);
+    return this.extensionsService.uninstallExtension(params);
   }
 
   async enableExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
-    return this.db.enableUserExtension(params.userId, params.extensionId);
+    return this.extensionsService.enableExtension(params);
   }
 
   async disableExtension(params: { extensionId: string; userId: string }): Promise<unknown> {
-    return this.db.disableUserExtension(params.userId, params.extensionId);
+    return this.extensionsService.disableExtension(params);
   }
 
   async updateExtensionConfig(params: { extensionId: string; userId: string; config: Record<string, unknown> }): Promise<unknown> {
-    return this.db.updateUserExtensionConfig(params.userId, params.extensionId, params.config);
+    return this.extensionsService.updateExtensionConfig(params);
   }
 
   // ===== Skills Methods =====
 
   async listSkills(params: { teamId: string; userId: string; role?: string; status?: string }): Promise<unknown[]> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.findAll(params.teamId, params.status, params.userId, params.role);
+    return this.extensionsService.listSkills(params);
   }
 
   async getSkill(params: { id: string; teamId: string; userId: string; role?: string }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.findOne(params.id, params.teamId, params.userId, params.role);
+    return this.extensionsService.getSkill(params);
   }
 
   async createSkill(params: { teamId: string; authorId: string; name: string; description?: string; content: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const { CreateSkillDto } = await import('../skills/dto/create-skill.dto');
-    const service = new SkillsService(this.db);
-    const dto = new CreateSkillDto();
-    dto.name = params.name;
-    dto.description = params.description;
-    dto.content = params.content;
-    dto.icon = params.icon;
-    dto.category = params.category;
-    dto.tags = params.tags;
-    dto.config = params.config;
-    dto.configSchema = params.configSchema;
-    return service.create(params.teamId, params.authorId, dto);
+    return this.extensionsService.createSkill(params);
   }
 
   async updateSkill(params: { id: string; teamId: string; userId: string; role?: string; name?: string; description?: string; version?: string; content?: string; icon?: string; category?: string; tags?: string[]; config?: Record<string, unknown>; configSchema?: Record<string, unknown> }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const { UpdateSkillDto } = await import('../skills/dto/update-skill.dto');
-    const service = new SkillsService(this.db);
-    const dto = new UpdateSkillDto();
-    dto.name = params.name;
-    dto.description = params.description;
-    dto.version = params.version;
-    dto.content = params.content;
-    dto.icon = params.icon;
-    dto.category = params.category;
-    dto.tags = params.tags;
-    dto.config = params.config;
-    dto.configSchema = params.configSchema;
-    return service.update(params.id, params.teamId, dto, {
-      userId: params.userId,
-      teamId: params.teamId,
-      role: params.role,
-    });
+    return this.extensionsService.updateSkill(params);
   }
 
   async requestPublishSkillToTeam(params: { id: string; accessPolicy?: { mode: 'all' | 'users' | 'role'; userIds?: string[]; minimumRole?: 'MEMBER' | 'ADMIN' | 'OWNER' } }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.requestPublishToTeam(params.id, actor, params.accessPolicy);
+    return this.extensionsService.requestPublishSkillToTeam(params, actor);
   }
 
   async approveTeamSkillPublish(params: { id: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.approveTeamPublish(params.id, actor.userId, actor);
+    return this.extensionsService.approveTeamSkillPublish(params, actor);
   }
 
   async rejectTeamSkillPublish(params: { id: string; comment?: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.rejectTeamPublish(params.id, actor.userId, params.comment || '', actor);
+    return this.extensionsService.rejectTeamSkillPublish(params, actor);
   }
 
   async requestPublishSkillToMarketplace(params: { id: string; note?: string }, actor: { userId: string; teamId: string; role: string }): Promise<unknown> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.requestPublishToMarketplace(params.id, actor.userId, params.note, actor);
+    return this.extensionsService.requestPublishSkillToMarketplace(params, actor);
   }
 
   async deleteSkill(params: { id: string; teamId: string; userId: string; role?: string }): Promise<void> {
-    const { SkillsService } = await import('../skills/skills.service');
-    const service = new SkillsService(this.db);
-    return service.delete(params.id, params.teamId, {
-      userId: params.userId,
-      teamId: params.teamId,
-      role: params.role,
-    });
+    return this.extensionsService.deleteSkill(params);
   }
 
   // ===== Marketplace Skills Methods =====
 
   async listMarketplaceSkills(params: { teamId: string }): Promise<unknown[]> {
-    const result = await this.db.query(
-      `SELECT mi.*, mc.name as category_name, mc.slug as category_slug
-       FROM marketplace_items mi
-       LEFT JOIN marketplace_categories mc ON mi.category_id = mc.id
-       WHERE mi.type = 'skill' AND mi.status = 'approved'
-       ORDER BY mi.install_count DESC, mi.rating DESC
-       LIMIT 100`
-    );
-    return result;
+    return this.extensionsService.listMarketplaceSkills(params);
   }
 }
