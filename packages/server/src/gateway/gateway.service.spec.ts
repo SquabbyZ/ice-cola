@@ -9,6 +9,13 @@ import { PassThrough } from 'stream';
 import { of } from 'rxjs';
 import { QuotaService } from '../quota/quota.service';
 import { SkillsService } from '../skills/skills.service';
+import { GatewayConnectionService } from './gateway-connection.service';
+import { GatewayUsageService } from './gateway-usage.service';
+import { GatewayProviderResolutionService } from './gateway-provider-resolution.service';
+import { GatewayExtensionsService } from './gateway-extensions.service';
+import { GatewayPromptContextService } from './gateway-prompt-context.service';
+import { GatewayLingqiService } from './gateway-lingqi.service';
+import { GatewayHermesService } from './gateway-hermes.service';
 
 type ExtensionFixture = {
   id: string;
@@ -24,6 +31,13 @@ describe('GatewayService extensions', () => {
   let quotaService: jest.Mocked<Pick<QuotaService, 'estimateLingqiCost' | 'consumeLingqi' | 'refundLingqi' | 'getSelectedModelForExecution'>>;
   let aiModelsService: jest.Mocked<Pick<AiModelsService, 'findExecutableModelByModelId' | 'findActiveApiKeyByProvider' | 'getDecryptedApiKey' | 'findDefaultEndpointByProvider' | 'updateApiKeyLastUsed' | 'createUsageLog' | 'incrementTeamQuotaUsage'>>;
   let skillsService: jest.Mocked<Pick<SkillsService, 'findEnabledSkillsForConversation' | 'findSkillsByIdsForTeam'>>;
+  let connectionServiceMock: GatewayConnectionService;
+  let usageServiceMock: GatewayUsageService;
+  let providerResolutionServiceMock: GatewayProviderResolutionService;
+  let extensionsServiceMock: GatewayExtensionsService;
+  let promptContextServiceMock: GatewayPromptContextService;
+  let lingqiServiceMock: GatewayLingqiService;
+  let hermesServiceMock: GatewayHermesService;
   const socket = {} as WebSocket;
   const futureJwtExp = Math.floor(Date.now() / 1000) + 900;
 
@@ -114,6 +128,69 @@ describe('GatewayService extensions', () => {
       findSkillsByIdsForTeam: jest.fn().mockResolvedValue([]),
     };
 
+    // Slice 2026-07-02-gateway-facade-slim: 7 cluster service mocks (14-arg ctor).
+    // The facade uses a custom Object.assign variant that copies PROTOTYPE
+    // methods (not just own properties, since TS classes put methods on
+    // the proto). We therefore construct real cluster service instances
+    // with the same db/jwtService/configService mocks the spec already
+    // wires for the facade. The cluster services read the mocks at call
+    // time (slice-6/7 contract), so the existing `db.findUserById` /
+    // `jwtService.verify` mocks work transparently through the
+    // Object.assign'd copy on the facade.
+    // Tests that need to override a method use `jest.spyOn(service as
+    // any, 'methodName')` which patches the facade-property copy.
+    connectionServiceMock = new GatewayConnectionService(
+      db as unknown as DatabaseService,
+      jwtService as unknown as JwtService,
+      configService as unknown as ConfigService,
+    );
+    usageServiceMock = new GatewayUsageService(aiModelsService as unknown as AiModelsService);
+    // providerResolutionService reads HERMES_AGENT_URL from config in its
+    // constructor body (caches it on `this.hermesAgentUrl`). Wire a mock
+    // value before constructing the cluster.
+    (configService as any).get.mockImplementation((k: string) => (k === 'HERMES_AGENT_URL' ? 'http://localhost:8642' : (k === 'JWT_SECRET' ? 'test-secret' : undefined)));
+    providerResolutionServiceMock = new GatewayProviderResolutionService(
+      aiModelsService as unknown as AiModelsService,
+      { post: jest.fn(), get: jest.fn() } as unknown as HttpService,
+      configService as unknown as ConfigService,
+    );
+    extensionsServiceMock = new GatewayExtensionsService(db as unknown as DatabaseService);
+    promptContextServiceMock = new GatewayPromptContextService(
+      db as unknown as DatabaseService,
+      skillsService as unknown as SkillsService,
+    );
+    lingqiServiceMock = new GatewayLingqiService(
+      quotaService as unknown as QuotaService,
+      aiModelsService as unknown as AiModelsService,
+      {
+        isRefunded: () => false,
+        markRefunded: () => undefined,
+        unmarkRefunded: () => undefined,
+        sendStreamEvent: () => undefined,
+        generateUUID: () => 'spec-uuid',
+      },
+    );
+    hermesServiceMock = new GatewayHermesService(
+      { post: jest.fn(), get: jest.fn() } as unknown as HttpService,
+      configService as unknown as ConfigService,
+      aiModelsService as unknown as AiModelsService,
+      providerResolutionServiceMock,
+      lingqiServiceMock,
+      promptContextServiceMock,
+      usageServiceMock,
+      {
+        getActiveStream: () => undefined,
+        setActiveStream: () => undefined,
+        deleteActiveStream: () => false,
+        allActiveStreams: function* () { /* empty */ },
+        sendStreamEvent: () => undefined,
+        checkHermesAgentHealth: async () => true,
+        sendHermesAgentMessage: async () => ({ ok: true, messageId: 'm' }),
+        generateUUID: () => 'spec-uuid',
+        checkQuota: async () => null,
+      },
+    );
+
     service = new GatewayService(
       db as unknown as DatabaseService,
       jwtService as unknown as JwtService,
@@ -122,7 +199,57 @@ describe('GatewayService extensions', () => {
       aiModelsService as unknown as AiModelsService,
       quotaService as unknown as QuotaService,
       skillsService as unknown as SkillsService,
+      // Slice 2026-07-02-gateway-facade-slim: 14-arg constructor (was 7).
+      // The spec only tests public boundary methods reachable via
+      // Object.assign (connection/lingqi/hermes clusters etc.); the 7 cluster
+      // mocks below are placeholder objects sufficient for facade construction.
+      // Tests that depend on cluster behaviour use jest.spyOn(service as any,
+      // 'methodName') which patches the facade-property copy created by
+      // Object.assign in the facade constructor — see gateway.service.ts.
+      connectionServiceMock as unknown as GatewayConnectionService,
+      usageServiceMock as unknown as GatewayUsageService,
+      providerResolutionServiceMock as unknown as GatewayProviderResolutionService,
+      extensionsServiceMock as unknown as GatewayExtensionsService,
+      promptContextServiceMock as unknown as GatewayPromptContextService,
+      lingqiServiceMock as unknown as GatewayLingqiService,
+      hermesServiceMock as unknown as GatewayHermesService,
     );
+
+    // Slice 2026-07-02-gateway-facade-slim: rewire the hermesService's state
+    // callbacks to delegate through the freshly-constructed facade. This
+    // mirrors the closure-binding the slice-7 buildDefaultHermesService did
+    // (it captured `this` on the facade inside the GatewayService constructor).
+    // In slice 8 the cluster is a real Nest-injected instance, so the state
+    // object is constructed before `service` exists. After service
+    // construction, mutate each state callback to forward to the facade —
+    // this preserves the spec contract where `jest.spyOn(service as any,
+    // 'methodName')` propagates into the cluster's internal calls.
+    const hermesState = (hermesServiceMock as any).state;
+    if (hermesState) {
+      hermesState.sendHermesAgentMessage = (...args: unknown[]) => (service as any).sendHermesAgentMessage(...args);
+      hermesState.checkHermesAgentHealth = () => (service as any).checkHermesAgentHealth();
+      hermesState.sendStreamEvent = (eventType: string, data: unknown, targetWs?: unknown) =>
+        (service as any).sendStreamEvent ? (service as any).sendStreamEvent(eventType, data, targetWs) : undefined;
+      hermesState.generateUUID = () => (service as any).generateUUID
+        ? (service as any).generateUUID()
+        : 'spec-uuid';
+      hermesState.checkQuota = (teamId: string) => (service as any).checkQuota
+        ? (service as any).checkQuota(teamId)
+        : Promise.resolve(null);
+      hermesState.getActiveStream = (id: string) => (service as any).activeStreams?.get(id);
+      hermesState.setActiveStream = (id: string, entry: unknown) => (service as any).activeStreams?.set(id, entry);
+      hermesState.deleteActiveStream = (id: string) => (service as any).activeStreams?.delete(id) ?? false;
+      hermesState.allActiveStreams = function* () { yield* ((service as any).activeStreams?.entries?.() ?? []); };
+    }
+    const lingqiState = (lingqiServiceMock as any).state;
+    if (lingqiState) {
+      lingqiState.isRefunded = (id: string) => (service as any).refundedLingqiMessages?.has(id) ?? false;
+      lingqiState.markRefunded = (id: string) => (service as any).refundedLingqiMessages?.add(id);
+      lingqiState.unmarkRefunded = (id: string) => (service as any).refundedLingqiMessages?.delete(id);
+      lingqiState.sendStreamEvent = (eventType: string, data: unknown, targetWs?: unknown) =>
+        (service as any).sendStreamEvent?.(eventType, data, targetWs);
+      lingqiState.generateUUID = () => (service as any).generateUUID?.() ?? 'spec-uuid';
+    }
   });
 
   it('returns extension marketplace entries from the database', async () => {
@@ -405,6 +532,11 @@ describe('GatewayService extensions', () => {
 
   it('does not issue service admin tokens from client-provided scopes', async () => {
     jwtService.verify.mockReturnValue({ sub: 'user-1', teamId: 'team-1', role: 'MEMBER', type: 'access', exp: futureJwtExp });
+    // Slice 2026-07-02-gateway-facade-slim: real GatewayConnectionService
+    // calls db.findUserById (the slice-7 lazy default-shim did not). The
+    // test was passing in slice 7 because the shim returned a hardcoded
+    // user object; now the spec must mock findUserById explicitly.
+    db.findUserById.mockResolvedValue({ id: 'user-1', teamId: 'team-1', team_name: 'Team 1', role: 'MEMBER' } as any);
 
     const result = await service.connect({ auth: { token: 'valid-token' }, scopes: ['operator.admin'] }, socket);
 
