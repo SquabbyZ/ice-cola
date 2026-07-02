@@ -3,7 +3,9 @@ import { Logger, OnModuleInit } from '@nestjs/common';
 import { GatewayService } from './gateway.service';
 import { GatewayValidators } from './gateway.validators';
 import { GatewayErrorMapper } from './gateway.error-mapper';
-import type { GatewayMessage, HermesSendParams } from './gateway.types';
+import { GatewayTransport } from './gateway.transport';
+import { GatewayAuthContext } from './gateway.auth-context';
+import type { GatewayMessage } from './gateway.types';
 
 interface GatewayClientContext {
   userId?: string;
@@ -20,6 +22,8 @@ export class GatewayGateway implements OnModuleInit {
   private gatewayService: GatewayService | null = null;
   private validators: GatewayValidators = new GatewayValidators();
   private errorMapper: GatewayErrorMapper = new GatewayErrorMapper();
+  private transport: GatewayTransport = new GatewayTransport(this.clients);
+  private authContext: GatewayAuthContext = new GatewayAuthContext(this.clients);
 
   constructor() {}
 
@@ -88,7 +92,7 @@ export class GatewayGateway implements OnModuleInit {
       const idMatch = payloadPrefix.match(/"id"\s*:\s*"([^"]+)"/);
       oversizedMessageId = idMatch?.[1];
       this.logger.warn(`Rejected oversized WebSocket message: ${data.length} bytes`);
-      this.sendResponse(ws, oversizedMessageId, null, {
+      this.transport.sendResponse(ws, oversizedMessageId, null, {
         code: -32001,
         message: 'Message too large',
       });
@@ -119,27 +123,27 @@ export class GatewayGateway implements OnModuleInit {
       switch (method) {
         case 'connect':
           result = await this.gatewayService.connect(params, ws);
-          this.storeClientContext(ws, result);
+          this.authContext.storeClientContext(ws, result);
           break;
         case 'auth.register':
           result = await this.gatewayService.register(params);
           break;
         case 'auth.login':
           result = await this.gatewayService.login(params);
-          this.storeClientContext(ws, result);
+          this.authContext.storeClientContext(ws, result);
           break;
         case 'auth.refresh':
           result = await this.gatewayService.refresh(params);
           break;
         case 'quota.get':
-          result = await this.gatewayService.getQuota({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getQuota({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'conversation.list':
-          result = await this.gatewayService.listConversations({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.listConversations({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'conversation.create':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.createConversation({
               ...params,
               teamId: clientInfo.teamId,
@@ -148,27 +152,27 @@ export class GatewayGateway implements OnModuleInit {
           }
           break;
         case 'conversation.get':
-          result = await this.gatewayService.getConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getConversation({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'conversation.update':
-          result = await this.gatewayService.updateConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.updateConversation({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'conversation.delete':
-          result = await this.gatewayService.deleteConversation({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.deleteConversation({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'conversation.messages':
-          result = await this.gatewayService.getMessages({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getMessages({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'config.get':
-          this.requirePlatformAdminContext(ws);
+          this.authContext.requirePlatformAdminContext(ws);
           result = await this.gatewayService.getConfig(params);
           break;
         case 'config.patch':
-          this.requirePlatformAdminContext(ws);
+          this.authContext.requirePlatformAdminContext(ws);
           result = await this.gatewayService.patchConfig(params);
           break;
         case 'config.set':
-          this.requirePlatformAdminContext(ws);
+          this.authContext.requirePlatformAdminContext(ws);
           result = await this.gatewayService.setConfig(params);
           // Emit config-changed event if restart is needed
           if (result?.needsRestart) {
@@ -181,7 +185,7 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'hermes.send':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             const hermesParams = this.validators.validateHermesSendParams(params);
             result = await this.gatewayService.sendHermesMessage(
               { ...hermesParams, teamId: clientInfo.teamId, userId: clientInfo.userId, role: clientInfo.role },
@@ -196,44 +200,44 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.getHermesAgentStatus();
           break;
         case 'usage.status':
-          result = await this.gatewayService.getUsageStatus({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getUsageStatus({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'quota.getConfig':
-          result = await this.gatewayService.getQuotaConfig({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getQuotaConfig({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'quota.updateConfig':
-          result = await this.gatewayService.updateQuotaConfig({ ...params, teamId: this.requireAdminContext(ws).teamId });
+          result = await this.gatewayService.updateQuotaConfig({ ...params, teamId: this.authContext.requireAdminContext(ws).teamId });
           break;
         case 'experts.list':
-          result = await this.gatewayService.listExperts({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.listExperts({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.get':
-          result = await this.gatewayService.getExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.create':
-          result = await this.gatewayService.createExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.createExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.update':
-          result = await this.gatewayService.updateExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.updateExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.delete':
-          result = await this.gatewayService.deleteExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.deleteExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.setActive':
-          result = await this.gatewayService.setActiveExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.setActiveExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.categories':
-          result = await this.gatewayService.getExpertCategories({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getExpertCategories({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.stats':
-          result = await this.gatewayService.getExpertStats({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.getExpertStats({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.rate':
-          result = await this.gatewayService.rateExpert({ ...params, teamId: this.requireClientContext(ws).teamId });
+          result = await this.gatewayService.rateExpert({ ...params, teamId: this.authContext.requireClientContext(ws).teamId });
           break;
         case 'experts.recordUsage':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.recordExpertUsage({
               ...params,
               userId: clientInfo.userId,
@@ -245,26 +249,26 @@ export class GatewayGateway implements OnModuleInit {
           result = await this.gatewayService.getAllExtensions();
           break;
         case 'extensions.installed':
-          result = await this.gatewayService.getInstalledExtensions({ userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.getInstalledExtensions({ userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'extensions.install':
-          result = await this.gatewayService.installExtension({ ...params, userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.installExtension({ ...params, userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'extensions.uninstall':
-          result = await this.gatewayService.uninstallExtension({ ...params, userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.uninstallExtension({ ...params, userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'extensions.enable':
-          result = await this.gatewayService.enableExtension({ ...params, userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.enableExtension({ ...params, userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'extensions.disable':
-          result = await this.gatewayService.disableExtension({ ...params, userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.disableExtension({ ...params, userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'extensions.updateConfig':
-          result = await this.gatewayService.updateExtensionConfig({ ...params, userId: this.requireUserContext(ws).userId });
+          result = await this.gatewayService.updateExtensionConfig({ ...params, userId: this.authContext.requireUserContext(ws).userId });
           break;
         case 'skills.list':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.listSkills({
               ...params,
               teamId: clientInfo.teamId,
@@ -275,7 +279,7 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'skills.get':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.getSkill({
               ...params,
               teamId: clientInfo.teamId,
@@ -286,7 +290,7 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'skills.create':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.createSkill({
               ...params,
               teamId: clientInfo.teamId,
@@ -296,7 +300,7 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'skills.update':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.updateSkill({
               ...params,
               teamId: clientInfo.teamId,
@@ -306,23 +310,23 @@ export class GatewayGateway implements OnModuleInit {
           }
           break;
         case 'skills.publishTeam':
-          result = await this.gatewayService.requestPublishSkillToTeam(params, this.requireClientContext(ws));
+          result = await this.gatewayService.requestPublishSkillToTeam(params, this.authContext.requireClientContext(ws));
           break;
         case 'skills.approveTeam':
-          result = await this.gatewayService.approveTeamSkillPublish(params, this.requireClientContext(ws));
+          result = await this.gatewayService.approveTeamSkillPublish(params, this.authContext.requireClientContext(ws));
           break;
         case 'skills.rejectTeam':
-          result = await this.gatewayService.rejectTeamSkillPublish(params, this.requireClientContext(ws));
+          result = await this.gatewayService.rejectTeamSkillPublish(params, this.authContext.requireClientContext(ws));
           break;
         case 'skills.publishMarketplace':
-          result = await this.gatewayService.requestPublishSkillToMarketplace(params, this.requireClientContext(ws));
+          result = await this.gatewayService.requestPublishSkillToMarketplace(params, this.authContext.requireClientContext(ws));
           break;
         case 'marketplace_skills.list':
           result = await this.gatewayService.listMarketplaceSkills(params);
           break;
         case 'skills.delete':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.deleteSkill({
               ...params,
               teamId: clientInfo.teamId,
@@ -333,7 +337,7 @@ export class GatewayGateway implements OnModuleInit {
           break;
         case 'generate.config':
           {
-            const clientInfo = this.requireClientContext(ws);
+            const clientInfo = this.authContext.requireClientContext(ws);
             result = await this.gatewayService.generateConfig(
               { ...params, teamId: clientInfo.teamId, userId: clientInfo.userId },
               ws,
@@ -342,115 +346,29 @@ export class GatewayGateway implements OnModuleInit {
           break;
         default:
           this.logger.warn(`Unknown method: ${method}`);
-          this.sendResponse(ws, id, null, {
+          this.transport.sendResponse(ws, id, null, {
             code: -32601,
             message: `Method not found: ${method}`,
           });
           return;
       }
 
-      this.sendResponse(ws, id, result);
+      this.transport.sendResponse(ws, id, result);
     } catch (error) {
       this.logger.error(`Error handling ${method}:`, error);
-      this.sendResponse(ws, id, null, {
+      this.transport.sendResponse(ws, id, null, {
         code: -32603,
         message: this.errorMapper.getPublicErrorMessage(error),
       });
     }
   }
 
-  private storeClientContext(ws: WebSocket, result: { expiresAt?: number; user?: { id: string; team?: { id: string; role: string } | null } }): void {
-    if (!result.user) return;
-
-    const clientInfo = this.clients.get(ws);
-    if (clientInfo) {
-      clientInfo.userId = result.user.id;
-      clientInfo.teamId = result.user.team?.id;
-      clientInfo.role = result.user.team?.role;
-      clientInfo.expiresAt = result.expiresAt;
-    }
-  }
-
-  private requireUserContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId'>> {
-    const clientInfo = this.getAuthenticatedClientContext(ws);
-    return { userId: clientInfo.userId };
-  }
-
-  private requireAdminContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'teamId' | 'role'>> {
-    const clientInfo = this.requireClientContext(ws);
-    if (clientInfo.role !== 'OWNER' && clientInfo.role !== 'ADMIN') {
-      throw new Error('Admin privileges required');
-    }
-    return clientInfo;
-  }
-
-  private requirePlatformAdminContext(ws: WebSocket): never {
-    this.requireAdminContext(ws);
-    throw new Error('Platform admin privileges required');
-  }
-
-  private requireClientContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'teamId' | 'role'>> {
-    const clientInfo = this.getAuthenticatedClientContext(ws);
-    if (!clientInfo.teamId || !clientInfo.role) {
-      throw new Error('Authentication required');
-    }
-    return {
-      userId: clientInfo.userId,
-      teamId: clientInfo.teamId,
-      role: clientInfo.role,
-    };
-  }
-
-  private getAuthenticatedClientContext(ws: WebSocket): Required<Pick<GatewayClientContext, 'userId' | 'expiresAt'>> & Pick<GatewayClientContext, 'teamId' | 'role'> {
-    const clientInfo = this.clients.get(ws);
-    if (!clientInfo?.userId || !clientInfo.expiresAt || clientInfo.expiresAt <= Date.now()) {
-      throw new Error('Authentication required');
-    }
-    return {
-      userId: clientInfo.userId,
-      teamId: clientInfo.teamId,
-      role: clientInfo.role,
-      expiresAt: clientInfo.expiresAt,
-    };
-  }
-
-  private sendResponse(ws: WebSocket, id: string | undefined, payload: any, error?: { code: number; message: string }) {
-    if (!id) return;
-
-    const response: GatewayMessage = {
-      type: 'res',
-      id,
-      ok: !error,
-      payload,
-      error,
-    };
-
-    try {
-      ws.send(JSON.stringify(response));
-    } catch (error) {
-      this.logger.error('Failed to send response:', error);
-    }
-  }
-
   emitToClient(ws: WebSocket, event: string, data: any): void {
-    const message: GatewayMessage = {
-      type: 'evt',
-      event,
-      data,
-    };
-    try {
-      ws.send(JSON.stringify(message));
-    } catch (error) {
-      this.logger.error('Failed to emit event:', error);
-    }
+    this.transport.emitToClient(ws, event, data);
   }
 
   broadcastToTeam(teamId: string, event: string, data: any): void {
-    this.clients.forEach((clientInfo, client) => {
-      if (clientInfo.teamId === teamId) {
-        this.emitToClient(client, event, data);
-      }
-    });
+    this.transport.broadcastToTeam(teamId, event, data);
   }
 
   getWs(): WebSocketServer | null {
