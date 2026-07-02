@@ -5,194 +5,44 @@ import { getRequiredJwtSecret } from '../config/security-config';
 import { DatabaseService } from '../database/database.service';
 import { HttpService } from '@nestjs/axios';
 import { AiModelsService } from '../ai-models/ai-models.service';
-import { normalizeTrustedModelProviderBaseUrl } from '../ai-models/api-client';
 import { QuotaService } from '../quota/quota.service';
 import { SkillsService } from '../skills/skills.service';
 import { WebSocket } from 'ws';
 import * as fs from 'fs';
 import * as path from 'path';
 import { firstValueFrom } from 'rxjs';
-
-interface ConnectParams {
-  minProtocol?: number;
-  maxProtocol?: number;
-  client?: {
-    id?: string;
-    displayName?: string;
-    version?: string;
-    platform?: string;
-    mode?: string;
-  };
-  auth?: {
-    token?: string;
-  };
-  scopes?: string[];
-}
-
-interface ConnectResult {
-  ok: boolean;
-  protocol: number;
-  expiresAt: number;
-  user?: {
-    id: string;
-    email: string;
-    name: string;
-    team?: {
-      id: string;
-      name: string;
-      role: string;
-    };
-  };
-  token?: string;
-}
-
-interface GatewayJwtPayload {
-  sub?: string;
-  teamId?: string;
-  role?: string;
-  type?: string;
-  exp?: number;
-}
-
-interface HermesMCPServer {
-  name: string;
-  type: string;
-  config: Record<string, unknown>;
-}
-
-interface ConversationMcpServerRow {
-  name: string;
-  server_type?: string | null;
-  config?: Record<string, unknown> | null;
-}
-
-interface ExtensionContextRow {
-  id: string;
-  name: string;
-  description?: string | null;
-  category?: string | null;
-  tags?: string[] | null;
-  instructions?: string | null;
-}
-
-type HermesMessageContent = string | Array<{
-  type: string;
-  text?: string;
-  image_url?: { url: string };
-}>;
-
-interface HermesChatMessage {
-  role: string;
-  content: HermesMessageContent;
-}
-
-interface HermesChatRequestBody {
-  model: string;
-  messages: HermesChatMessage[];
-  stream: boolean;
-  system?: string;
-  mcp_servers?: HermesMCPServer[];
-  temperature?: number;
-  max_tokens?: number;
-  top_p?: number;
-}
-
-interface ProviderStreamChunk {
-  type?: unknown;
-  error?: unknown;
-  choices?: Array<{
-    delta?: {
-      content?: unknown;
-      tool_calls?: unknown;
-    };
-  }>;
-  delta?: {
-    type?: unknown;
-    text?: unknown;
-  };
-  usage?: {
-    total_tokens?: unknown;
-    output_tokens?: unknown;
-  };
-  message?: {
-    usage?: {
-      input_tokens?: unknown;
-      output_tokens?: unknown;
-    };
-  };
-}
-
-interface HermesMessageParams {
-  sessionId: string;
-  message: string;
-  userId?: string;
-  teamId?: string;
-  role?: string;
-  conversationId?: string;
-  expertId?: string;
-  model?: string;
-  messageId?: string;
-  skillIds?: string[];
-  mcpServerIds?: string[];
-  extensionIds?: string[];
-  attachments?: Array<{ type: string; name: string; mimeType: string; data?: string }>;
-}
-
-interface HermesSendResult {
-  ok: boolean;
-  messageId: string;
-  error?: string;
-  aborted?: boolean;
-}
-
-interface LingqiChargeDecision {
-  charge: { amount: number; modelId?: string; billingId: string };
-  billingId: string;
-  executionModelName?: string;
-}
-
-interface ActiveStreamEntry {
-  ws?: WebSocket;
-  stream: { destroy?: () => void };
-  aborted: boolean;
-  hasBillableOutput: boolean;
-  prepaid?: {
-    params: HermesMessageParams;
-    charge: { amount: number; modelId?: string; billingId: string };
-  };
-}
-
-interface ProviderModelRow {
-  id: string;
-  provider_id: string;
-  provider_name: string;
-  provider_code?: string | null;
-  model_id: string;
-  temperature?: number | null;
-  max_tokens?: number | null;
-  top_p?: number | null;
-}
-
-interface HermesAgentProviderOverride {
-  baseUrl: string;
-  apiKey: string;
-  authStyle: 'x-api-key' | 'bearer';
-  modelId: string;
-  providerCode: string;
-}
-
-interface ConversationPromptMessage {
-  role: string;
-  content: HermesMessageContent;
-}
-
-interface GenerateConfigParams {
-  type: 'expert' | 'skill';
-  description: string;
-  conversationHistory?: Array<{ role: string; content: string }>;
-  teamId: string;
-  userId: string;
-}
+import {
+  ConnectParams,
+  ConnectResult,
+  GatewayJwtPayload,
+  HermesMCPServer,
+  HermesChatMessage,
+  HermesMessageContent,
+  HermesChatRequestBody,
+  ProviderStreamChunk,
+  HermesMessageParams,
+  HermesSendResult,
+  LingqiChargeDecision,
+  ActiveStreamEntry,
+  ProviderModelRow,
+  HermesAgentProviderOverride,
+  ConversationPromptMessage,
+  GenerateConfigParams,
+  ConversationMcpServerRow,
+  ExtensionContextRow,
+} from './gateway.types';
+import {
+  buildProviderErrorMessage,
+  extractProviderTextDelta,
+  extractProviderTotalTokens,
+  generateUUID,
+  getJwtSecret,
+  getTokenExpiresAt,
+  isMiniMaxAnthropicProvider as isMiniMaxAnthropicProviderHelper,
+  isProviderToolCall,
+  normalizeInternalServiceUrl,
+  normalizeProviderBaseUrl,
+} from './gateway.helpers';
 
 @Injectable()
 export class GatewayService {
@@ -213,7 +63,7 @@ export class GatewayService {
     private quotaService: QuotaService,
     private skillsService: SkillsService,
   ) {
-    this.hermesAgentUrl = this.normalizeInternalServiceUrl(
+    this.hermesAgentUrl = normalizeInternalServiceUrl(
       this.configService.get<string>('HERMES_AGENT_URL') || process.env.HERMES_AGENT_URL || 'http://localhost:8642',
       'HERMES_AGENT_URL',
     );
@@ -964,7 +814,7 @@ export class GatewayService {
 
               try {
                 const data = JSON.parse(dataStr) as ProviderStreamChunk;
-                const delta = this.extractProviderTextDelta(data);
+                const delta = extractProviderTextDelta(data);
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
@@ -980,7 +830,7 @@ export class GatewayService {
                 const toolCalls = data.choices?.[0]?.delta?.tool_calls;
                 if (Array.isArray(toolCalls)) {
                   for (const toolCall of toolCalls) {
-                    if (!this.isProviderToolCall(toolCall)) {
+                    if (!isProviderToolCall(toolCall)) {
                       continue;
                     }
                     if (toolCall.id) {
@@ -997,7 +847,7 @@ export class GatewayService {
                   }
                 }
 
-                totalTokens = this.extractProviderTotalTokens(data, totalTokens);
+                totalTokens = extractProviderTotalTokens(data, totalTokens);
               } catch (e) {
                 // Not JSON, skip
               }
@@ -1185,7 +1035,7 @@ export class GatewayService {
 
     let baseUrl: string;
     try {
-      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
+      baseUrl = normalizeProviderBaseUrl(endpoint.base_url);
     } catch (error: unknown) {
       this.logger.warn('Invalid provider endpoint URL configuration');
       return this.refundLingqiIfUnsuccessful(requestParams, lingqiCharge.charge, {
@@ -1208,7 +1058,7 @@ export class GatewayService {
       }
     }
 
-    const isMiniMaxAnthropicProvider = this.isMiniMaxAnthropicProvider(providerModel, baseUrl);
+    const isMiniMaxAnthropicProvider = isMiniMaxAnthropicProviderHelper(providerModel, baseUrl);
 
     // Build request headers and body.
     // MiniMax Anthropic-compatible endpoint requires `Authorization: Bearer <key>`
@@ -1406,7 +1256,7 @@ export class GatewayService {
                   return;
                 }
 
-                const delta = this.extractProviderTextDelta(data);
+                const delta = extractProviderTextDelta(data);
                 if (delta) {
                   fullResponse += delta;
                   deltaCount++;
@@ -1420,7 +1270,7 @@ export class GatewayService {
                   }, senderWs);
                 }
 
-                totalTokens = this.extractProviderTotalTokens(data, totalTokens);
+                totalTokens = extractProviderTotalTokens(data, totalTokens);
               } catch (e) {
                 // Not JSON, skip
               }
@@ -1443,7 +1293,7 @@ export class GatewayService {
               if (dataStr !== '[DONE]') {
                 try {
                   const data = JSON.parse(dataStr) as ProviderStreamChunk;
-                  const delta = this.extractProviderTextDelta(data);
+                  const delta = extractProviderTextDelta(data);
                   if (delta) {
                     fullResponse += delta;
                     deltaCount++;
@@ -1454,7 +1304,7 @@ export class GatewayService {
                       sequenceNumber: deltaCount,
                     }, senderWs);
                   }
-                  totalTokens = this.extractProviderTotalTokens(data, totalTokens);
+                  totalTokens = extractProviderTotalTokens(data, totalTokens);
                 } catch (e) { /* skip */ }
               }
             }
@@ -1567,7 +1417,7 @@ export class GatewayService {
       this.logger.error(
         `Failed to call ${providerModel.provider_name} API. status=${status ?? 'n/a'} code=${err.code ?? 'n/a'} message=${err.message ?? 'unknown'} body=${bodyPreview}`,
       );
-      const userFacingError = this.buildProviderErrorMessage(providerModel.provider_name, status, providerMessage);
+      const userFacingError = buildProviderErrorMessage(providerModel.provider_name, status, providerMessage);
       this.sendStreamEvent('hermes.error', {
         messageId,
         error: userFacingError,
@@ -1663,7 +1513,7 @@ export class GatewayService {
 
     let baseUrl: string;
     try {
-      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
+      baseUrl = normalizeProviderBaseUrl(endpoint.base_url);
     } catch {
       return undefined;
     }
@@ -1828,13 +1678,13 @@ export class GatewayService {
 
     let baseUrl: string;
     try {
-      baseUrl = this.normalizeProviderBaseUrl(endpoint.base_url);
+      baseUrl = normalizeProviderBaseUrl(endpoint.base_url);
     } catch {
       this.sendStreamEvent('generate.error', { streamId, error: 'Invalid provider endpoint URL' }, senderWs);
       return { ok: false, streamId };
     }
 
-    const isMiniMax = this.isMiniMaxAnthropicProvider(defaultModel, baseUrl);
+    const isMiniMax = isMiniMaxAnthropicProviderHelper(defaultModel, baseUrl);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${decryptedKey}`,
@@ -1923,7 +1773,7 @@ export class GatewayService {
 
             try {
               const data = JSON.parse(payload);
-              const delta = this.extractProviderTextDelta(data);
+              const delta = extractProviderTextDelta(data);
               if (delta) {
                 fullResponse += delta;
                 this.sendStreamEvent('generate.delta', { streamId, delta }, senderWs);
@@ -1943,7 +1793,7 @@ export class GatewayService {
               if (payload !== '[DONE]') {
                 try {
                   const data = JSON.parse(payload);
-                  const delta = this.extractProviderTextDelta(data);
+                  const delta = extractProviderTextDelta(data);
                   if (delta) fullResponse += delta;
                 } catch { /* skip */ }
               }
@@ -2577,107 +2427,22 @@ export class GatewayService {
     };
   }
 
+  // Slice 2026-07-02-gateway-split-foundation: boundary facade methods.
+  // These 3 helpers are kept on GatewayService as private methods that
+  // delegate to the pure module-scope functions in ./gateway.helpers.
+  // Reason: the spec uses jest.spyOn(service as any, 'generateUUID') and
+  // may reference the other two. Keeping them as private facade methods
+  // preserves spec compatibility (zero spec changes per AC-6).
   private getJwtSecret(): string {
-    const secret = this.configService.get<string>('JWT_SECRET') || process.env.JWT_SECRET;
-    if (!secret) {
-      throw new Error('JWT_SECRET is required');
-    }
-    return secret;
+    return getJwtSecret(this.configService);
   }
 
-  private normalizeInternalServiceUrl(value: string | undefined, name: string): string {
-    if (!value) {
-      throw new Error(`${name} is required`);
-    }
-
-    const parsed = new URL(value);
-    const allowedHosts = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal', 'hermes-agent']);
-    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || !allowedHosts.has(parsed.hostname)) {
-      throw new Error(`${name} must point to a trusted internal service`);
-    }
-
-    return parsed.origin;
+  private getTokenExpiresAt(payload: GatewayJwtPayload): number {
+    return getTokenExpiresAt(payload);
   }
 
-  private normalizeProviderBaseUrl(value: string | undefined): string {
-    if (!value) {
-      throw new Error('Provider endpoint is required');
-    }
-
-    return normalizeTrustedModelProviderBaseUrl(value);
-  }
-
-  private buildProviderErrorMessage(
-    providerName: string,
-    status: number | undefined,
-    providerMessage: string | undefined,
-  ): string {
-    const trimmed = providerMessage?.trim();
-    if (status === 401 || status === 403) {
-      return `${providerName} 鉴权失败 (${status})${trimmed ? `：${trimmed}` : '；请检查 API Key 与权限'}`;
-    }
-    if (status === 429) {
-      return `${providerName} 限流或配额耗尽 (429)${trimmed ? `：${trimmed}` : '；请检查 token plan 余额、是否开通对应接口、或稍后重试'}`;
-    }
-    if (status === 404) {
-      return `${providerName} 接口或模型不存在 (404)${trimmed ? `：${trimmed}` : '；请确认模型 ID 与 endpoint'}`;
-    }
-    if (status && status >= 500) {
-      return `${providerName} 服务端故障 (${status})${trimmed ? `：${trimmed}` : '；请稍后重试'}`;
-    }
-    if (status) {
-      return `${providerName} 调用失败 (${status})${trimmed ? `：${trimmed}` : ''}`;
-    }
-    return `${providerName} 调用失败${trimmed ? `：${trimmed}` : ''}`;
-  }
-
-  private isMiniMaxAnthropicProvider(providerModel: ProviderModelRow, baseUrl: string): boolean {
-    const providerCode = providerModel.provider_code?.toLowerCase();
-    const providerName = providerModel.provider_name.toLowerCase();
-    const parsedUrl = new URL(baseUrl);
-
-    return (
-      parsedUrl.hostname === 'api.minimaxi.com' &&
-      parsedUrl.pathname.startsWith('/anthropic') &&
-      (providerCode === 'minimax' || providerName.includes('minimax'))
-    );
-  }
-
-  private extractProviderTextDelta(data: ProviderStreamChunk): string {
-    const openAiDelta = data.choices?.[0]?.delta?.content;
-    if (typeof openAiDelta === 'string') {
-      return openAiDelta;
-    }
-
-    if (data.type === 'content_block_delta' && data.delta?.type === 'text_delta' && typeof data.delta.text === 'string') {
-      return data.delta.text;
-    }
-
-    return '';
-  }
-
-  private extractProviderTotalTokens(data: ProviderStreamChunk, fallback: number): number {
-    if (typeof data.usage?.total_tokens === 'number') {
-      return data.usage.total_tokens;
-    }
-
-    const inputTokens = data.message?.usage?.input_tokens;
-    const messageOutputTokens = data.message?.usage?.output_tokens;
-    if (typeof inputTokens === 'number' || typeof messageOutputTokens === 'number') {
-      return (typeof inputTokens === 'number' ? inputTokens : 0) +
-        (typeof messageOutputTokens === 'number' ? messageOutputTokens : 0);
-    }
-
-    const outputTokens = data.usage?.output_tokens;
-    if (typeof outputTokens === 'number') {
-      return Math.max(fallback, outputTokens);
-    }
-
-    return fallback;
-  }
-
-  private isProviderToolCall(value: unknown): value is { id?: string; function?: { name?: string; arguments?: string } } {
-    return typeof value === 'object' && value !== null;
+  private generateUUID(): string {
+    return generateUUID();
   }
 
   private async generateTokens(userId: string, teamId: string | null, role: string) {
@@ -2707,14 +2472,6 @@ export class GatewayService {
     };
   }
 
-  private getTokenExpiresAt(payload: GatewayJwtPayload): number {
-    if (!Number.isInteger(payload.exp) || !payload.exp) {
-      throw new Error('Authentication required');
-    }
-
-    return payload.exp * 1000;
-  }
-
   private async generateServiceToken(): Promise<string> {
     return this.jwtService.signAsync({
       sub: 'service',
@@ -2722,14 +2479,6 @@ export class GatewayService {
       type: 'access',
     }, {
       secret: this.getJwtSecret(),
-    });
-  }
-
-  private generateUUID(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
     });
   }
 
